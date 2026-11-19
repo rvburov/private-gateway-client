@@ -201,6 +201,46 @@ public sealed class RoutingPageTests : WindowHarness
         Service<SettingsService>().Current.Routing.Rules[^1].ShouldBe(new DomainRule("*.example.org", RuleAction.Block), "у зоны флажок не сохраняется");
     }
 
+    /// <summary>
+    /// Решение 741: «Все адреса YouTube» — у домена из списка сервисов, у нового правила отмечено; правило — «geosite:youtube»,
+    /// в строке — подпись. Снятый флажок — правило для самого домена.
+    /// </summary>
+    [AvaloniaFact]
+    public void All_addresses_of_a_service_are_offered_for_its_domains()
+    {
+        var (window, shell, page) = OpenRouting();
+
+        Press(window, "AddRuleButton");
+        var sheet = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        foreach (var pattern in new[] { "example.com", "*.youtube.com", "geosite:youtube", "203.0.113.9", string.Empty })
+        {
+            sheet.Pattern = pattern;
+            sheet.CanAllAddresses.ShouldBeFalse(pattern);
+        }
+
+        sheet.Pattern = "m.YouTube.com";
+        Dispatcher.UIThread.RunJobs();
+        (sheet.CanAllAddresses, sheet.AllAddresses).ShouldBe((true, true), "у нового правила — сразу");
+        Find<CheckBox>(window, "RuleService").IsVisible.ShouldBeTrue();
+        sheet.AllAddressesText.ShouldBe("Все адреса YouTube");
+        sheet.CanExact.ShouldBeFalse("все адреса — не только этот");
+        sheet.IsProxy = true;
+        sheet.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe([new DomainRule("geosite:youtube", RuleAction.Proxy)]);
+        page.Rules.Single().ServiceText.ShouldBe("все адреса YouTube");
+
+        Press(window, "AddRuleButton");
+        var single = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        single.Pattern = "t.me";
+        single.AllAddressesText.ShouldBe("Все адреса Telegram");
+        single.AllAddresses = false;
+        single.CanExact.ShouldBeTrue();
+        single.SaveCommand.Execute(null);
+        Service<SettingsService>().Current.Routing.Rules[^1].ShouldBe(new DomainRule("t.me", RuleAction.Block));
+        page.Rules[^1].HasService.ShouldBeFalse();
+    }
+
     [AvaloniaFact]
     public void Rule_is_edited_replaced_for_the_same_site_and_deleted()
     {

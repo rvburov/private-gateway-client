@@ -128,9 +128,11 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
     }
 }
 
-/// Шаблон сайта для правила — `SitePattern` десктопа без «geosite:»: базы geosite у ядра телефона нет, и с таким правилом
-/// ядро не запустилось бы, поэтому шаблон не принимается.
+/// Шаблон сайта для правила — `SitePattern` десктопа. Из «geosite:категория» телефон берет только сервисы списка
+/// `ServiceSites` («Все адреса сервиса», решение 741): базы geosite у ядра телефона нет, домены сервиса оно получает из списка.
 public enum SitePattern {
+    /// Начало шаблона готового списка: «geosite:категория».
+    public static let geosite = "geosite:"
     /// Длиннее имени в DNS не бывает.
     public static let maxLength = 253
 
@@ -139,8 +141,12 @@ public enum SitePattern {
     /// nil — не подходит.
     public static func normalize(_ text: String) -> String? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if value.isEmpty || value.hasPrefix("geosite:") {
+        if value.isEmpty {
             return nil
+        }
+
+        if value.hasPrefix(geosite) {
+            return ServiceSites.of(pattern: value)?.pattern
         }
 
         if let address = address(value) {
@@ -178,13 +184,18 @@ public enum SitePattern {
 
     /// Обычный домен («example.com»): не зона «*.» и не адрес — у него есть «Только этот адрес».
     public static func isPlainDomain(_ pattern: String) -> Bool {
-        !pattern.hasPrefix("*.") && !pattern.hasPrefix("geosite:") && !isAddress(pattern)
+        !pattern.hasPrefix("*.") && !pattern.hasPrefix(geosite) && !isAddress(pattern)
     }
 
     /// Место правила при проверке (меньше — раньше), как `SitePattern.Rank` десктопа: группа (0 — только этот адрес, 1 — домен
     /// или зона, 3 — адрес или подсеть) и порядок в ней (больше меток домена или длиннее префикс — раньше).
     public static func rank(_ rule: SiteRule) -> (group: Int, detail: Int) {
         let pattern = rule.pattern
+        if pattern.hasPrefix(geosite) {
+            // «Все адреса сервиса» — после доменов, до адресов, как geosite у десктопа.
+            return (2, 0)
+        }
+
         if isAddress(pattern) {
             let parts = pattern.split(separator: "/")
             let prefix = parts.count == 2 ? Int(parts[1]) ?? 0 : (pattern.contains(":") ? 128 : 32)

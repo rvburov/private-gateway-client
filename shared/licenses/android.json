@@ -11,7 +11,8 @@
 //   aar — свой .aar в android/app/libs, версия — android/<имя строчными>.version;
 //   inside — входит в другой компонент этого списка (Xray-core — внутри libXray);
 //   files — файлы в самом приложении, пути от android/ (шрифт Roboto Mono — res/font; геобаза и флаги стран —
-//           ../shared/countries, их кладет в assets generatePgCountries).
+//           ../shared/countries, их кладет в assets generatePgCountries; список сервисов
+//           «Все адреса сервиса» — ресурс модуля core).
 [
   {
     "name": "Roboto Mono",
@@ -27,6 +28,14 @@
     "url": "https://db-ip.com",
     "notice": "IP Geolocation by DB-IP (https://db-ip.com). November 2026, CC-BY-4.0. Converted from CSV to a compact range database; no location accuracy guarantee.",
     "files": ["../shared/countries/country.bin.gz"]
+  },
+  {
+    "name": "v2fly/domain-list-community",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2018-2019 V2Ray (v2fly/domain-list-community contributors)",
+    "url": "https://github.com/v2fly/domain-list-community",
+    "notice": "Service domain lists for “All addresses of a service”: domains and full names from the data files of commit fa3cb96fbc210b8d6466251a1d71b4a6e63a9c85, without regexp, keyword, @ads and @cn entries.",
+    "files": ["../shared/specifications/routing/services.json"]
   },
   {
     "name": "flag-icons",

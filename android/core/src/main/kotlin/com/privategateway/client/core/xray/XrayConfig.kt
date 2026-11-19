@@ -10,6 +10,7 @@ import com.privategateway.client.core.settings.AlwaysAllowed
 import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.IpAddress
 import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.ServiceSites
 import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.SitePattern
 import java.util.Locale
@@ -192,10 +193,16 @@ object XrayConfig {
         // выведенный из туннеля (protect), к провайдеру.
         for (rule in settings.rules) {
             val address = SitePattern.isAddress(rule.pattern)
+            // «Все адреса сервиса» (решение 741) — домены сервиса из списка: базы geosite у ядра телефона нет.
+            val service = ServiceSites.ofPattern(rule.pattern)
             rules.add(
                 linkedMapOf(
                     "type" to "field",
-                    (if (address) "ip" else "domain") to listOf(if (address) rule.pattern else SitePattern.domainCondition(rule.pattern, rule.isExact)),
+                    (if (address) "ip" else "domain") to when {
+                        address -> listOf(rule.pattern)
+                        service != null -> service.conditions
+                        else -> listOf(SitePattern.domainCondition(rule.pattern, rule.isExact))
+                    },
                     "outboundTag" to when (rule.action) {
                         RuleAction.Direct -> DIRECT_TAG
                         RuleAction.Block -> BLOCK_TAG

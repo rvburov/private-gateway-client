@@ -349,6 +349,32 @@ class AdvancedSettingsTest {
         assertTrue(withoutGeosite(text(R.string.routing_rule_hint)).contains("203.0.113.0/24"))
     }
 
+    /** Решение 741: «Все адреса YouTube» — у домена из списка сервисов, у нового правила отмечено; правило — «geosite:youtube». */
+    @Test
+    fun `all addresses of a service are offered for its domains`() {
+        var tunnel by mutableStateOf(TunnelSettings())
+        compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }) } }
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("example.com")
+        compose.onNodeWithTag("routing.rule.service").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rule.pattern").performTextClearance()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("m.YouTube.com")
+        compose.onNodeWithTag("routing.rule.service").assertIsDisplayed().assertIsOn()
+        compose.onNodeWithText(text(R.string.routing_rule_service, "YouTube")).assertIsDisplayed()
+        compose.onNodeWithTag("routing.rule.exact").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rule.save").performClick()
+        assertEquals(listOf(SiteRule("geosite:youtube", RuleAction.Block)), tunnel.routing.rules)
+        compose.onNodeWithTag("routing.rule.geosite:youtube.service", useUnmergedTree = true).assertTextEquals(text(R.string.routing_rule_service_row, "YouTube"))
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("t.me")
+        compose.onNodeWithTag("routing.rule.service").performClick().assertIsOff()
+        compose.onNodeWithTag("routing.rule.exact").assertIsDisplayed()
+        compose.onNodeWithTag("routing.rule.save").performClick()
+        assertEquals(SiteRule("t.me", RuleAction.Block), tunnel.routing.rules.last())
+    }
+
     /** Решение 739: «Только этот адрес» — только у обычного домена, отдельное правило, подпись в строке. */
     @Test
     fun `exact address is offered for plain domains and kept apart from the site`() {

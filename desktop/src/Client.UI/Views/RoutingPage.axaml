@@ -192,6 +192,7 @@
                           <TextBlock Text="{Binding Pattern}" FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Mono}"
                                      TextTrimming="CharacterEllipsis" />
                           <TextBlock Classes="caption" Text="{l:L routing.rule.exact.row}" IsVisible="{Binding IsExact}" />
+                          <TextBlock Classes="caption" Text="{Binding ServiceText}" IsVisible="{Binding HasService}" />
                         </StackPanel>
                         <Border Grid.Column="1" Classes="action" Classes.direct="{Binding IsDirect}" Classes.proxy="{Binding IsProxy}"
                                 Classes.block="{Binding IsBlock}" Classes.idle="{Binding IsIdle}">

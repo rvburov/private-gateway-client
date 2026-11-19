@@ -123,8 +123,9 @@ final class LicensesTests: XCTestCase {
 
         let shared = Set(project.components(separatedBy: .newlines).compactMap { line -> String? in
             let path = line.trimmingCharacters(in: .whitespaces)
-            return path.hasPrefix("- path: ../shared/countries") ? String(path.dropFirst("- path: ".count)) : nil
+            let data = path.hasPrefix("- path: ../shared/countries") || path.hasPrefix("- path: ../shared/specifications/routing")
+            return data ? String(path.dropFirst("- path: ".count)) : nil
         })
-        XCTAssertEqual(shared, Set(list.flatMap { $0.lists["files"] ?? [] }), "каждый файл shared/countries проекта — строкой в ios.json")
+        XCTAssertEqual(shared, Set(list.flatMap { $0.lists["files"] ?? [] }), "каждый файл данных shared проекта — строкой в ios.json")
     }
 }

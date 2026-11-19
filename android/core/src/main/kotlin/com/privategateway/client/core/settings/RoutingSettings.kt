@@ -176,20 +176,25 @@ data class RoutingSettings(
 /**
  * Шаблон сайта для правила — `SitePattern` десктопа: «example.com» и «*.example.com» строчными, адрес «203.0.113.5» или
  * подсеть «198.51.100.0/24», «2001:db8::/32» (подсеть приводится к адресу сети). Адрес с «https://» и путем сокращается до
- * домена — так его чаще всего и вставляют. «geosite:категория» телефон не берет: базы geosite в приложении нет, и ядро с таким
- * правилом не запустилось бы.
+ * домена — так его чаще всего и вставляют. Из «geosite:категория» телефон берет только сервисы списка [ServiceSites]
+ * («Все адреса сервиса», решение 741): базы geosite в приложении нет, домены сервиса ядро получает из списка.
  */
 object SitePattern {
     /** Длиннее имени в DNS не бывает; поле листа правила больше не принимает. */
     const val MAX_LENGTH = 253
 
-    private const val GEOSITE = "geosite:"
+    /** Начало шаблона готового списка: «geosite:категория». */
+    const val GEOSITE = "geosite:"
 
     /** Шаблон в виде для ядра или null — не подходит. */
     fun normalize(text: String?): String? {
         var value = text?.trim()?.lowercase(Locale.ROOT) ?: return null
-        if (value.isEmpty() || value.length > MAX_LENGTH || value.startsWith(GEOSITE)) {
+        if (value.isEmpty() || value.length > MAX_LENGTH) {
             return null
+        }
+
+        if (value.startsWith(GEOSITE)) {
+            return ServiceSites.ofPattern(value)?.pattern
         }
 
         address(value)?.let { return it }
@@ -226,10 +231,14 @@ object SitePattern {
 
     /**
      * Место правила при проверке (меньше — раньше), как `SitePattern.Rank` десктопа: группа (0 — только этот адрес, 1 — домен
-     * или зона, 3 — адрес или подсеть) и порядок в ней (больше меток домена или длиннее префикс — раньше).
+     * или зона, 2 — все адреса сервиса, 3 — адрес или подсеть) и порядок в ней (больше меток домена или длиннее префикс — раньше).
      */
     fun rank(rule: SiteRule): Pair<Int, Int> {
         val pattern = rule.pattern
+        if (pattern.startsWith(GEOSITE)) {
+            return 2 to 0
+        }
+
         if (isAddress(pattern)) {
             val slash = pattern.indexOf('/')
             val prefix = if (slash < 0) (if (pattern.contains(':')) 128 else 32) else pattern.substring(slash + 1).toInt()

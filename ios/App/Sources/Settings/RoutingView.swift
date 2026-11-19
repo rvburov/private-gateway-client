@@ -415,6 +415,10 @@ private struct RuleRow: View {
                     if rule.isExact {
                         Text(texts.routingRuleExactRow).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
                     }
+                    // «Все адреса сервиса» (решение 741) — подписью под «geosite:id».
+                    if let service = ServiceSites.of(pattern: rule.pattern) {
+                        Text(texts.routingRuleServiceRow(service.name)).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, PgSpace.m)
@@ -493,6 +497,8 @@ struct SiteRuleSheet: View {
     @State private var choice: RuleAction
     @State private var tried: Bool
     @State private var exact: Bool
+    /// «Все адреса сервиса» (решение 741): у домена из списка сервисов; у нового правила отмечено — без них сайт не работает.
+    @State private var allAddresses: Bool
 
     init(
         texts: PgTexts, original: SiteRule?, split: Bool, blockOthers: Bool = false, tried: Bool = false, onSave: @escaping (SiteRule) -> Void,
@@ -509,6 +515,7 @@ struct SiteRuleSheet: View {
         _choice = State(initialValue: original?.action ?? RoutingLook.newAction(split: split, blockOthers: blockOthers))
         _tried = State(initialValue: tried)
         _exact = State(initialValue: original?.isExact ?? false)
+        _allAddresses = State(initialValue: original == nil)
     }
 
     var body: some View {
@@ -545,8 +552,21 @@ struct SiteRuleSheet: View {
                         }
                     }
 
-                    // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса.
-                    if SitePattern.normalize(pattern).map(SitePattern.isPlainDomain) ?? false {
+                    let service = SitePattern.normalize(pattern).flatMap(ServiceSites.find)
+                    if let service {
+                        VStack(alignment: .leading, spacing: 2) {
+                            PgCheck(title: texts.routingRuleService(service.name), isOn: allAddresses, identifier: "rule.service") { allAddresses = $0 }
+                            Text(texts.routingRuleServiceText)
+                                .pgText(PgType.caption)
+                                .foregroundStyle(Color(PgColor.Text.muted))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 40)
+                        }
+                    }
+
+                    // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса; при «Все адреса
+                    // сервиса» не действует.
+                    if (SitePattern.normalize(pattern).map(SitePattern.isPlainDomain) ?? false) && !(service != nil && allAddresses) {
                         VStack(alignment: .leading, spacing: 2) {
                             PgCheck(title: texts.routingRuleExact, isOn: exact, identifier: "rule.exact") { exact = $0 }
                             Text(texts.routingRuleExactText)
@@ -611,7 +631,11 @@ struct SiteRuleSheet: View {
     private func save() {
         tried = true
         if let normalized = SitePattern.normalize(pattern) {
-            onSave(SiteRule(pattern: normalized, action: choice, exact: exact && SitePattern.isPlainDomain(normalized)))
+            if allAddresses, let service = ServiceSites.find(normalized) {
+                onSave(SiteRule(pattern: service.pattern, action: choice))
+            } else {
+                onSave(SiteRule(pattern: normalized, action: choice, exact: exact && SitePattern.isPlainDomain(normalized)))
+            }
         }
     }
 }

@@ -55,7 +55,8 @@
   правила «Напрямую» бледнее и над списком — подпись, что они не действуют. Правило для сайта открывается листом; «Добавить правило» —
   тот же лист. «Локальная сеть» ведет в «Защиту и утечки». «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740):
   открываются только сайты с правилом «Через VPN» или «Напрямую», ниже — предупреждение и «Пропускается всегда»; обратно на
-  «Открывать» — сразу. Справа — тот же экран в режиме «Весь трафик».</p>
+  «Открывать» — сразу. У домена из списка сервисов в листе правила — «Все адреса YouTube» (решение 741): правило
+  «geosite:youtube» с подписью в строке. Справа — тот же экран в режиме «Весь трафик».</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Раздельный режим">
@@ -461,6 +462,11 @@
             <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.org</span>
             <span class="pill success">Через VPN</span>
           </button>
+          <!-- «Все адреса сервиса» (решение 741): правило «geosite:id» сервиса из списка — подпись с названием -->
+          <button class="btn-plain" data-row data-open="sheet-rule-4-all" aria-label="geosite:youtube: Через VPN">
+            <span class="pg-stack pg-grow" style="gap: 2px; margin-right: 10px"><span class="t-mono pg-ellipsis">geosite:youtube</span><span class="t-caption">все адреса YouTube</span></span>
+            <span class="pill success">Через VPN</span>
+          </button>
           </div>
           <button class="btn-plain dashed" data-open="sheet-rule-new-all"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
         </div>
@@ -509,11 +515,12 @@
         <div class="pg-stack" style="gap: 14px; margin: 16px 0">
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
-            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес">
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="youtube.com">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
-          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
-          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
+          <!-- «Все адреса сервиса» (решение 741): домен входит в адреса сервиса из списка; у нового правила отмечено. Пока отмечено,
+               «Только этот адрес» не показывается: правило — «geosite:youtube» для всех адресов сервиса -->
+          <button class="check on" role="checkbox" aria-checked="true"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Все адреса YouTube</span><span class="t-caption">Видео и картинки идут с других адресов — без них сайт не работает</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -646,6 +653,35 @@
           </div>
           <!-- «Только этот адрес» (решение 739): только у обычного домена -->
           <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment on" data-action="proxy" role="radio" aria-checked="true">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+<div class="sheet" id="sheet-rule-4-all" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="geosite:youtube">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">

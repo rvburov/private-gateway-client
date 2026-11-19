@@ -251,6 +251,12 @@ final class ScreensTests: XCTestCase {
             XCTAssertNotNil(try render(blocking, height: 2000))
             let allowSheet = SiteRuleSheet(texts: texts, original: nil, split: false, blockOthers: true, onSave: { _ in }, onDelete: { _ in }, onClose: {})
             XCTAssertNotNil(try render(allowSheet))
+            // «Все адреса YouTube» (решение 741): строка «geosite:youtube» с подписью.
+            let service = RoutingView(
+                texts: texts, routing: RoutingSettings(rules: [SiteRule(pattern: "geosite:youtube", action: .proxy)]), allowLan: false, onRouting: { _ in },
+                onLan: {}, onBack: {}
+            )
+            XCTAssertNotNil(try render(service, height: 1600))
             // «Работает другой VPN» (DECISIONS.md, п. 4) — страница вместо главной на обоих языках.
             XCTAssertEqual(try render(OtherVpnView(texts: texts, onRetry: {}, onDetails: {})).size.width, 393, accuracy: 1)
             // «Лицензии» — лист поверх «О программе»: страница с открытым листом, список и каждый компонент.

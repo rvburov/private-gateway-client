@@ -322,6 +322,15 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertFalse(open.contains { $0["network"] != nil }, "по умолчанию остальное открывается")
     }
 
+    /// Решение 741: «Все адреса сервиса» — домены сервиса из списка, базы geosite у ядра телефона нет.
+    func testAllAddressesOfAServiceGoToTheCoreAsItsDomains() throws {
+        let routing = RoutingSettings(rules: [SiteRule(pattern: "geosite:youtube", action: .proxy), SiteRule(pattern: "music.youtube.com", action: .block)])
+        let own = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), routing))).filter { $0["domain"] != nil }
+        XCTAssertEqual(own[0]["domain"] as? [String], ["domain:music.youtube.com"], "точнее — раньше")
+        XCTAssertEqual(own[1]["domain"] as? [String], ServiceSites.of(pattern: "geosite:youtube")?.conditions)
+        XCTAssertEqual(own[1]["outboundTag"] as? String, "proxy")
+    }
+
     /// «Пропускается всегда» одно на все платформы: shared/specifications/routing/always-allowed.json.
     func testAlwaysAllowedMatchesTheSharedList() throws {
         let file = LinkParserTests.testData.deletingLastPathComponent().appendingPathComponent("specifications/routing/always-allowed.json")

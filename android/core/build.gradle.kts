@@ -20,6 +20,12 @@ kotlin {
     }
 }
 
+// «Все адреса сервиса» (решение 741): список сервисов — общий с десктопом и iOS, ресурсом модуля (routing/services.json).
+sourceSets.main {
+    resources.srcDir(rootDir.resolve("../../shared/specifications"))
+    resources.include("routing/services.json")
+}
+
 dependencies {
     implementation(libs.snakeyaml.engine)
     implementation(libs.zxing.core)

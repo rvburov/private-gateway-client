@@ -215,8 +215,11 @@ public enum XrayConfig {
 
             let address = SitePattern.isAddress(pattern)
             let key = address ? "ip" : "domain"
-            let condition = address ? pattern : SitePattern.domainCondition(pattern, exact: rule.exact)
-            rules.append(.object([("type", .string("field")), (key, .array([.string(condition)])), ("outboundTag", .string(outboundTag(rule.action)))]))
+            // «Все адреса сервиса» (решение 741) — домены сервиса из списка: базы geosite у ядра телефона нет.
+            let conditions = address ? [pattern] : ServiceSites.of(pattern: pattern)?.conditions ?? [SitePattern.domainCondition(pattern, exact: rule.exact)]
+            rules.append(.object([
+                ("type", .string("field")), (key, .array(conditions.map { .string($0) })), ("outboundTag", .string(outboundTag(rule.action))),
+            ]))
         }
 
         if settings.blockOthers {

@@ -260,6 +260,13 @@ public sealed partial class SiteRuleViewModel(DomainRule rule, bool directIdle, 
     /// <summary>«Только этот адрес» — подписью под адресом (решение 739).</summary>
     public bool IsExact => rule.IsExact;
 
+    /// <summary>«geosite:id» сервиса из списка — подпись «все адреса YouTube» (решение 741).</summary>
+    public string? ServiceText => ServiceSites.OfPattern(rule.Pattern) is { } service
+        ? Loc.Instance.Format("routing.rule.service.row", service.Name)
+        : null;
+
+    public bool HasService => ServiceText is not null;
+
     public string ActionText => RoutingPageViewModel.ActionLabel(rule.Action);
 
     public bool IsDirect => rule.Action == RuleAction.Direct;
@@ -298,6 +305,8 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
         Pattern = original?.Pattern ?? string.Empty;
         Action = original?.Action ?? (isSplit ? RuleAction.Direct : blockOthers ? RuleAction.Proxy : RuleAction.Block);
         Exact = original?.IsExact ?? false;
+        // «Все адреса сервиса» у нового правила — сразу: без них сайт сервиса не работает (решение 741).
+        AllAddresses = original is null;
     }
 
     public bool IsNew => _original is null;
@@ -307,14 +316,30 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
     public string SaveText => Loc.Instance[IsNew ? "routing.rule.add" : "routing.rule.save"];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanExact))]
+    [NotifyPropertyChangedFor(nameof(CanExact), nameof(Service), nameof(CanAllAddresses), nameof(AllAddressesText))]
     public partial string Pattern { get; set; }
 
     /// <summary>«Только этот адрес» (решение 739): флажок есть только у обычного домена — не у зоны, списка и адреса.</summary>
     [ObservableProperty]
     public partial bool Exact { get; set; }
 
-    public bool CanExact => SitePattern.Normalize(Pattern) is { } pattern && SitePattern.IsPlainDomain(pattern);
+    public bool CanExact => SitePattern.Normalize(Pattern) is { } pattern && SitePattern.IsPlainDomain(pattern) && !UsesService;
+
+    /// <summary>
+    /// «Все адреса сервиса» (решение 741): флажок есть, когда домен входит в адреса сервиса из списка (youtube.com — YouTube);
+    /// отмечен — правило «geosite:id» для всех адресов сервиса, «Только этот адрес» тогда не действует.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExact))]
+    public partial bool AllAddresses { get; set; }
+
+    public ServiceSite? Service => SitePattern.Normalize(Pattern) is { } pattern ? ServiceSites.Find(pattern) : null;
+
+    public bool CanAllAddresses => Service is not null;
+
+    public string AllAddressesText => Service is { } service ? Loc.Instance.Format("routing.rule.service", service.Name) : string.Empty;
+
+    private bool UsesService => AllAddresses && Service is not null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDirect), nameof(IsProxy), nameof(IsBlock), nameof(IsIdle))]
@@ -357,7 +382,9 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
         }
 
         _overlay.CloseSheet();
-        _page.SaveRule(_original, new DomainRule(pattern, Action, Exact && SitePattern.IsPlainDomain(pattern)));
+        _page.SaveRule(_original, ServiceSites.Find(pattern) is { } service && AllAddresses
+            ? new DomainRule(service.Pattern, Action)
+            : new DomainRule(pattern, Action, Exact && SitePattern.IsPlainDomain(pattern)));
     }
 
     [RelayCommand]

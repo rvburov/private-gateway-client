@@ -10,6 +10,7 @@ import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.RoutingMode
 import com.privategateway.client.core.settings.RoutingSettings
 import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.ServiceSites
 import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.TlsFingerprint
 import com.privategateway.client.core.settings.TunnelSettings
@@ -383,6 +384,18 @@ class XrayConfigTest {
         assertEquals("block", split.last()["outboundTag"]!!.jsonPrimitive.content)
         val open = rules(build(reality, TunnelSettings(routing = RoutingSettings(rules = list)).core(), 1))
         assertTrue(open.none { it["network"] != null }, "по умолчанию остальное открывается")
+    }
+
+    /** Решение 741: «Все адреса сервиса» — домены сервиса из списка, базы geosite у ядра телефона нет. */
+    @Test
+    fun `all addresses of a service go to the core as its domains`() {
+        val routing = RoutingSettings(rules = listOf(SiteRule("geosite:youtube", RuleAction.Proxy), SiteRule("music.youtube.com", RuleAction.Block)))
+        val rules = rules(build(reality, TunnelSettings(routing = routing).core(), 1))
+        val own = rules.filter { it["domain"] != null }
+        assertEquals(listOf("domain:music.youtube.com"), own[0]["domain"]!!.jsonArray.map { it.jsonPrimitive.content }, "точнее — раньше")
+        assertEquals(ServiceSites.ofPattern("geosite:youtube")!!.conditions, own[1]["domain"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("proxy", own[1]["outboundTag"]!!.jsonPrimitive.content)
+        assertFalse(rules.toString().contains("geosite"), "базы geosite у ядра телефона нет")
     }
 
     @Test

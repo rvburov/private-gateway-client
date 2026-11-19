@@ -178,6 +178,7 @@ gh workflow run release-button.yml --ref master -f version=1.2.3   # то же �
 dotnet run scripts/release.cs keygen <файл вне репозитория> # ключ подписи обновлений (делает пользователь, release.md)
 dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
 dotnet run scripts/gen-design-html.cs                  # токены CSS и значки HTML-макета docs/design/html
+dotnet run scripts/gen-services.cs [-- <data>]         # «Все адреса сервиса»: ServiceSites.swift из services.json (и домены из domain-list-community)
 ```
 
 - Вывод сборки — в `artifacts/bin/<проект>/debug/`, выпуска — в `artifacts/release/`

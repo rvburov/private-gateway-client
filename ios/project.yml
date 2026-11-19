@@ -45,6 +45,10 @@ targets:
       - path: ../shared/countries/flags
         type: folder
         buildPhase: resources
+      # «Все адреса сервиса» (решение 741): список сервисов (domain-list-community, MIT) — в пакете приложения рядом с ios.json;
+      # ядро берет те же домены из кода ServiceSites (scripts/gen-services.cs) — расширению туннеля файл не нужен.
+      - path: ../shared/specifications/routing/services.json
+        buildPhase: resources
     dependencies:
       - package: PrivateGatewayCore
         product: PrivateGatewayCore

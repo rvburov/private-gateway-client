@@ -47,8 +47,8 @@ class LicensesTest {
         val libxray = components.single { it.name == "libXray" }
         assertTrue(libxray.version.isNotEmpty() && libxray.source.endsWith(libxray.version), libxray.source)
         // Каждый компонент из Maven пришел хотя бы одним модулем: сборка сверила список с зависимостями выпуска. Файлы в самом
-        // приложении (android.json, «files»: шрифт Roboto Mono, геобаза и флаги стран) модулей не имеют.
-        val bundled = setOf("Roboto Mono", "DB-IP Country Lite (2026-11)", "flag-icons")
+        // приложении (android.json, «files»: шрифт Roboto Mono, геобаза и флаги стран, список сервисов) модулей не имеют.
+        val bundled = setOf("Roboto Mono", "DB-IP Country Lite (2026-11)", "flag-icons", "v2fly/domain-list-community")
         assertTrue(bundled.all { it in names }, names.toString())
         for (component in components.filter { it.inside.isEmpty() && it.name != "libXray" && it.name !in bundled }) {
             assertTrue(component.modules.isNotEmpty(), "${component.name}: нет модулей")

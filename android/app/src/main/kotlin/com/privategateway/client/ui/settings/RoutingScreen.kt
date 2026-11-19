@@ -62,6 +62,7 @@ import com.privategateway.client.core.settings.BypassApp
 import com.privategateway.client.core.settings.RoutingMode
 import com.privategateway.client.core.settings.RoutingSettings
 import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.ServiceSites
 import com.privategateway.client.core.settings.SitePattern
 import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.TunnelSettings
@@ -492,6 +493,15 @@ private fun RuleRow(rule: SiteRule, directIdle: Boolean, divider: Boolean, onCli
             if (rule.isExact) {
                 Text(stringResource(R.string.routing_rule_exact_row), Modifier.testTag("routing.rule.${rule.pattern}.exact"), color = PgColor.Text.Muted, style = PgType.Caption)
             }
+            // «Все адреса сервиса» (решение 741) — подписью под «geosite:id».
+            ServiceSites.ofPattern(rule.pattern)?.let { service ->
+                Text(
+                    stringResource(R.string.routing_rule_service_row, service.name),
+                    Modifier.testTag("routing.rule.${rule.pattern}.service"),
+                    color = PgColor.Text.Muted,
+                    style = PgType.Caption,
+                )
+            }
         }
         ActionPill(rule.action, idle = rule.action == RuleAction.Direct && directIdle, tag = "routing.rule.${rule.pattern}.action")
     }
@@ -622,14 +632,18 @@ private fun RuleSheet(
     }
     var bad by rememberSaveable { mutableStateOf(false) }
     var exact by rememberSaveable { mutableStateOf(original?.isExact ?: false) }
+    // «Все адреса сервиса» (решение 741): у домена из списка сервисов; у нового правила отмечено — без них сайт не работает.
+    var allAddresses by rememberSaveable { mutableStateOf(original == null) }
+    val service = SitePattern.normalize(text)?.let(ServiceSites::find)
     // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса.
-    val canExact = SitePattern.normalize(text)?.let(SitePattern::isPlainDomain) ?: false
+    val canExact = (SitePattern.normalize(text)?.let(SitePattern::isPlainDomain) ?: false) && !(service != null && allAddresses)
     val save: () -> Unit = {
         val pattern = SitePattern.normalize(text)
         if (pattern == null) {
             bad = true
         } else {
-            onSave(SiteRule(pattern, action, exact && SitePattern.isPlainDomain(pattern)))
+            val chosen = ServiceSites.find(pattern)?.takeIf { allAddresses }
+            onSave(if (chosen != null) SiteRule(chosen.pattern, action) else SiteRule(pattern, action, exact && SitePattern.isPlainDomain(pattern)))
         }
     }
     PgSheet(onClose, "routing.rule.sheet", scroll = false) {
@@ -663,6 +677,18 @@ private fun RuleSheet(
                     Text(withoutGeosite(stringResource(R.string.routing_rule_bad)), Modifier.testTag("routing.rule.bad"), color = PgColor.Status.Danger.Text, style = PgType.Caption)
                 } else {
                     Text(withoutGeosite(stringResource(R.string.routing_rule_hint)), Modifier.testTag("routing.rule.hint"), color = PgColor.Text.Muted, style = PgType.Caption)
+                }
+            }
+
+            if (service != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    PgCheck(stringResource(R.string.routing_rule_service, service.name), allAddresses, "routing.rule.service", { allAddresses = it }, Modifier.fillMaxWidth())
+                    Text(
+                        stringResource(R.string.routing_rule_service_text),
+                        Modifier.padding(start = 38.dp),
+                        color = PgColor.Text.Muted,
+                        style = PgType.Caption,
+                    )
                 }
             }
 

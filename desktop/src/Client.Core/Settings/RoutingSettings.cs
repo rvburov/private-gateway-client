@@ -72,7 +72,10 @@ public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> 
 /// <summary>Шаблон сайта для правила: проверка и приведение к виду для службы.</summary>
 public static class SitePattern
 {
-    private const string Geosite = "geosite:";
+    private const string Geosite = GeositePrefix;
+
+    /// <summary>Начало шаблона готового списка: «geosite:категория».</summary>
+    public const string GeositePrefix = "geosite:";
 
     /// <summary>
     /// «example.com», «*.example.com» или «geosite:category» — строчными; адрес «203.0.113.5» или

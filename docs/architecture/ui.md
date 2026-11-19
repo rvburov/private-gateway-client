@@ -503,6 +503,12 @@ dotnet test --project desktop/tests/UI
   `AlwaysAllowed` и сайт Private Gateway, UDP 123 (время), а остальное с входов программ — в блок; локальная сеть — по своей
   настройке, ее правило раньше. «Напрямую» в режиме «Весь трафик» при блоке — разрешение через VPN. Список «Пропускается
   всегда» — `shared/specifications/routing/always-allowed.json`, десктоп, Android и iOS сверяют с ним свои списки тестом.
+- «Все адреса сервиса» (решение 741): если домен входит в адреса сервиса (`ServiceSites.Find`), в листе — флажок «Все адреса
+  YouTube» (`SiteRuleEditViewModel.AllAddresses`, у нового правила отмечен); правило — «geosite:youtube»
+  (`ServiceSite.Pattern`), в строке — подпись «все адреса YouTube». Список — `shared/specifications/routing/services.json`
+  (ресурс `Client.Core`; у Android — ресурс модуля core, у iOS — код `ServiceSites.swift`), обновляет его
+  `scripts/gen-services.cs` из коммита `geosite.version`. Десктоп отдает ядру категорию geosite.dat, телефоны — домены из
+  списка: из «geosite:» они берут только эти сервисы.
 - «Локальная сеть» показывает, разрешена ли она, и ведет на «Защиту и утечки»: настраивается в одном
   месте.
 - Главный экран при включенной защите в режиме VPN показывает полосу «Внимание · программы и сайты

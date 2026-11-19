@@ -42,6 +42,14 @@
         <TextBlock x:Name="RuleError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
                    TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
       </StackPanel>
+      <!-- «Все адреса сервиса» (решение 741): только у домена из списка сервисов -->
+      <CheckBox x:Name="RuleService" Classes="check" IsChecked="{Binding AllAddresses}" IsVisible="{Binding CanAllAddresses}" Padding="0,4"
+                MinHeight="44">
+        <StackPanel Spacing="2" Margin="12,0,0,0">
+          <TextBlock Classes="strong" Text="{Binding AllAddressesText}" />
+          <TextBlock Classes="caption" Text="{l:L routing.rule.service.text}" TextWrapping="Wrap" />
+        </StackPanel>
+      </CheckBox>
       <!-- «Только этот адрес» (решение 739): только у обычного домена -->
       <CheckBox x:Name="RuleExact" Classes="check" IsChecked="{Binding Exact}" IsVisible="{Binding CanExact}" Padding="0,4" MinHeight="44">
         <StackPanel Spacing="2" Margin="12,0,0,0">
