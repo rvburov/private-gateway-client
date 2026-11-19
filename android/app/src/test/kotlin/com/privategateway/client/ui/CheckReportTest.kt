@@ -7,21 +7,23 @@ import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
 import com.privategateway.client.core.inspect.PhoneNetwork
 import com.privategateway.client.core.inspect.PhoneNetworkKind
+import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.inspect.CheckUi
 import com.privategateway.client.inspect.PhoneHints
 import com.privategateway.client.ui.check.CheckReport
+import com.privategateway.client.ui.check.JournalText
 import com.privategateway.client.ui.check.ReportAnonymizer
 import com.privategateway.client.vpn.JournalEntry
 import com.privategateway.client.vpn.JournalLevel
 import com.privategateway.client.vpn.TunnelJournal
-import org.junit.Test
-import org.junit.runner.RunWith
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
 
 /** Обезличенный отчет «Проверки»: метки вместо публичных адресов, без реального IP и секретов, те же строки, что на экране. */
 @RunWith(AndroidJUnit4::class)
@@ -79,6 +81,34 @@ class CheckReportTest {
         assertFalse("11111111-2222-3333-4444-555555555555" in report, report)
         assertFalse("203.0.113.9" in report, report)
         assertFalse("2001:db8::23" in report, report)
+    }
+
+    /** Решение 750: раздел DNS без адреса своего DNS и ошибки журнала одной строкой с числом повторов, как у десктопа. */
+    @Test
+    fun `report has the dns section and groups repeated problems`() {
+        val journal = TunnelJournal()
+        journal.add(JournalLevel.Error, "start: PGC-NET-001 no answer", at = 1_000L)
+        journal.add(JournalLevel.Info, "connected", at = 2_000L)
+        journal.add(JournalLevel.Warning, "reconnect 1: PGC-SVC-002", at = 3_000L)
+        journal.add(JournalLevel.Error, "start: PGC-NET-001 no answer", at = 4_000L)
+        val tunnel = TunnelSettings(DnsChoice.Custom, "https://198.51.100.53/dns-query?token=secret-token", fakeDns = true)
+        val report = CheckReport.build(context, MainUi(), CheckUi(journal = journal.entries.value), emptyList(), null, tunnel, "en")
+        val lines = report.lines()
+
+        assertTrue(context.getString(R.string.diag_report_dns_title) in lines, report)
+        assertTrue("  " + context.getString(R.string.diag_report_dns_selected, context.getString(R.string.prot_dns_custom)) in lines, report)
+        assertTrue(
+            "  " + context.getString(R.string.diag_report_dns_custom, context.getString(R.string.diag_report_dns_custom_doh)) in lines,
+            report,
+        )
+        assertFalse("secret-token" in report, "адреса своего DNS в отчете нет")
+        assertTrue("  " + context.getString(R.string.diag_report_dns_fake, context.getString(R.string.diag_report_dns_on)) in lines, report)
+        val start = lines.indexOf(context.getString(R.string.diag_report_problems))
+        assertTrue(start > 0, report)
+        val repeated = context.getString(R.string.diag_report_repeated, "2", JournalText.time(4_000L))
+        assertEquals("  " + JournalText.line(JournalEntry(1_000L, JournalLevel.Error, "start: PGC-NET-001 no answer")) + "  " + repeated, lines[start + 1])
+        assertEquals("  " + JournalText.line(JournalEntry(3_000L, JournalLevel.Warning, "reconnect 1: PGC-SVC-002")), lines[start + 2])
+        assertEquals("", lines[start + 3], "информационные записи в раздел не идут")
     }
 
     @Test

@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import kotlin.test.assertFalse
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -41,12 +40,13 @@ import com.privategateway.client.ui.settings.ProtectionScreen
 import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.theme.PgTheme
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * «Настройки» (доска 4) и «Защита и утечки» (доска 5) без устройства: что выбрано, что сохраняется, куда ведут строки, неверный

@@ -27,6 +27,8 @@ struct CheckView: View {
     var networks: [PhoneNetwork] = []
     var log: [TunnelLogEntry] = []
     var about = AboutInfo()
+    /// Настройки — для раздела DNS отчета.
+    var settings = AppSettings()
     @Binding var page: CheckPage
     @Binding var probe: ProbeState
     /// Открыли плиткой «Пинг» — прокрутить к «Задержке» (`onFocused` — прокрутили).
@@ -227,7 +229,7 @@ struct CheckView: View {
         let real = [CheckRows.real(input), input.direct].compactMap { $0 }
         let content = CheckReportInput(
             rows: rows, delay: DelayLook.rows(delay, texts), why: DelayLook.why(delay, server: server, texts), hinder: hinder, networks: networks,
-            journal: log, about: about, state: state, real: real, now: now
+            journal: log, about: about, state: state, real: real, now: now, settings: settings
         )
         reportName = CheckReport.fileName(now)
         report = ReportFile(text: CheckReport.text(content, texts))

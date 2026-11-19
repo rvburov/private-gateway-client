@@ -219,7 +219,7 @@ final class CheckTests: XCTestCase {
     }
 
     @MainActor
-    func testReportIsAnonymousAndHasNoRealIp() {
+    func testReportIsAnonymousAndHasNoRealIp() throws {
         let input = CheckInput(state: .off, system: .disconnected, ip: PublicIp(address: "198.51.100.7"), direct: "198.51.100.7")
         let rows = CheckRows.of(input, texts)
         let hinder = HinderRows.of(ProxyFindings(http: "203.0.113.5:3128"), state: .off, blocked: false, texts)
@@ -241,13 +241,32 @@ final class CheckTests: XCTestCase {
         XCTAssertFalse(report.contains("203.0.113.5"))
         XCTAssertTrue(report.contains(texts.iosInspectTitle))
         XCTAssertTrue(report.contains(texts.diagReportAnonymous))
-        let newest = report.range(of: "INF  connected")
-        let oldest = report.range(of: "ERR  gave up: PGC-NET-001")
+        // Раздел DNS (решение 750): выбор, FakeDNS, частный DNS и локальная сеть; ошибки журнала — отдельным разделом.
+        XCTAssertTrue(report.contains(texts.diagReportDnsTitle))
+        XCTAssertTrue(report.contains(texts.diagReportDnsSelected(texts.protDnsProfile)))
+        XCTAssertTrue(report.contains(texts.diagReportDnsFake(texts.diagReportDnsOff)))
+        XCTAssertTrue(report.contains(texts.diagReportProblems + "\n  15:42:00 ERR  gave up: PGC-NET-001\n"))
+        let journalStart = try XCTUnwrap(report.range(of: texts.diagReportJournal))
+        let journalText = report[journalStart.upperBound...]
+        let newest = journalText.range(of: "INF  connected")
+        let oldest = journalText.range(of: "ERR  gave up: PGC-NET-001")
         XCTAssertNotNil(newest)
         XCTAssertNotNil(oldest)
         if let newest, let oldest {
             XCTAssertLessThan(newest.lowerBound, oldest.lowerBound, "журнал — новые сверху")
         }
+
+        // Свой DNS — только видом, адреса и токена DoH в отчете нет; повтор ошибки — одной строкой с числом.
+        var settings = AppSettings()
+        settings.tunnel = TunnelSettings(dns: .custom, customDns: "https://198.51.100.53/dns-query?token=secret-token", fakeDns: true)
+        let repeated = CheckReport.text(
+            CheckReportInput(journal: journal + [TunnelLogEntry(time: at.addingTimeInterval(9), level: .error, message: "gave up: PGC-NET-001")], settings: settings),
+            texts, timeZone: utc
+        )
+        XCTAssertTrue(repeated.contains(texts.diagReportDnsCustom(texts.diagReportDnsCustomDoh)))
+        XCTAssertFalse(repeated.contains("secret-token"))
+        XCTAssertTrue(repeated.contains(texts.diagReportDnsFake(texts.diagReportDnsOn)))
+        XCTAssertTrue(repeated.contains("ERR  gave up: PGC-NET-001  " + texts.diagReportRepeated(2, "15:42:09")))
 
         XCTAssertEqual(CheckReport.fileName(at, timeZone: utc), "private-gateway-report-20261026-1542")
         let file = ReportFile(text: report)

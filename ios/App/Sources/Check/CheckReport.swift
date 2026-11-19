@@ -175,6 +175,8 @@ struct CheckReportInput {
     /// Реальный IP этой сети: в отчет он не попадает даже меткой.
     var real: [String] = []
     var now = Date()
+    /// Настройки — для раздела DNS (решение 750): выбор, вид своего адреса без него самого, FakeDNS, локальная сеть.
+    var settings = AppSettings()
 }
 
 /// «Экспорт отчета» — BuildReport десктопа для телефона: версия, iOS и ядро, когда проверено, состояние, те же строки, что на
@@ -208,6 +210,21 @@ enum CheckReport {
             lines += input.networks.map { "  " + PhoneNetworkText.line($0, texts) }
         }
 
+        lines += ["", texts.diagReportDnsTitle]
+        lines += dns(input.settings, texts)
+        // Ошибки и предупреждения всего журнала — отдельно, с повторами: при подробном журнале ядра ошибка первой попытки
+        // теряется среди обычных событий (как у десктопа).
+        let problems = ReportParts.problems(input.journal)
+        if !problems.isEmpty {
+            lines += ["", texts.diagReportProblems]
+            lines += problems.map { problem in
+                let first = problem.first.time.map { stamp($0, "HH:mm:ss", timeZone) } ?? ""
+                let last = problem.last.time.map { stamp($0, "HH:mm:ss", timeZone) } ?? ""
+                let repeats = problem.count > 1 ? "  " + texts.diagReportRepeated(problem.count, last) : ""
+                return "  \(first) \(problem.first.level.rawValue)  \(problem.message)\(repeats)"
+            }
+        }
+
         lines += ["", texts.diagReportJournal]
         lines += input.journal.reversed().map { entry in
             let time = entry.time.map { stamp($0, "yyyy-MM-dd HH:mm:ss", timeZone) } ?? ""
@@ -222,6 +239,32 @@ enum CheckReport {
         }
 
         return text
+    }
+
+    /// Раздел DNS (решение 750) — `DnsReport` десктопа без строк службы: выбор DNS, вид своего адреса (сам адрес не пишется:
+    /// путь DoH может нести токен), что выбор в настройках не подтверждает применение, FakeDNS, частный DNS, локальная сеть и
+    /// маршрутизация. Программ мимо VPN у iOS нет — их всегда 0.
+    static func dns(_ settings: AppSettings, _ texts: PgTexts) -> [String] {
+        let tunnel = settings.tunnel
+        func onOff(_ on: Bool) -> String { on ? texts.diagReportDnsOn : texts.diagReportDnsOff }
+        let choice = ProtectionLook.dnsOptions(texts).first { $0.value == tunnel.dns }?.title ?? tunnel.dns.rawValue
+        var lines = ["  " + texts.diagReportDnsSelected(choice)]
+        if tunnel.dns == .custom {
+            lines.append("  " + texts.diagReportDnsCustom(texts.text(key: "diag.report.dns.custom." + ReportParts.customKind(tunnel)) ?? ""))
+        }
+
+        lines.append("  " + texts.diagReportDnsSettings)
+        lines.append("  " + texts.diagReportDnsFake(onOff(tunnel.fakeDns)))
+        lines.append("  " + texts.diagReportDnsLanDns(onOff(tunnel.lanDns != nil)))
+        if tunnel.lanDns != nil {
+            lines.append("  " + texts.diagReportDnsLanDnsNote)
+        }
+
+        lines.append("  " + texts.diagReportDnsLan(onOff(tunnel.allowLan)))
+        let split = settings.routing.mode == .split
+        let direct = split ? settings.routing.rules.filter { $0.action == .direct }.count : 0
+        lines.append("  " + texts.diagReportDnsRouting(split ? texts.routingModeSplit : texts.routingModeAll, 0, direct))
+        return lines
     }
 
     /// Имя файла: «private-gateway-report-20261102-1542» — расширение .txt ставит система по виду файла.

@@ -289,7 +289,7 @@ struct RootView: View {
         case .check:
             CheckView(
                 texts: model.texts, input: checkInput, findings: check.findings, server: model.home.inUse, networks: inspector.networks, log: model.log,
-                about: model.about, page: $checkPage, probe: $inspector.probe, focusDelay: focusDelay, onRun: runChecks,
+                about: model.about, settings: model.settings, page: $checkPage, probe: $inspector.probe, focusDelay: focusDelay, onRun: runChecks,
                 onDelay: {
                     Task {
                         await check.measureDelay(connected: model.home.status.state == .connected, toServer: { await model.serverDelay() })

@@ -5,12 +5,18 @@ import android.os.Build
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
 import com.privategateway.client.core.inspect.PhoneNetwork
+import com.privategateway.client.core.inspect.ReportParts
+import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.IpAddress
+import com.privategateway.client.core.settings.RoutingMode
+import com.privategateway.client.core.settings.RuleAction
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.inspect.CheckUi
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.StateLook
+import com.privategateway.client.vpn.JournalEntry
+import com.privategateway.client.vpn.JournalLevel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -80,6 +86,21 @@ object CheckReport {
         }
 
         lines += ""
+        lines += context.getString(R.string.diag_report_dns_title)
+        lines += dns(context, tunnel)
+        // Ошибки и предупреждения всего журнала — отдельно, с повторами: при подробном журнале ядра ошибка первой попытки
+        // теряется среди обычных событий (как у десктопа).
+        val problems = problems(check.journal)
+        if (problems.isNotEmpty()) {
+            lines += ""
+            lines += context.getString(R.string.diag_report_problems)
+            for (problem in problems) {
+                val repeats = if (problem.count > 1) "  " + context.getString(R.string.diag_report_repeated, problem.count.toString(), JournalText.time(problem.last.at)) else ""
+                lines += "  " + JournalText.line(problem.first) + repeats
+            }
+        }
+
+        lines += ""
         lines += context.getString(R.string.diag_report_journal)
         for (entry in check.journal) {
             lines += "  " + JournalText.line(entry)
@@ -95,6 +116,72 @@ object CheckReport {
             anonymizer.clean(if (direct != null) line.replace(direct, HIDDEN) else line)
         }
     }
+}
+
+/** Ошибка или предупреждение журнала и сколько раз оно было: первая запись, число и последняя запись. */
+internal data class ReportProblem(val first: JournalEntry, val count: Int, val last: JournalEntry)
+
+/**
+ * Раздел DNS (решение 750) — `DnsReport` десктопа без строк службы: выбор DNS, вид своего адреса (сам адрес не пишется: путь
+ * DoH может нести токен), что выбор в настройках не подтверждает применение, FakeDNS, частный DNS, локальная сеть и
+ * маршрутизация с числом программ мимо VPN и правил «Напрямую».
+ */
+internal fun dns(context: Context, tunnel: TunnelSettings): List<String> {
+    fun onOff(on: Boolean) = context.getString(if (on) R.string.diag_report_dns_on else R.string.diag_report_dns_off)
+    val choice = context.getString(
+        when (tunnel.dns) {
+            DnsChoice.Profile -> R.string.prot_dns_profile
+            DnsChoice.CloudflareDoh -> R.string.prot_dns_cloudflare
+            DnsChoice.Quad9Doh -> R.string.prot_dns_quad9
+            DnsChoice.Custom -> R.string.prot_dns_custom
+        },
+    )
+    val lines = mutableListOf("  " + context.getString(R.string.diag_report_dns_selected, choice))
+    if (tunnel.dns == DnsChoice.Custom) {
+        val kind = when (ReportParts.customKind(tunnel)) {
+            "missing" -> R.string.diag_report_dns_custom_missing
+            "private" -> R.string.diag_report_dns_custom_private
+            "doh" -> R.string.diag_report_dns_custom_doh
+            "address" -> R.string.diag_report_dns_custom_address
+            else -> R.string.diag_report_dns_custom_invalid
+        }
+        lines += "  " + context.getString(R.string.diag_report_dns_custom, context.getString(kind))
+    }
+
+    lines += "  " + context.getString(R.string.diag_report_dns_settings)
+    lines += "  " + context.getString(R.string.diag_report_dns_fake, onOff(tunnel.fakeDns))
+    lines += "  " + context.getString(R.string.diag_report_dns_lanDns, onOff(tunnel.lanDns != null))
+    if (tunnel.lanDns != null) {
+        lines += "  " + context.getString(R.string.diag_report_dns_lanDnsNote)
+    }
+
+    lines += "  " + context.getString(R.string.diag_report_dns_lan, onOff(tunnel.allowLan))
+    val split = tunnel.routing.mode == RoutingMode.Split
+    lines += "  " + context.getString(
+        R.string.diag_report_dns_routing,
+        context.getString(if (split) R.string.routing_mode_split else R.string.routing_mode_all),
+        (if (split) tunnel.routing.disallowedApps.size else 0).toString(),
+        (if (split) tunnel.routing.rules.count { it.action == RuleAction.Direct } else 0).toString(),
+    )
+    return lines
+}
+
+/**
+ * Ошибки и предупреждения журнала — одинаковые (уровень и текст) одной строкой с числом повторов, по порядку первого появления.
+ * Текст уже без секретов: его маскирует журнал.
+ */
+internal fun problems(entries: List<JournalEntry>): List<ReportProblem> {
+    val groups = LinkedHashMap<Pair<JournalLevel, String>, ReportProblem>()
+    for (entry in entries) {
+        if (entry.level != JournalLevel.Warning && entry.level != JournalLevel.Error) {
+            continue
+        }
+
+        val key = entry.level to entry.message
+        groups[key] = groups[key]?.let { it.copy(count = it.count + 1, last = entry) } ?: ReportProblem(entry, 1, entry)
+    }
+
+    return groups.values.toList()
 }
 
 /**
