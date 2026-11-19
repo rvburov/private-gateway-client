@@ -153,7 +153,7 @@
             <TextBlock x:Name="UpdateError" Classes="caption" Text="{Binding UpdateError}" TextWrapping="Wrap" IsVisible="{Binding HasUpdateError}"
                        Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
             <Button x:Name="CheckUpdatesNow" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding CanCheckUpdates}"
-                    Command="{Binding CheckUpdatesNowCommand}" Content="{l:L about.updates.check}" />
+                    Command="{Binding CheckUpdatesNowCommand}" Content="{l:L about.updates.checkNow}" />
             <Button x:Name="ShowUpdate" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding IsUpdatePostponed}"
                     Command="{Binding ShowUpdateCommand}" Content="{l:L about.update.show}" />
             <!-- Откат: прежняя версия, которую служба вернет сама -->
@@ -163,40 +163,13 @@
                       Content="{Binding RollbackAction}" />
             </StackPanel>
             <Border Classes="divider" Margin="0,4,0,0" />
-            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,4">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,8">
               <StackPanel Spacing="3" Margin="0,0,16,0">
                 <TextBlock Classes="strong" Text="{l:L about.updates.auto}" />
                 <TextBlock Classes="caption" Text="{l:L about.updates.auto.text}" TextWrapping="Wrap" />
               </StackPanel>
               <ToggleButton x:Name="CheckUpdatesToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
                             IsChecked="{Binding CheckUpdates}" AutomationProperties.Name="{l:L about.updates.auto}" />
-            </Grid>
-            <Border Classes="divider" />
-            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,8">
-              <TextBlock Classes="strong" Text="{l:L about.channel}" VerticalAlignment="Center" />
-              <Button x:Name="ChannelChoice" Grid.Column="1" Classes="select" Command="{Binding ToggleChannelCommand}"
-                      AutomationProperties.Name="{l:L about.channel}">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock x:Name="ChannelText" Text="{Binding ChannelText}" VerticalAlignment="Center" />
-                  <c:Icon Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
-                          Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-              <Popup Grid.Column="1" PlacementTarget="{Binding #ChannelChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsChannelOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
-                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
-                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
-                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
-                  <ItemsControl ItemsSource="{Binding ChannelOptions}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
-                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
-                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </Border>
-              </Popup>
             </Grid>
           </StackPanel>
         </Border>

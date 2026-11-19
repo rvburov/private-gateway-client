@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
@@ -37,7 +38,7 @@ public sealed class AboutPageTests : WindowHarness
         Text(window, "AboutXray").ShouldBe("не установлено");
         Text(window, "AboutSecondCore").ShouldBe("не установлено");
         Text(window, "TunDriver").ShouldBe("не установлен", "без sing-box нет и TUN");
-        Text(window, "ChannelText").ShouldBe("Стабильный");
+        window.GetVisualDescendants().OfType<Button>().ShouldNotContain(b => b.Name == "ChannelChoice", "выбора канала нет, пока сайт не выпускает беты");
         Text(window, "UpdatesText").ShouldBe("В демо-режиме обновления не проверяются.", "имитация в сеть не ходит — так и сказано");
         Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeFalse();
         Snapshot(window, "about");
@@ -146,7 +147,7 @@ public sealed class AboutPageTests : WindowHarness
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()) { Rollback = "0.1.0" });
         service.Download = [new UpdateProgress(0, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
 
-        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+        Text(window, "UpdatesText").ShouldBe($"У вас последняя версия {AppInfo.Version} · проверено в 15:42");
         Text(window, "RollbackText").ShouldBe("Прежняя версия 0.1.0 — служба вернет ее сама. После отката эту версию больше не предложим, только более новую.");
         Find<Button>(window, "RollBack").Content.ShouldBe("Откатить на 0.1.0");
         Find<Button>(window, "UpdateNow").IsEffectivelyVisible.ShouldBeFalse("обновления нет — главной кнопки нет");
@@ -210,10 +211,10 @@ public sealed class AboutPageTests : WindowHarness
     {
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()));
 
-        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+        Text(window, "UpdatesText").ShouldBe($"У вас последняя версия {AppInfo.Version} · проверено в 15:42");
         Press(window, "CheckUpdatesNow");
         Dispatcher.UIThread.RunJobs();
-        service.UpdateChecks.Last().ShouldBe((UpdateChannel.Stable, true), "кнопка «Проверить» — мимо памяти службы");
+        service.UpdateChecks.Last().ShouldBe((UpdateChannel.Stable, true), "кнопка «Проверить сейчас» — мимо памяти службы");
 
         service.Update = new UpdateOffer(UpdateState.NotSigned, Time.GetUtcNow());
         page.CheckUpdatesNowCommand.Execute(null);
@@ -264,7 +265,7 @@ public sealed class AboutPageTests : WindowHarness
         AccountApi.UpdatesFailure = null;
         Press(window, "CheckUpdatesNow");
         WaitFor(() => service.UpdateChecks.Count == 1);
-        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+        Text(window, "UpdatesText").ShouldBe($"У вас последняя версия {AppInfo.Version} · проверено в 15:42");
     }
 
     [AvaloniaFact]
@@ -316,7 +317,7 @@ public sealed class AboutPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         service!.UpdateChecks.ShouldBeEmpty("«Проверять сами» выключено — окно за обновлениями в сеть не ходит");
-        Text(window, "UpdatesText").ShouldStartWith("Сама программа обновления не проверяет");
+        Text(window, "UpdatesText").ShouldStartWith("Программа сама не проверяет обновления");
         Find<ToggleButton>(window, "CheckUpdatesToggle").IsChecked.ShouldBe(false);
 
         Press(window, "CheckUpdatesNow");
@@ -326,22 +327,6 @@ public sealed class AboutPageTests : WindowHarness
         Find<ToggleButton>(window, "CheckUpdatesToggle").IsChecked = true;
         Dispatcher.UIThread.RunJobs();
         Service<SettingsService>().Current.CheckUpdates.ShouldBeTrue();
-    }
-
-    [AvaloniaFact]
-    public void Update_channel_is_saved()
-    {
-        var (window, _, page) = OpenAbout();
-
-        Press(window, "ChannelChoice");
-        page.IsChannelOpen.ShouldBeTrue();
-        page.ChannelOptions.Select(o => o.Label).ShouldBe(["Стабильный", "Бета"]);
-        page.ChannelOptions[1].ChooseCommand.Execute(null);
-        Dispatcher.UIThread.RunJobs();
-
-        page.IsChannelOpen.ShouldBeFalse();
-        Text(window, "ChannelText").ShouldBe("Бета");
-        Service<SettingsService>().Current.UpdateChannel.ShouldBe(UpdateChannel.Beta);
     }
 
     [AvaloniaFact]

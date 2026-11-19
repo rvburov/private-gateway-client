@@ -104,11 +104,11 @@
 <p class="pg-board-note">О программе (AboutPage программы) — подстраница настроек: «Назад» ведет в «Настройки», островок виден.
   Обновления ищет и ставит служба. На первом экране весь путь по нажатиям: «Проверить» → «Доступно обновление» (рамка акцента)
   → «Обновить сейчас» → загрузка сама становится «Готово» (зеленая рамка) → «Перезапустить клиент»; «Позже»
-  сворачивает предложение. «Откатить на 0.1.2» — прежняя версия, служба вернет ее сама. «Канал обновлений» — меню, выбранный
-  пункт синим полужирным. Ссылки разделены полосами: лицензии и политика открываются листом, «Сообщить о проблеме» ведет на
+  сворачивает предложение. «Откатить на 0.1.2» — прежняя версия, служба вернет ее сама. «Сообщать о новых версиях» — проверка
+  после запуска и раз в 12 часов с уведомлением; выбора канала нет, пока сайт не выпускает беты (решение владельца 2026-11-19). Ссылки разделены полосами: лицензии и политика открываются листом, «Сообщить о проблеме» ведет на
   «Проверку» (там отчет). «VPN продолжает работать» показывается только при подключенном VPN, без паузы и известной
   потери сети; иначе под полосой только объем загрузки. Ошибка подписи или устаревшая политика выпуска —
-  «Проверить обновления не удалось», а не «Установлена последняя версия». Отзыв входа при загрузке возвращает
+  «Проверить обновления не удалось», а не «У вас последняя версия». Отзыв входа при загрузке возвращает
   предложение войти; после нового входа лента проверяется заново.<br>
   Обновления — с сайта Private Gateway Web (0.3.0): ленту окно берет своим входом в аккаунт и передает службе, подпись
   манифеста и файл проверяет служба. Без входа — «Войдите в аккаунт, чтобы проверять обновления.» (экран «Без входа»). На
@@ -146,7 +146,7 @@
         <div class="card up-card" data-os="android">
           <div class="up-state idle" data-page="a-latest">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
+            <span class="t-caption t-wrap">У вас последняя версия · проверено в 15:42</span>
             <button class="btn-secondary up-left" data-goto="a-offer">Проверить</button>
           </div>
           <div class="up-state offer" data-page="a-offer" hidden>
@@ -178,8 +178,8 @@
         <div class="card up-card" data-os="desktop">
           <div class="up-state idle" data-page="idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
-            <button class="btn-secondary up-left" data-goto="offer">Проверить</button>
+            <span class="t-caption t-wrap">У вас последняя версия 0.1.2 · проверено в 15:42</span>
+            <button class="btn-secondary up-left" data-goto="offer">Проверить сейчас</button>
           </div>
           <div class="up-state offer" data-page="offer" hidden>
             <div class="up-head"><span class="t-title pg-grow t-wrap">Доступно обновление 0.2.0</span><span class="up-badge">Новое</span></div>
@@ -216,14 +216,9 @@
             <div class="up-actions"><button class="btn-primary" disabled>Перезапускаем…</button></div>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-a" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -262,12 +257,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-a" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -382,14 +371,9 @@
             <div class="up-actions"><button class="btn-primary" disabled>Перезапускаем…</button></div>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-b" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -428,12 +412,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-b" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -518,7 +496,7 @@
       <div class="card up-card"><div class="up-state idle">
         <span class="t-title">Обновления</span>
         <span class="t-caption t-wrap" data-ui-text="about.updates.failed">Проверить обновления не удалось — подробности в журнале на экране «Проверка».</span>
-        <div class="up-actions"><button class="btn-secondary">Проверить</button></div>
+        <div class="up-actions"><button class="btn-secondary"><span data-os="desktop">Проверить сейчас</span><span data-os="android">Проверить</span></button></div>
       </div></div>
     </div></div>
   </section>
@@ -551,14 +529,9 @@
             <div class="up-actions"><button class="btn-primary" disabled>Загружаем…</button></div>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-c" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -597,12 +570,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-c" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -697,14 +664,9 @@
             <div class="up-actions"><button class="btn-primary" disabled>Перезапускаем…</button></div>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-d" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -743,12 +705,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-d" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -830,8 +786,8 @@
         <div class="card up-card" data-os="desktop">
           <div class="up-state idle" data-page="rb-idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
-            <button class="btn-secondary up-left">Проверить</button>
+            <span class="t-caption t-wrap">У вас последняя версия 0.2.0 · проверено в 15:42</span>
+            <button class="btn-secondary up-left">Проверить сейчас</button>
             <div class="up-rollback"><span class="t-caption t-wrap">Прежняя версия 0.1.2 — служба вернет ее сама. После отката эту версию больше не предложим, только более новую.</span><button class="btn-secondary up-left" data-goto="rb-loading">Откатить на 0.1.2</button></div>
           </div>
           <div class="up-state offer auto" data-page="rb-loading" hidden>
@@ -855,14 +811,9 @@
             <div class="up-actions"><button class="btn-primary" disabled>Перезапускаем…</button></div>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-e" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -901,12 +852,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-e" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -994,24 +939,13 @@
             <span class="t-caption t-wrap" data-ui-text="about.updates.signIn">Войдите в аккаунт, чтобы проверять обновления.</span>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-s" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-s" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <div class="pg-island" data-active="settings"></div>
@@ -1039,18 +973,13 @@
         <div class="card up-card" data-os="desktop">
           <div class="up-state idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
-            <button class="btn-secondary up-left" data-toast="Проверяем обновления…">Проверить</button>
+            <span class="t-caption t-wrap">У вас последняя версия 0.1.2 · проверено в 15:42</span>
+            <button class="btn-secondary up-left" data-toast="Проверяем обновления…">Проверить сейчас</button>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-f" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -1093,12 +1022,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-f" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <!-- Лист «Лицензии открытых компонентов» (AboutSheetView): шапка стоит, список прокручивается -->
@@ -1180,18 +1103,13 @@
         <div class="card up-card" data-os="desktop">
           <div class="up-state idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
-            <button class="btn-secondary up-left">Проверить</button>
+            <span class="t-caption t-wrap">У вас последняя версия 0.1.2 · проверено в 15:42</span>
+            <button class="btn-secondary up-left">Проверить сейчас</button>
           </div>
           <div class="divider" style="margin-top: 4px"></div>
-          <div class="up-row" style="margin: 4px 0">
-            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
-            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
-          </div>
-          <div class="divider"></div>
           <div class="up-row" style="margin: 4px 0 8px">
-            <span class="t-strong pg-grow">Канал обновлений</span>
-            <button class="btn-select" data-open="menu-channel-g" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Сообщать о новых версиях</span><span class="t-caption t-wrap">Программа проверяет после запуска и раз в 12 часов и показывает уведомление. Выключено — только по кнопке.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать о новых версиях"></button>
           </div>
         </div>
 
@@ -1230,12 +1148,6 @@
         </div>
       </div>
       <div class="pg-page-end"></div>
-    </div>
-
-    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
-    <div class="popup" id="menu-channel-g" style="min-width: 170px">
-      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
-      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <div class="scrim is-open" data-close></div>

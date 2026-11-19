@@ -135,12 +135,6 @@ public sealed partial class AboutPageViewModel : ObservableObject
             _ = updates.CheckAsync(force: false);
         }
 
-        ChannelOptions = [.. Enum.GetValues<UpdateChannel>().Select(v => new ChoiceOptionViewModel(
-            () => ChannelLabel(v), () => _settings.Current.UpdateChannel == v, () =>
-            {
-                IsChannelOpen = false;
-                _settings.Update(s => s with { UpdateChannel = v });
-            }))];
         settings.Changed += (_, _) => Refresh();
         updates.Changed += (_, _) => Refresh();
         gateway.StatusChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
@@ -155,13 +149,6 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     /// <summary>«Версия 0.1 · Windows 11 · x64».</summary>
     public string VersionLine => Loc.Instance.Format("about.version", AppInfo.Version, AppInfo.OsVersion, AppInfo.Architecture);
-
-    public IReadOnlyList<ChoiceOptionViewModel> ChannelOptions { get; }
-
-    [ObservableProperty]
-    public partial bool IsChannelOpen { get; set; }
-
-    public string ChannelText => ChannelLabel(_settings.Current.UpdateChannel);
 
     // ── Обновления ───────────────────────────────────────────────────────────
 
@@ -285,7 +272,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         UpdateView.Manual => Loc.Instance["about.updates.manual"],
         UpdateView.Checking => Loc.Instance["about.updates.checking"],
         UpdateView.NotSigned => Loc.Instance["about.updates.text"],
-        UpdateView.UpToDate => Loc.Instance.Format("about.updates.upToDate", TimeText.Day(_updates.Offer!.Checked, _time)),
+        UpdateView.UpToDate => Loc.Instance.Format("about.updates.upToDate.version", AppInfo.Version, TimeText.Day(_updates.Offer!.Checked, _time)),
         UpdateView.Postponed => Loc.Instance.Format("about.updates.later", _updates.Offer!.Version),
         UpdateView.NoService => Loc.Instance["about.updates.noService"],
         UpdateView.Failed => Loc.Instance["about.updates.failed"],
@@ -404,9 +391,6 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private void Back() => _navigator.Navigate(Pages.Settings);
 
     [RelayCommand]
-    private void ToggleChannel() => IsChannelOpen = !IsChannelOpen;
-
-    [RelayCommand]
     private void OpenLicenses() => _overlay.ShowSheet(new AboutSheetViewModel(
         Loc.Instance["about.licenses"], Loc.Instance["about.licenses.text"], Components, _overlay));
 
@@ -483,21 +467,10 @@ public sealed partial class AboutPageViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
-    private void Refresh()
-    {
-        foreach (var option in ChannelOptions)
-        {
-            option.Refresh();
-        }
-
-        OnPropertyChanged(string.Empty);
-    }
+    private void Refresh() => OnPropertyChanged(string.Empty);
 
     // Мегабайты с десятыми — по языку окна: «18,4».
     private static string Tenths(long bytes) => (bytes / 1048576.0).ToString("0.0", Loc.Instance.Culture);
-
-    private static string ChannelLabel(UpdateChannel channel) =>
-        Loc.Instance[channel == UpdateChannel.Beta ? "about.channel.beta" : "about.channel.stable"];
 
     private static List<OpenComponent> LoadComponents()
     {
