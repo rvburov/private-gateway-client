@@ -106,6 +106,15 @@ final class ServersTests: XCTestCase {
         XCTAssertEqual(CardLook.latency(.of(148), texts).color, PgColor.Text.muted, "медленный — серым")
         XCTAssertEqual(CardLook.latency(nil, texts).text, texts.latencyUnchecked, "не мерили — «Не проверен», а не отказ (решение 2026-11-08)")
 
+        // Причина отказа — короткой меткой в строке и полной строкой в карточке, как у десктопа и Android.
+        let timeout = LatencyLook.of(.failed(.noResponse, reason: .timeout), texts)
+        XCTAssertEqual(timeout.text, texts.latencyShortTimeout)
+        XCTAssertEqual(timeout.hint, texts.latencyTimeout)
+        XCTAssertEqual(LatencyLook.of(.failed(.coreFailed), texts).text, texts.latencyShortCoreFailed)
+        XCTAssertEqual(CardLook.reason(.failed(.noResponse, reason: .dns), texts), texts.latencyDns)
+        XCTAssertEqual(CardLook.reason(.failed(.noResponse), texts), texts.latencyNoResponse)
+        XCTAssertNil(CardLook.reason(.of(42), texts))
+
         let hysteria = CardLook.details(servers[2], host: "203.0.113.57:8443", texts)
         XCTAssertEqual(hysteria.first { $0.identifier == "card.core" }?.value, texts.androidCardCoreNone, "ядра для Hysteria2 нет")
         XCTAssertEqual(hysteria.last.map { [$0.label, $0.value] }, [texts.cardLatencyReason, texts.latencyUnsupported], "почему задержки нет")

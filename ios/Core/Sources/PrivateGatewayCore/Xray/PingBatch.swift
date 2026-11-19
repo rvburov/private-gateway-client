@@ -156,13 +156,27 @@ public enum PingBatch {
     }
 
     private static func item(_ node: ConfigNode) -> Latency {
+        // Почему нет ответа — по тексту ошибки ядра (как LatencyDiagnostic десктопа); сам текст не хранится.
+        var error: String?
+        var delayValue: Int?
+        if case let .object(result, _) = node {
+            if case let .string(text)? = result["error"] {
+                error = text
+            }
+
+            if case let .number(text)? = result["delay"] {
+                delayValue = Int(text)
+            }
+        }
+
+        let reason = LatencyReason.of(error, timedOut: delayValue == delayTimeout)
         guard case let .object(result, _) = node, case .bool(true)? = result["success"], case let .number(text)? = result["delay"], let delay = Int(text) else {
-            return .failed(.noResponse)
+            return .failed(.noResponse, reason: reason)
         }
 
         // Признак вместо задержки — не ответ, даже если флаг успеха говорит иное.
         if delay == delayError || delay == delayTimeout {
-            return .failed(.noResponse)
+            return .failed(.noResponse, reason: reason)
         }
 
         return .of(min(delay, Int(Int32.max)))

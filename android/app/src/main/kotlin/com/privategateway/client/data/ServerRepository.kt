@@ -5,7 +5,6 @@ import com.privategateway.client.core.backup.BackupServer
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.links.LinkWriter
 import com.privategateway.client.core.servers.Latency
-import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.ServerFacts
@@ -420,7 +419,7 @@ class ServerRepository @Inject constructor(
     suspend fun setLatency(results: Map<String, Latency>) = withContext(Dispatchers.IO) {
         database.withTransaction {
             for ((id, latency) in results) {
-                dao.setLatency(id, latency.ms, latency.failure?.name)
+                dao.setLatency(id, latency.ms, latency.stored)
             }
         }
     }
@@ -520,8 +519,7 @@ class ServerRepository @Inject constructor(
     /** Замер: миллисекунды, причина без них (неизвестная — «нет ответа») или null — ни разу не мерили. */
     private fun latency(entity: ServerEntity): Latency? = when {
         entity.latencyMs != null -> Latency.of(entity.latencyMs)
-        entity.latencyFailure != null ->
-            Latency.failed(LatencyFailure.entries.firstOrNull { it.name == entity.latencyFailure } ?: LatencyFailure.NoResponse)
+        entity.latencyFailure != null -> Latency.read(entity.latencyFailure)
         else -> null
     }
 

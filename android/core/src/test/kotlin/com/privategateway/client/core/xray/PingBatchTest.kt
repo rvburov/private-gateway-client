@@ -3,6 +3,7 @@ package com.privategateway.client.core.xray
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
+import com.privategateway.client.core.servers.LatencyReason
 import com.privategateway.client.core.servers.ServerDefinition
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -136,8 +137,14 @@ class PingBatchTest {
             """]},"error":""}"""
 
         assertEquals(
-            listOf(Latency(41, null), noResponse, noResponse, Latency(1, null)),
+            listOf(
+                Latency(41, null),
+                Latency.failed(LatencyFailure.NoResponse, LatencyReason.Timeout),
+                Latency.failed(LatencyFailure.NoResponse, LatencyReason.Connection),
+                Latency(1, null),
+            ),
             PingBatch.parse(response, 4),
+            "почему нет ответа — по тексту ядра, как у десктопа; сам текст не хранится",
         )
 
         val busy = """{"success":false,"data":null,"error":"pingBatch requires an isolated process without a managed Xray instance"}"""
@@ -177,7 +184,7 @@ class PingBatchTest {
     fun `sentinel delays are never a latency and the success flag decides`() {
         fun one(item: String) = PingBatch.parse("""{"success":true,"data":{"results":[$item]},"error":""}""", 1).single()
 
-        assertEquals(noResponse, one("""{"success":true,"delay":11000}"""), "тайм-аут — не 11 секунд")
+        assertEquals(Latency.failed(LatencyFailure.NoResponse, LatencyReason.Timeout), one("""{"success":true,"delay":11000}"""), "тайм-аут — не 11 секунд")
         assertEquals(noResponse, one("""{"success":true,"delay":10000}"""), "ошибка — не 10 секунд")
         assertEquals(Latency(9999, null), one("""{"success":true,"delay":9999}"""))
         assertEquals(Latency(10001, null), one("""{"success":true,"delay":10001}"""))
@@ -194,7 +201,7 @@ class PingBatchTest {
 
         val results = chunk.results(response)
 
-        assertEquals(mapOf("a" to Latency(30, null), "b" to noResponse, "c" to Latency(7, null)), results)
+        assertEquals(mapOf("a" to Latency(30, null), "b" to Latency.failed(LatencyFailure.NoResponse, LatencyReason.Timeout), "c" to Latency(7, null)), results)
         assertEquals(listOf("a", "b", "c"), results.keys.toList())
         assertEquals(mapOf("a" to coreFailed, "b" to coreFailed, "c" to coreFailed), chunk.results(null))
     }

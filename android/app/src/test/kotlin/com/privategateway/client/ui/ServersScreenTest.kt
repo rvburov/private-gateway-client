@@ -33,6 +33,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.R
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
+import com.privategateway.client.core.servers.LatencyReason
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.ServerListQuery
@@ -333,6 +334,25 @@ class ServersScreenTest {
         compose.onNodeWithTag("card.subtitle").assertTextEquals(text(R.string.card_from_link))
         compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.card_latency_none))
         compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_noResponse))
+    }
+
+    /** Причина отказа замера — короткой меткой в списке и строкой в карточке, как у десктопа (тайм-аут, DNS, TLS, нет связи). */
+    @Test
+    fun `latency failure gives its reason in the list and the card`() {
+        val timeout = tr.copy(latency = Latency.failed(LatencyFailure.NoResponse, LatencyReason.Timeout))
+        val tls = us.copy(latency = Latency.failed(LatencyFailure.NoResponse, LatencyReason.Tls))
+        val core = fi.copy(latency = Latency.failed(LatencyFailure.CoreFailed))
+        list(MainUi(servers = listOf(timeout, tls, core), subscriptions = listOf(provider)))
+        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_timeout))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.latency_timeout))))
+        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_tls))
+        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_coreFailed))
+    }
+
+    @Test
+    fun `card gives the network reason of no answer`() {
+        card(MainUi(servers = listOf(tr.copy(latency = Latency.failed(LatencyFailure.NoResponse, LatencyReason.Dns)))), "tr")
+        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_dns))
     }
 
     @Test

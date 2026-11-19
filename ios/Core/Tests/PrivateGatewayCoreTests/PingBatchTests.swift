@@ -139,13 +139,36 @@ final class PingBatchTests: XCTestCase {
         XCTAssertTrue(PingBatch.plan([], CoreSettings()).chunks.isEmpty)
     }
 
+    func testErrorTextTellsTheReasonAndOldRecordsReadAsBefore() {
+        let cases: [(String, LatencyReason)] = [
+            ("context deadline exceeded", .timeout), ("dial tcp: lookup example.com: no such host", .dns),
+            ("remote error: tls: handshake failure", .tls), ("REALITY: processed invalid connection", .tls),
+            ("dial tcp 203.0.113.24:443: connection refused", .connection), ("EOF", .connection),
+        ]
+        for (text, reason) in cases {
+            XCTAssertEqual(LatencyReason.of(text), reason, text)
+        }
+
+        XCTAssertNil(LatencyReason.of("something odd"))
+        XCTAssertEqual(LatencyReason.of(nil, timedOut: true), .timeout)
+        let timeout = Latency.failed(.noResponse, reason: .timeout)
+        XCTAssertEqual(timeout.stored, "noResponse/Timeout")
+        XCTAssertEqual(Latency.read("noResponse/Timeout"), timeout)
+        XCTAssertEqual(Latency.read("coreFailed"), .failed(.coreFailed), "прежняя запись без причины")
+        XCTAssertEqual(Latency.read("future/Thing"), .failed(.noResponse))
+        XCTAssertNil(Latency.of(41).stored)
+    }
+
     func testAnswersBecomeLatencyNoResponseOrAFailedChunk() {
         let response = #"{"success":true,"data":{"results":["#
             + #"{"success":true,"delay":41},{"success":false,"delay":11000,"error":"timeout"},"#
             + #"{"success":false,"delay":10000,"error":"dial tcp 203.0.113.24:443: connection refused"},{"success":true,"delay":0}"#
             + #"]},"error":""}"#
 
-        XCTAssertEqual(PingBatch.parse(response, 4), [.of(41), noResponse, noResponse, .of(1)])
+        XCTAssertEqual(
+            PingBatch.parse(response, 4), [.of(41), .failed(.noResponse, reason: .timeout), .failed(.noResponse, reason: .connection), .of(1)],
+            "почему нет ответа — по тексту ядра, как у десктопа и Android; сам текст не хранится"
+        )
 
         let busy = #"{"success":false,"data":null,"error":"pingBatch requires an isolated process without a managed Xray instance"}"#
         XCTAssertEqual(PingBatch.parse(busy, 3), Array(repeating: coreFailed, count: 3), "ядро уже запущено в процессе — замера не было")
@@ -186,7 +209,7 @@ final class PingBatchTests: XCTestCase {
             PingBatch.parse(#"{"success":true,"data":{"results":["# + item + #"]},"error":""}"#, 1).first
         }
 
-        XCTAssertEqual(one(#"{"success":true,"delay":11000}"#), noResponse, "тайм-аут — не 11 секунд")
+        XCTAssertEqual(one(#"{"success":true,"delay":11000}"#), .failed(.noResponse, reason: .timeout), "тайм-аут — не 11 секунд")
         XCTAssertEqual(one(#"{"success":true,"delay":10000}"#), noResponse, "ошибка — не 10 секунд")
         XCTAssertEqual(one(#"{"success":true,"delay":9999}"#), Latency.of(9999))
         XCTAssertEqual(one(#"{"success":true,"delay":10001}"#), Latency.of(10001))
@@ -204,7 +227,7 @@ final class PingBatchTests: XCTestCase {
         ).chunks.first)
         let response = #"{"success":true,"data":{"results":[{"success":true,"delay":30},{"success":false,"delay":11000},{"success":true,"delay":7}]}}"#
 
-        XCTAssertEqual(chunk.results(response), ["a": .of(30), "b": noResponse, "c": .of(7)])
+        XCTAssertEqual(chunk.results(response), ["a": .of(30), "b": .failed(.noResponse, reason: .timeout), "c": .of(7)])
         XCTAssertEqual(chunk.results(nil), ["a": coreFailed, "b": coreFailed, "c": coreFailed])
     }
 

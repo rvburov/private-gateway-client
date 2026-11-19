@@ -12,15 +12,61 @@ public enum LatencyFailure: String, CaseIterable, Sendable {
     case coreFailed
 }
 
+/// Почему через сервер не пришел ответ — `LatencyDiagnostic` десктопа и `LatencyReason` Android: по тексту ошибки ядра.
+/// Сам текст (в нем бывают адреса) не хранится — только вид.
+public enum LatencyReason: String, CaseIterable, Sendable {
+    case timeout = "Timeout"
+    case dns = "Dns"
+    case tls = "Tls"
+    case connection = "Connection"
+
+    /// Вид по тексту ошибки libXray; непонятный — nil («нет ответа»). Таймаут ядра без текста — `timeout`.
+    public static func of(_ error: String?, timedOut: Bool = false) -> LatencyReason? {
+        let text = (error ?? "").lowercased()
+        func has(_ part: String) -> Bool { text.contains(part) }
+        if has("no such host") || has("lookup ") || has("server misbehaving") || has("dns") {
+            return .dns
+        }
+
+        if has("tls") || has("x509") || has("handshake") || has("reality") || has("certificate") {
+            return .tls
+        }
+
+        if has("deadline exceeded") || has("timeout") || has("timed out") {
+            return .timeout
+        }
+
+        if has("refused") || has("reset") || has("unreachable") || has("eof") || has("broken pipe") || has("no route") {
+            return .connection
+        }
+
+        return timedOut ? .timeout : nil
+    }
+}
+
 /// Последний замер задержки через сервер: миллисекунды или причина, почему их нет. Сервер, который ни разу не мерили, —
 /// не `Latency`, а nil у `ServerItem.latency`.
 public struct Latency: Equatable, Hashable, Sendable {
     public let ms: Int?
     public let failure: LatencyFailure?
+    /// Почему нет ответа (`noResponse`); nil — неизвестно.
+    public let reason: LatencyReason?
 
-    public init(ms: Int?, failure: LatencyFailure?) {
+    public init(ms: Int?, failure: LatencyFailure?, reason: LatencyReason? = nil) {
         self.ms = ms
         self.failure = failure
+        self.reason = reason
+    }
+
+    /// Запись отказа для хранилища: «noResponse» или «noResponse/Timeout» — прежние записи без «/» читаются как были.
+    public var stored: String? {
+        failure.map { $0.rawValue + (reason.map { "/" + $0.rawValue } ?? "") }
+    }
+
+    /// Отказ из записи хранилища (`stored`); неизвестный вид — «нет ответа».
+    public static func read(_ stored: String) -> Latency {
+        let parts = stored.split(separator: "/", maxSplits: 1).map(String.init)
+        return .failed(LatencyFailure(rawValue: parts.first ?? "") ?? .noResponse, reason: parts.count > 1 ? LatencyReason(rawValue: parts[1]) : nil)
     }
 
     /// Ответ пришел; меньше миллисекунды — 1, чтобы не показывать «0 мс».
@@ -28,8 +74,8 @@ public struct Latency: Equatable, Hashable, Sendable {
         Latency(ms: max(1, ms), failure: nil)
     }
 
-    public static func failed(_ failure: LatencyFailure) -> Latency {
-        Latency(ms: nil, failure: failure)
+    public static func failed(_ failure: LatencyFailure, reason: LatencyReason? = nil) -> Latency {
+        Latency(ms: nil, failure: failure, reason: reason)
     }
 }
 

@@ -575,7 +575,7 @@ public actor ServerStore {
             for index in state.servers.indices {
                 if let latency = results[state.servers[index].id] {
                     state.servers[index].latencyMs = latency.ms
-                    state.servers[index].latencyFailure = latency.failure?.rawValue
+                    state.servers[index].latencyFailure = latency.stored
                 }
             }
         }
@@ -692,7 +692,7 @@ public actor ServerStore {
         if let ms = record.latencyMs {
             latency = .of(ms)
         } else if let failure = record.latencyFailure {
-            latency = .failed(LatencyFailure(rawValue: failure) ?? .noResponse)
+            latency = .read(failure)
         } else {
             latency = nil
         }

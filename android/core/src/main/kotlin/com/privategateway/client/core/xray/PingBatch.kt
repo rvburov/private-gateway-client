@@ -4,6 +4,7 @@ import com.privategateway.client.core.links.JsonText
 import com.privategateway.client.core.links.JsonTree
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
+import com.privategateway.client.core.servers.LatencyReason
 import com.privategateway.client.core.servers.ServerDefinition
 
 /** Сервер для замера: ключ (id в базе) и описание из запечатанной ссылки. */
@@ -148,10 +149,12 @@ object PingBatch {
 
     private fun item(result: Map<*, *>?): Latency {
         val delay = (result?.get("delay") as? JsonTree.JsonNumber)?.text?.toLongOrNull()
+        // Почему нет ответа — по тексту ошибки ядра (как LatencyDiagnostic десктопа); сам текст не хранится.
+        val reason = LatencyReason.of(result?.get("error") as? String, timedOut = delay == DELAY_TIMEOUT)
         return when {
-            result?.get("success") != true || delay == null -> Latency.failed(LatencyFailure.NoResponse)
+            result?.get("success") != true || delay == null -> Latency.failed(LatencyFailure.NoResponse, reason)
             // Признак вместо задержки — не ответ, даже если флаг успеха говорит иное.
-            delay == DELAY_ERROR || delay == DELAY_TIMEOUT -> Latency.failed(LatencyFailure.NoResponse)
+            delay == DELAY_ERROR || delay == DELAY_TIMEOUT -> Latency.failed(LatencyFailure.NoResponse, reason)
             else -> Latency.of(delay.coerceIn(1, Int.MAX_VALUE.toLong()).toInt())
         }
     }

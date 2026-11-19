@@ -236,8 +236,26 @@ enum LatencyLook {
         switch LatencyKind.of(latency) {
         case .good: return (ms, PgColor.Status.Success.text, ms)
         case .slow: return (ms, PgColor.Text.muted, ms)
-        case .noAnswer: return (texts.serversLatencyNone, PgColor.Status.Warning.text, texts.serversLatencyNoneHint)
+        case .noAnswer:
+            // Короткая метка причины, как `ServerLatencyText.FailureLabel` десктопа; причины нет — «нет» и прежняя подсказка.
+            guard let short = short(latency, texts), let full = CardLook.reason(latency, texts) else {
+                return (texts.serversLatencyNone, PgColor.Status.Warning.text, texts.serversLatencyNoneHint)
+            }
+
+            return (short, PgColor.Status.Warning.text, full)
         case .never: return ("—", PgColor.Text.muted, texts.androidServersLatencyNever)
+        }
+    }
+
+    /// «сбой», «тайм-аут», «DNS», «TLS», «нет связи»; причина неизвестна — nil.
+    static func short(_ latency: Latency?, _ texts: PgTexts) -> String? {
+        switch (latency?.failure, latency?.reason) {
+        case (.coreFailed?, _): return texts.latencyShortCoreFailed
+        case (.noResponse?, .timeout?): return texts.latencyShortTimeout
+        case (.noResponse?, .dns?): return texts.latencyShortDns
+        case (.noResponse?, .tls?): return texts.latencyShortTls
+        case (.noResponse?, .connection?): return texts.latencyShortConnection
+        default: return nil
         }
     }
 }

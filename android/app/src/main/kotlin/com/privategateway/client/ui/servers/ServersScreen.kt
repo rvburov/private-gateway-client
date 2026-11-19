@@ -1,6 +1,7 @@
 package com.privategateway.client.ui.servers
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -60,7 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
+import com.privategateway.client.core.servers.Latency
+import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.LatencyKind
+import com.privategateway.client.core.servers.LatencyReason
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerGroup
@@ -583,6 +587,39 @@ private fun MoreButton(name: String, modifier: Modifier, onClick: () -> Unit) {
  * Задержка: быстрый — зеленым, медленный — серым, «нет» — оранжевым (сервер не ответил), «—» — еще не мерили (на телефоне
  * задержка меряется только по кнопке и только без защиты — решение 430, поэтому «не мерили» здесь бывает часто).
  */
+/**
+ * Короткая метка отказа в списке — `ServerLatencyText.FailureLabel` десктопа: «нет замера», «сбой», «тайм-аут», «DNS», «TLS»,
+ * «нет связи»; причина неизвестна — «нет».
+ */
+@StringRes
+internal fun latencyShort(latency: Latency?): Int = when (latency?.failure) {
+    LatencyFailure.Unsupported -> R.string.latency_short_unsupported
+    LatencyFailure.CoreFailed -> R.string.latency_short_coreFailed
+    LatencyFailure.NoResponse -> when (latency.reason) {
+        LatencyReason.Timeout -> R.string.latency_short_timeout
+        LatencyReason.Dns -> R.string.latency_short_dns
+        LatencyReason.Tls -> R.string.latency_short_tls
+        LatencyReason.Connection -> R.string.latency_short_connection
+        null -> R.string.servers_latency_none
+    }
+    null -> R.string.servers_latency_none
+}
+
+/** Почему замера нет — полной строкой, как `ServerLatencyText.Reason` десктопа; замер есть или не мерили — null. */
+@StringRes
+internal fun latencyReason(latency: Latency?): Int? = when (latency?.failure) {
+    LatencyFailure.Unsupported -> R.string.latency_unsupported
+    LatencyFailure.CoreFailed -> R.string.latency_coreFailed
+    LatencyFailure.NoResponse -> when (latency.reason) {
+        LatencyReason.Timeout -> R.string.latency_timeout
+        LatencyReason.Dns -> R.string.latency_dns
+        LatencyReason.Tls -> R.string.latency_tls
+        LatencyReason.Connection -> R.string.latency_connection
+        null -> R.string.latency_noResponse
+    }
+    null -> null
+}
+
 @Composable
 fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextStyle = PgType.Mono) {
     val kind = LatencyKind.of(server.latency)
@@ -590,12 +627,15 @@ fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextSt
     val (text, color) = when (kind) {
         LatencyKind.Good -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Status.Success.Text
         LatencyKind.Slow -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Text.Muted
-        LatencyKind.NoAnswer -> stringResource(R.string.servers_latency_none) to PgColor.Status.Warning.Text
+        LatencyKind.NoAnswer -> stringResource(latencyShort(server.latency)) to PgColor.Status.Warning.Text
         LatencyKind.Never -> "—" to PgColor.Text.Muted
     }
 
     val hint = when (kind) {
-        LatencyKind.NoAnswer -> stringResource(R.string.servers_latency_noneHint)
+        // Причина известна — ее полной строкой; нет — прежняя подсказка «сервер не ответил на проверку».
+        LatencyKind.NoAnswer -> stringResource(
+            if (latencyShort(server.latency) == R.string.servers_latency_none) R.string.servers_latency_noneHint else latencyReason(server.latency)!!,
+        )
         LatencyKind.Never -> stringResource(R.string.android_servers_latency_never)
         else -> text
     }

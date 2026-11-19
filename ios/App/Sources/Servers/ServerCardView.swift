@@ -524,7 +524,7 @@ enum CardLook {
             ),
             CardDetail(label: texts.cardCore, value: ServerFacts.coreName(server.protocol) ?? texts.androidCardCoreNone, identifier: "card.core"),
         ]
-        if let reason = reason(server.latency?.failure, texts) {
+        if let reason = reason(server.latency, texts) {
             rows.append(CardDetail(label: texts.cardLatencyReason, value: reason, identifier: "card.latencyReason"))
         }
 
@@ -532,12 +532,16 @@ enum CardLook {
     }
 
     /// Почему замера задержки нет — строкой «Проверка», как `ServerLatencyText.Reason` десктопа; замер есть или не мерили — nil.
-    static func reason(_ failure: LatencyFailure?, _ texts: PgTexts) -> String? {
-        switch failure {
-        case .unsupported?: return texts.latencyUnsupported
-        case .coreFailed?: return texts.latencyCoreFailed
-        case .noResponse?: return texts.latencyNoResponse
-        case nil: return nil
+    static func reason(_ latency: Latency?, _ texts: PgTexts) -> String? {
+        switch (latency?.failure, latency?.reason) {
+        case (.unsupported?, _): return texts.latencyUnsupported
+        case (.coreFailed?, _): return texts.latencyCoreFailed
+        case (.noResponse?, .timeout?): return texts.latencyTimeout
+        case (.noResponse?, .dns?): return texts.latencyDns
+        case (.noResponse?, .tls?): return texts.latencyTls
+        case (.noResponse?, .connection?): return texts.latencyConnection
+        case (.noResponse?, nil): return texts.latencyNoResponse
+        case (nil, _): return nil
         }
     }
 
