@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.privategateway.client.core.backup.BackupSettings
 import com.privategateway.client.core.notify.NotificationLevel
+import com.privategateway.client.core.settings.BlockPin
 import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.RoutingSettings
@@ -116,6 +117,19 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
             preferences[ROUTING_APPS] = settings.routing.appsJson()
             preferences[ROUTING_RULES] = settings.routing.rulesJson()
             preferences[ROUTING_BLOCK_OTHERS] = settings.routing.blockOthers
+        }
+    }
+
+    /** PIN-код снятия блока сайтов (решение 742); null — не задан. */
+    val blockPin: Flow<BlockPin?> = store.data.map { BlockPin.parse(it[BLOCK_PIN]) }
+
+    suspend fun setBlockPin(pin: BlockPin?) {
+        store.edit { preferences ->
+            if (pin == null) {
+                preferences.remove(BLOCK_PIN)
+            } else {
+                preferences[BLOCK_PIN] = pin.toString()
+            }
         }
     }
 
@@ -347,6 +361,9 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val ROUTING_APPS = stringPreferencesKey("routing_apps")
         val ROUTING_RULES = stringPreferencesKey("routing_rules")
         val ROUTING_BLOCK_OTHERS = booleanPreferencesKey("routing_block_others")
+
+        /** PIN-код блока сайтов (решение 742) — «соль:хеш»; этого устройства, в копию не идет. */
+        val BLOCK_PIN = stringPreferencesKey("block_pin")
         val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
         val RECONNECT = stringPreferencesKey("reconnect_policy")
         val CONNECT_ON_LAUNCH = booleanPreferencesKey("connect_on_launch")
@@ -361,14 +378,15 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val UPDATE_TARGET = stringPreferencesKey("update_target")
         val UPDATE_COMMITTED = booleanPreferencesKey("update_committed")
 
-        private val BOOLEANS: Set<Preferences.Key<*>> = setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH)
+        private val BOOLEANS: Set<Preferences.Key<*>> =
+            setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH, ROUTING_BLOCK_OTHERS)
         private val INTS: Set<Preferences.Key<*>> = setOf(MTU, CONNECT_TIMEOUT)
 
         /** Что идет в резервную копию — настройки пользователя, а не состояние телефона. */
         val BACKED_UP: List<Preferences.Key<*>> = listOf(
             SUBS_REFRESH, SUBS_ONLY_VPN, SUBS_NOTIFY, DNS, CUSTOM_DNS, IPV6, ALLOW_LAN, CORE_LOG, MTU, STRICT_ROUTES, SNIFFING,
-            FINGERPRINT, MUX, TLS_FRAGMENT, CONNECT_TIMEOUT, ROUTING_MODE, ROUTING_APPS, ROUTING_RULES, NOTIFY_LEVEL, RECONNECT,
-            CONNECT_ON_LAUNCH,
+            FINGERPRINT, MUX, TLS_FRAGMENT, CONNECT_TIMEOUT, ROUTING_MODE, ROUTING_APPS, ROUTING_RULES, ROUTING_BLOCK_OTHERS, NOTIFY_LEVEL,
+            RECONNECT, CONNECT_ON_LAUNCH,
         )
     }
 }

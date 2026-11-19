@@ -105,6 +105,7 @@ fun RoutingScreen(
     onBack: () -> Unit,
     onProtection: () -> Unit,
     installedApps: suspend () -> List<PhoneApp>,
+    pinControl: BlockPinControl = BlockPinControl.None,
 ) {
     // Открытый лист правила: null — закрыт, NEW_RULE — новое, иначе — номер правила в списке.
     var editing by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -113,6 +114,15 @@ fun RoutingScreen(
     var askingSplit by rememberSaveable { mutableStateOf(false) }
     // «Остальные сайты: Блокировать» — через вопрос о последствиях (решение 740); обратно — без вопроса.
     var askingBlock by rememberSaveable { mutableStateOf(false) }
+    // PIN-код блока сайтов (решение 742): что спросить кодом, лист сброса и лист «Задать PIN-код».
+    var askingPin by remember { mutableStateOf<PinAsk?>(null) }
+    var resettingPin by rememberSaveable { mutableStateOf(false) }
+    var settingPin by rememberSaveable { mutableStateOf(false) }
+    var pinNotice by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val guarded: (String, String, () -> Unit) -> Unit = { title, text, allow ->
+        if (pinControl.pin == null) allow() else askingPin = PinAsk(title, text, allow)
+    }
     val routing = tunnel.routing
     val change: (RoutingSettings) -> Unit = { onTunnel(tunnel.copy(routing = it)) }
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("routing")) {
@@ -150,7 +160,13 @@ fun RoutingScreen(
 
             Section(stringResource(R.string.routing_rules_title)) {
                 OthersCard(routing.blockOthers) { block ->
-                    if (block) askingBlock = true else change(routing.copy(blockOthers = false))
+                    if (block) {
+                        askingBlock = true
+                    } else {
+                        guarded(context.getString(R.string.block_guard_others_title), context.getString(R.string.block_guard_others_text)) {
+                            change(routing.copy(blockOthers = false))
+                        }
+                    }
                 }
                 if (routing.blockOthers) {
                     Notice(stringResource(R.string.routing_others_warning), "routing.others.warning")
@@ -178,6 +194,15 @@ fun RoutingScreen(
                 DashedButton(stringResource(R.string.routing_rules_add), "routing.rules.add") { editing = NEW_RULE }
             }
 
+            Section(stringResource(R.string.block_title)) {
+                BlockPinCard(pinControl.pin != null) {
+                    guarded(context.getString(R.string.block_pin_change_title), context.getString(R.string.block_pin_change_text)) {
+                        pinNotice = false
+                        settingPin = true
+                    }
+                }
+            }
+
             if (routing.blockOthers) {
                 AllowedSection()
             }
@@ -203,11 +228,34 @@ fun RoutingScreen(
             blockOthers = routing.blockOthers,
             onSave = { rule ->
                 editing = null
-                change(routing.saveRule(original, rule))
+                // Решение 742: меняется или пропадает «Блокировать», а при блоке остальных — новое разрешение — сначала PIN-код.
+                val allowsMore = routing.blockOthers && rule.action != RuleAction.Block &&
+                    (original == null || original.action == RuleAction.Block || original.pattern != rule.pattern || original.isExact != rule.isExact)
+                when {
+                    original?.action == RuleAction.Block && original != rule ->
+                        guarded(context.getString(R.string.block_guard_rule_title, original.pattern), context.getString(R.string.block_guard_rule_text)) {
+                            change(routing.saveRule(original, rule))
+                        }
+
+                    allowsMore ->
+                        guarded(context.getString(R.string.block_guard_allow_title, rule.pattern), context.getString(R.string.block_guard_allow_text)) {
+                            change(routing.saveRule(original, rule))
+                        }
+
+                    else -> change(routing.saveRule(original, rule))
+                }
             },
             onDelete = {
                 editing = null
-                original?.let { change(routing.removeRule(it)) }
+                original?.let { rule ->
+                    if (rule.action == RuleAction.Block) {
+                        guarded(context.getString(R.string.block_guard_rule_title, rule.pattern), context.getString(R.string.block_guard_rule_text)) {
+                            change(routing.removeRule(rule))
+                        }
+                    } else {
+                        change(routing.removeRule(rule))
+                    }
+                }
             },
             onClose = { editing = null },
         )
@@ -250,6 +298,38 @@ fun RoutingScreen(
             detail = PgIcons.MarkAlert,
             secondaryDanger = true,
         )
+    }
+
+    askingPin?.let { ask ->
+        BlockPinPromptSheet(
+            ask,
+            pinControl,
+            onAllowed = {
+                askingPin = null
+                ask.allow()
+            },
+            onForgot = {
+                askingPin = null
+                resettingPin = true
+            },
+            onClose = { askingPin = null },
+        )
+    }
+
+    if (resettingPin) {
+        BlockPinResetSheet(
+            pinControl,
+            onDone = {
+                resettingPin = false
+                pinNotice = true
+                settingPin = true
+            },
+            onClose = { resettingPin = false },
+        )
+    }
+
+    if (settingPin) {
+        BlockPinSetupSheet(pinControl, pinNotice) { settingPin = false }
     }
 
     if (askingBlock) {

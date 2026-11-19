@@ -65,6 +65,15 @@
     <DataTemplate DataType="vm:SiteRuleEditViewModel">
       <views:SiteRuleEditView />
     </DataTemplate>
+    <DataTemplate DataType="vm:BlockPinPromptViewModel">
+      <views:BlockPinPromptView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:BlockPinResetViewModel">
+      <views:BlockPinResetView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:BlockPinSetupViewModel">
+      <views:BlockPinSetupView />
+    </DataTemplate>
     <DataTemplate DataType="vm:NetworkPageViewModel">
       <views:NetworkPage />
     </DataTemplate>

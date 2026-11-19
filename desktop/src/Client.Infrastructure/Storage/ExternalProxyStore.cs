@@ -160,6 +160,8 @@ public sealed class ExternalProxyStore(SettingsService appSettings, ISecretStore
                     // Вход и неподтвержденная очистка относятся к этому устройству, а не к импортируемой копии.
                     AccountSignedOut = current.AccountSignedOut,
                     AccountNetworkResetPending = current.AccountNetworkResetPending,
+                    // PIN-код блока сайтов — этого устройства: копия его не снимает и не ставит (решение 742).
+                    BlockPin = current.BlockPin,
                 };
                 return next;
             });

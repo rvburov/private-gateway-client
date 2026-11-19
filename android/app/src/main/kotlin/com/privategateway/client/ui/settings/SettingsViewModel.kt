@@ -2,6 +2,9 @@ package com.privategateway.client.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.privategateway.client.core.settings.BlockPin
+import com.privategateway.client.core.settings.BlockPinAttempts
+import com.privategateway.client.core.settings.PinCheck
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.SystemVpnSource
@@ -52,6 +55,18 @@ class SettingsViewModel @Inject constructor(
     }
 
     val tunnel: StateFlow<TunnelSettings> = settings.tunnel.stateIn(viewModelScope, SharingStarted.Eagerly, TunnelSettings())
+
+    /** PIN-код снятия блока сайтов (решение 742); null — не задан. */
+    val blockPin: StateFlow<BlockPin?> = settings.blockPin.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Попытки ввода — на всю модель: уход с экрана паузу после пяти неверных не снимает. */
+    private val pinAttempts = BlockPinAttempts()
+
+    fun setBlockPin(pin: BlockPin?) {
+        viewModelScope.launch { settings.setBlockPin(pin) }
+    }
+
+    fun checkPin(pin: String): PinCheck = pinAttempts.check(pin, blockPin.value)
 
     /** «Постоянная VPN» и блок без VPN: под защитой — что сообщил Android, без нее — запомненное (решение 445). */
     val systemVpn: StateFlow<SystemVpnView> = monitor.status.combine(settings.systemVpn) { status, remembered -> SystemVpnView.of(status, remembered) }

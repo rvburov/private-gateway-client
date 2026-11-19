@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.BlockPinPromptView"
+             x:DataType="vm:BlockPinPromptViewModel">
+  <!-- «Снять блок с …?» (решение 742, макет v2): PIN-код, «Забыли PIN-код?», «Оставить блок» и красная «Снять блок». -->
+  <DockPanel AutomationProperties.Name="{Binding Title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock x:Name="PinTitle" Classes="status" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding KeepCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button x:Name="PinKeep" Classes="primary" Height="50" HorizontalAlignment="Stretch" Command="{Binding KeepCommand}"
+              Content="{l:L block.pin.keep}" />
+      <Button x:Name="PinConfirm" Grid.Column="2" Classes="secondary danger" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding ConfirmCommand}" Content="{l:L block.pin.unblock}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="12">
+      <TextBlock x:Name="PinText" Classes="small" Text="{Binding Text}" TextWrapping="Wrap" />
+      <TextBox x:Name="PinField" Classes="input" Text="{Binding Pin}" PasswordChar="•" MaxLength="8"
+               FontFamily="{StaticResource PgFont.Mono}" HorizontalContentAlignment="Center"
+               TextInputOptions.ContentType="Digits" AutomationProperties.Name="{l:L block.pin.title}">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding ConfirmCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <TextBlock x:Name="PinError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                 Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
+      <Button x:Name="PinForgot" Classes="link" HorizontalAlignment="Left" MinHeight="{StaticResource PgLayout.TouchTarget}"
+              Command="{Binding ForgotCommand}" Content="{l:L block.pin.forgot}" IsVisible="{Binding CanReset}" />
+    </StackPanel>
+  </DockPanel>
+</UserControl>

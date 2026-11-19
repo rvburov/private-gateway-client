@@ -33,6 +33,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             AccountSignedOut = values.TryGetValue("account.signed_out", out var text) && bool.TryParse(text, out var signedOut) && signedOut,
             AccountNetworkResetPending = values.TryGetValue("account.network_reset_pending", out var pending)
                 && bool.TryParse(pending, out var resetPending) && resetPending,
+            BlockPin = BlockPin.Parse(values.GetValueOrDefault("block.pin")),
         };
     }
 
@@ -57,6 +58,16 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             command.CommandText = "INSERT INTO settings (key, value) VALUES ('account.network_reset_pending', $value) "
                 + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
             command.Parameters.AddWithValue("$value", Text(settings.AccountNetworkResetPending));
+            command.ExecuteNonQuery();
+        }
+
+        // PIN-код блока сайтов — тоже только этого устройства (решение 742): в копию не идет.
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO settings (key, value) VALUES ('block.pin', $value) "
+                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+            command.Parameters.AddWithValue("$value", settings.BlockPin?.ToString() ?? string.Empty);
             command.ExecuteNonQuery();
         }
 

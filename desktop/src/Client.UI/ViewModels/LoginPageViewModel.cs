@@ -114,7 +114,10 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     public string SignInText => Loc.Instance[IsBusy ? "account.signingIn" : "account.signIn"];
 
     /// <summary>Текст ошибки на языке окна: при смене языка пересчитывается.</summary>
-    public string? Error => Failure switch
+    public string? Error => ErrorText(Failure, RetryMinutes);
+
+    /// <summary>Отказ входа словами — общий с листом сброса PIN-кода (решение 742).</summary>
+    internal static string? ErrorText(AccountFailure? failure, int retryMinutes) => failure switch
     {
         null => null,
         AccountFailure.InvalidCredentials => Loc.Instance["account.error.invalid"],
@@ -122,7 +125,7 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         AccountFailure.SetupRequired => Loc.Instance["account.error.setupRequired"],
         AccountFailure.DeviceLimit => Loc.Instance["account.error.deviceLimit"],
         AccountFailure.DeviceChangeLimit => Loc.Instance["account.error.deviceChanges"],
-        AccountFailure.RateLimited => Loc.Instance.Format("account.error.rateLimited", Math.Max(1, RetryMinutes)),
+        AccountFailure.RateLimited => Loc.Instance.Format("account.error.rateLimited", Math.Max(1, retryMinutes)),
         AccountFailure.Validation => Loc.Instance["account.error.validation"],
         AccountFailure.Network => Loc.Instance["account.error.network"],
         AccountFailure.Store => Loc.Instance["account.error.store"],

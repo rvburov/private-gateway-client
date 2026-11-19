@@ -20,11 +20,13 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     private readonly ToastViewModel _toast;
     private readonly IFileOpenService _files;
     private readonly INavigator _navigator;
+    private readonly BlockPinGate _pin;
 
     public RoutingPageViewModel(
-        SettingsService settings, OverlayViewModel overlay, ToastViewModel toast, IFileOpenService files, INavigator navigator)
+        SettingsService settings, OverlayViewModel overlay, ToastViewModel toast, IFileOpenService files, INavigator navigator, BlockPinGate pin)
     {
         _settings = settings;
+        _pin = pin;
         _overlay = overlay;
         _toast = toast;
         _files = files;
@@ -84,18 +86,29 @@ public sealed partial class RoutingPageViewModel : ObservableObject
 
     // ── Остальные сайты (решение 740) ────────────────────────────────────────
 
-    /// <summary>«Остальные сайты: Открывать» — сразу, без вопроса.</summary>
-    public bool OthersOpen
+    /// <summary>«Остальные сайты: Открывать» — без вопроса; с PIN-кодом — после кода (решение 742).</summary>
+    public bool OthersOpen => !R.BlockOthers;
+
+    [RelayCommand]
+    private async Task ChooseOpenOthersAsync()
     {
-        get => !R.BlockOthers;
-        set
+        if (R.BlockOthers
+            && await _pin.AllowAsync(Loc.Instance["block.guard.others.title"], Loc.Instance["block.guard.others.text"]).ConfigureAwait(true))
         {
-            if (value)
-            {
-                Set(r => r with { BlockOthers = false });
-            }
+            Set(r => r with { BlockOthers = false });
         }
     }
+
+    // ── Блок сайтов: PIN-код (решение 742) ───────────────────────────────────
+
+    public bool HasPin => _settings.Current.BlockPin is not null;
+
+    public string PinText => Loc.Instance[HasPin ? "block.pin.on" : "block.pin.off"];
+
+    public string PinButtonText => Loc.Instance[HasPin ? "block.pin.changeButton" : "block.pin.setButton"];
+
+    [RelayCommand]
+    private Task ChangePinAsync() => _pin.ChangeAsync();
 
     /// <summary>«Блокировать» — только через «Блокировать остальное» в диалоге: сегмент сам не отмечается.</summary>
     public bool BlockOthers => R.BlockOthers;
@@ -160,6 +173,35 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     /// заменяется: два правила на один сайт противоречили бы друг другу. «Только этот адрес» и сайт
     /// с поддоменами — разные правила (решение 739).
     /// </summary>
+    /// <summary>
+    /// Ослабляет ли правка блок (решение 742): меняется или пропадает правило «Блокировать», а при «Остальные сайты:
+    /// Блокировать» — появляется или меняет сайт разрешение. Тогда сначала PIN-код.
+    /// </summary>
+    internal async Task SaveRuleAsync(DomainRule? original, DomainRule rule)
+    {
+        // Новое разрешение или разрешение для другого сайта, когда остальные заблокированы.
+        var allowsMore = R.BlockOthers && rule.Action != RuleAction.Block
+            && (original is null || original.Action == RuleAction.Block || original.Pattern != rule.Pattern || original.IsExact != rule.IsExact);
+        var (title, text) = original is { Action: RuleAction.Block } && original != rule
+            ? (Loc.Instance.Format("block.guard.rule.title", original.Pattern), Loc.Instance["block.guard.rule.text"])
+            : allowsMore
+                ? (Loc.Instance.Format("block.guard.allow.title", rule.Pattern), Loc.Instance["block.guard.allow.text"])
+                : (null, null);
+        if (title is null || await _pin.AllowAsync(title, text!).ConfigureAwait(true))
+        {
+            SaveRule(original, rule);
+        }
+    }
+
+    internal async Task RemoveRuleAsync(DomainRule rule)
+    {
+        if (rule.Action != RuleAction.Block
+            || await _pin.AllowAsync(Loc.Instance.Format("block.guard.rule.title", rule.Pattern), Loc.Instance["block.guard.rule.text"]).ConfigureAwait(true))
+        {
+            RemoveRule(rule);
+        }
+    }
+
     internal void SaveRule(DomainRule? original, DomainRule rule) => Set(r =>
     {
         var rules = r.Rules.Where(other => other == original || other.Pattern != rule.Pattern || other.IsExact != rule.IsExact).ToList();
@@ -373,7 +415,7 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
     public bool HasError => Error is not null;
 
     [RelayCommand]
-    private void Save()
+    private async Task SaveAsync()
     {
         if (SitePattern.Normalize(Pattern) is not { } pattern)
         {
@@ -381,19 +423,20 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
             return;
         }
 
-        _overlay.CloseSheet();
-        _page.SaveRule(_original, ServiceSites.Find(pattern) is { } service && AllAddresses
+        var rule = ServiceSites.Find(pattern) is { } service && AllAddresses
             ? new DomainRule(service.Pattern, Action)
-            : new DomainRule(pattern, Action, Exact && SitePattern.IsPlainDomain(pattern)));
+            : new DomainRule(pattern, Action, Exact && SitePattern.IsPlainDomain(pattern));
+        _overlay.CloseSheet();
+        await _page.SaveRuleAsync(_original, rule).ConfigureAwait(true);
     }
 
     [RelayCommand]
-    private void Delete()
+    private async Task DeleteAsync()
     {
         _overlay.CloseSheet();
         if (_original is not null)
         {
-            _page.RemoveRule(_original);
+            await _page.RemoveRuleAsync(_original).ConfigureAwait(true);
         }
     }
 

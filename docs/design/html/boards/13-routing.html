@@ -56,7 +56,9 @@
   тот же лист. «Локальная сеть» ведет в «Защиту и утечки». «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740):
   открываются только сайты с правилом «Через VPN» или «Напрямую», ниже — предупреждение и «Пропускается всегда»; обратно на
   «Открывать» — сразу. У домена из списка сервисов в листе правила — «Все адреса YouTube» (решение 741): правило
-  «geosite:youtube» с подписью в строке. Справа — тот же экран в режиме «Весь трафик».</p>
+  «geosite:youtube» с подписью в строке. «Блок сайтов → PIN-код» (решение 742): с кодом ослабить блок можно
+  только после него (у ads.example.org «Удалить» показывает «Снять блок с …?»), «Забыли PIN-код?» — сброс входом в аккаунт.
+  Справа — тот же экран в режиме «Весь трафик».</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Раздельный режим">
@@ -471,6 +473,18 @@
           <button class="btn-plain dashed" data-open="sheet-rule-new-all"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
         </div>
 
+        <!-- Блок сайтов: PIN-код снятия блока (решение 742) -->
+        <div class="pg-stack pg-gap-8">
+          <span class="t-overline" style="margin: 0 6px">Блок сайтов</span>
+          <div class="card pg-row" style="padding: 12px 16px; gap: 10px">
+            <span class="pg-stack pg-grow" style="gap: 3px">
+              <span class="t-strong">PIN-код</span>
+              <span class="t-caption t-wrap">Не задан: блок снимается без кода</span>
+            </span>
+            <button class="btn-secondary" style="min-height: 40px; padding: 0 16px" data-open="sheet-pin-setup">Задать</button>
+          </div>
+        </div>
+
         <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->
         <div class="pg-stack pg-gap-8" data-when="block-others">
           <span class="t-overline" style="margin: 0 6px">Пропускается всегда</span>
@@ -633,7 +647,7 @@
         </div>
         <div class="pg-grow"></div>
         <div class="pg-row pg-gap-8">
-          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close data-open="sheet-pin-prompt">Удалить</button>
           <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
         </div>
       </div>
@@ -669,7 +683,9 @@
           <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
           <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
         </div>
-<div class="sheet" id="sheet-rule-4-all" role="dialog" aria-label="Правило для сайта">
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-4-all" role="dialog" aria-label="Правило для сайта">
       <div class="pg-stack" style="height: 100%">
         <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
         <div class="pg-row" style="margin-top: 12px">
@@ -682,6 +698,7 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="geosite:youtube">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «geosite:youtube» — все адреса сервиса: «Только этот адрес» не действует -->
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -711,6 +728,79 @@
         <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.splitMode.switch">Перейти</button>
       </div>
     </div>
+    <!-- PIN-код (решение 742): «Снять блок с …?» — перед тем, что ослабляет блок; здесь — «Удалить» у ads.example.org -->
+    <div class="sheet" id="sheet-pin-prompt" role="dialog" aria-label="Снять блок с ads.example.org?">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Снять блок с ads.example.org?</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 12px; margin: 16px 0">
+          <span class="t-small t-wrap">Сайт снова начнет открываться. Введите PIN-код.</span>
+          <input class="input" type="password" inputmode="numeric" maxlength="8" style="font-family: var(--font-mono); text-align: center" aria-label="PIN-код">
+          <button class="btn-link" style="align-self: flex-start; min-height: 40px" data-close data-open="sheet-pin-reset">Забыли PIN-код?</button>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Оставить блок</button>
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Снять блок</button>
+        </div>
+      </div>
+    </div>
+    <!-- Сброс PIN-кода входом в аккаунт: блоки остаются, код снимается; администратору — еще код 2FA -->
+    <div class="sheet" id="sheet-pin-reset" role="dialog" aria-label="Сбросить PIN-код">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Сбросить PIN-код</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 12px; margin: 16px 0">
+          <span class="t-small t-wrap">Войдите аккаунтом Private Gateway — тем же, что в программе. Блоки останутся, PIN-код можно будет задать новый.</span>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Почта</span>
+            <input class="input" type="email" value="anna@example.com" aria-label="Почта">
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Пароль</span>
+            <input class="input" type="password" aria-label="Пароль">
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close data-open="sheet-pin-setup">Войти и сбросить</button>
+        </div>
+      </div>
+    </div>
+    <!-- Задать PIN-код: что он закрывает, 4–8 цифр дважды; у заданного кода — еще «Убрать PIN-код» -->
+    <div class="sheet" id="sheet-pin-setup" role="dialog" aria-label="PIN-код для снятия блока">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">PIN-код для снятия блока</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 12px; margin: 16px 0">
+          <span class="t-small t-wrap">Без него нельзя убрать правило «Блокировать», открыть остальные сайты и разрешить сайт, когда остальные заблокированы. Добавлять сайты в блок можно без кода. Забыли — сброс через вход в аккаунт.</span>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">PIN-код · 4–8 цифр</span>
+            <input class="input" type="password" inputmode="numeric" maxlength="8" style="font-family: var(--font-mono)" aria-label="PIN-код · 4–8 цифр">
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Еще раз</span>
+            <input class="input" type="password" inputmode="numeric" maxlength="8" style="font-family: var(--font-mono)" aria-label="Еще раз">
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Задать PIN-код</button>
+        </div>
+      </div>
+    </div>
+
     <!-- «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740); обратно — без вопроса -->
     <div class="dialog" id="dlg-block-others" role="dialog" aria-modal="true" aria-label="Блокировать все, кроме разрешенного?">
       <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>

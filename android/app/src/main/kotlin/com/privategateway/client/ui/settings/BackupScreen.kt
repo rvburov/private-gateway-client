@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -331,8 +332,20 @@ private fun dateText(at: java.time.Instant): String {
 
 /** Страница копии с моделью и системными окнами «Сохранить» и «Открыть»: приложению — только выбранный файл. */
 @Composable
-fun BackupPage(model: BackupViewModel, onBack: () -> Unit) {
+fun BackupPage(model: BackupViewModel, onBack: () -> Unit, pinControl: BlockPinControl = BlockPinControl.None) {
     val ui by model.ui.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Решение 742: настройки из копии могут снять блок сайтов — с PIN-кодом сначала код.
+    var askingPin by remember { mutableStateOf<PinAsk?>(null) }
+    val guarded: (() -> Unit) -> () -> Unit = { action ->
+        {
+            if (pinControl.pin == null) {
+                action()
+            } else {
+                askingPin = PinAsk(context.getString(R.string.block_guard_restore_title), context.getString(R.string.block_guard_restore_text), action)
+            }
+        }
+    }
     val resolver = LocalContext.current.contentResolver
     val create = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { file ->
         file?.let { model.save(resolver, it) }
@@ -352,10 +365,23 @@ fun BackupPage(model: BackupViewModel, onBack: () -> Unit) {
             },
             choose = { pick.launch(arrayOf("*/*")) },
             open = model::open,
-            restore = model::restore,
-            restoreAuto = model::restoreAuto,
+            restore = guarded(model::restore),
+            restoreAuto = guarded(model::restoreAuto),
             closeRestore = model::closeRestore,
         ),
         onBack,
     )
+    askingPin?.let { ask ->
+        // Сброс кода — в «Маршрутизации»: здесь только ввод.
+        BlockPinPromptSheet(
+            ask,
+            BlockPinControl(pinControl.pin, pinControl.set, pinControl.check),
+            onAllowed = {
+                askingPin = null
+                ask.allow()
+            },
+            onForgot = { askingPin = null },
+            onClose = { askingPin = null },
+        )
+    }
 }

@@ -270,15 +270,28 @@ class AccountRepository @Inject constructor(
     }
 
     /**
+     * Подтвердить аккаунт для сброса PIN-кода блока сайтов (решение 742): тот же аккаунт, что в приложении, — обычный вход, но
+     * без остановки защиты: VPN и блок сайтов остаются. Другая почта — отказ без запроса к сайту: сброс не меняет аккаунт.
+     */
+    suspend fun confirm(email: String, password: String, code: String?): LoginResult {
+        val current = state.value?.info?.email
+        if (current == null || !current.equals(email.trim(), ignoreCase = true)) {
+            return LoginResult.Failed(AccountError.Invalid)
+        }
+
+        return login(email.trim(), password, code, null, keepProtection = true)
+    }
+
+    /**
      * Вход: без кода — первый шаг (участнику его хватает, администратору сайт ответит [LoginResult.CodeRequired]); на втором —
      * не больше одного из [code] (2FA) и [recovery] (резервный код). Хранилище ключей или файл не работают — [AccountError.Store].
      */
-    suspend fun login(email: String, password: String, code: String?, recovery: String?): LoginResult = lock.withLock {
+    suspend fun login(email: String, password: String, code: String?, recovery: String?, keepProtection: Boolean = false): LoginResult = lock.withLock {
         val attempt = currentGeneration()
         withContext(Dispatchers.IO) {
             // Новый явный вход никогда не наследует автоматический запуск и ограничения предыдущего аккаунта.
             // Восстановление идет до запроса сайта: оставшийся туннель не должен закрывать экрану входа интернет.
-            if (!stopProtection()) return@withContext LoginResult.Failed(AccountError.Store)
+            if (!keepProtection && !stopProtection()) return@withContext LoginResult.Failed(AccountError.Store)
             if (!boxWorks()) {
                 journal.warning("account sign-in  key store unavailable")
                 return@withContext LoginResult.Failed(AccountError.Store)

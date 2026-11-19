@@ -161,8 +161,8 @@
               <TextBlock Classes="strong" Text="{l:L routing.others.title}" />
               <Border Classes="segments">
                 <UniformGrid Columns="2">
-                  <RadioButton x:Name="OthersOpen" Classes="segment" GroupName="others" IsChecked="{Binding OthersOpen}"
-                               Content="{l:L routing.others.open}" />
+                  <c:ConfirmRadioButton x:Name="OthersOpen" Classes="segment" GroupName="others" IsChecked="{Binding OthersOpen, Mode=OneWay}"
+                                       Command="{Binding ChooseOpenOthersCommand}" Content="{l:L routing.others.open}" />
                   <c:ConfirmRadioButton x:Name="OthersBlock" Classes="segment" GroupName="others" IsChecked="{Binding BlockOthers, Mode=OneWay}"
                                        Command="{Binding ChooseBlockOthersCommand}" Content="{l:L routing.others.block}" />
                 </UniformGrid>
@@ -219,6 +219,21 @@
               </StackPanel>
             </Button>
           </Grid>
+        </StackPanel>
+
+        <!-- Блок сайтов: PIN-код снятия блока (решение 742) -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="overline" Text="{l:L block.title, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,12">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="3" Margin="0,0,10,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L block.pin.title}" />
+                <TextBlock x:Name="PinState" Classes="caption" Text="{Binding PinText}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="ChangePin" Grid.Column="1" Classes="secondary" MinHeight="{StaticResource PgLayout.TouchTarget}" Padding="16,0"
+                      VerticalAlignment="Center" Command="{Binding ChangePinCommand}" Content="{Binding PinButtonText}" />
+            </Grid>
+          </Border>
         </StackPanel>
 
         <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->

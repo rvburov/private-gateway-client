@@ -509,6 +509,13 @@ dotnet test --project desktop/tests/UI
   (ресурс `Client.Core`; у Android — ресурс модуля core, у iOS — код `ServiceSites.swift`), обновляет его
   `scripts/gen-services.cs` из коммита `geosite.version`. Десктоп отдает ядру категорию geosite.dat, телефоны — домены из
   списка: из «geosite:» они берут только эти сервисы.
+- PIN-код блока сайтов (решение 742): карточка «Блок сайтов → PIN-код», `BlockPinGate` (одна на окно) спрашивает код листом
+  `BlockPinPromptViewModel` перед тем, что ослабляет блок (`RoutingPageViewModel.SaveRuleAsync` / `RemoveRuleAsync`,
+  «Остальные сайты: Открывать», `BackupPageViewModel.ApplyAsync`); пять неверных — минута паузы. Код — `BlockPin` (соль и
+  хеш PBKDF2-SHA256) в `AppSettings.BlockPin`, ключ `block.pin` пишется отдельно от `Values` и в копию не идет.
+  «Забыли PIN-код?» — `BlockPinResetViewModel`: `AccountService.SignInAsync` тем же аккаунтом, затем `BlockPinSetupViewModel`.
+  Android — то же (`BlockPinControl`, `BlockPinAttempts`, ключ `block_pin`, сброс — `AccountRepository.confirm` без остановки
+  защиты).
 - «Локальная сеть» показывает, разрешена ли она, и ведет на «Защиту и утечки»: настраивается в одном
   месте.
 - Главный экран при включенной защите в режиме VPN показывает полосу «Внимание · программы и сайты

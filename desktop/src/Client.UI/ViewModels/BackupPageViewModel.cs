@@ -25,6 +25,7 @@ public sealed partial class BackupPageViewModel : ObservableObject
     private readonly IFileOpenService _opener;
     private readonly TimeProvider _time;
     private readonly INavigator _navigator;
+    private readonly BlockPinGate _pin;
 
     public BackupPageViewModel(
         BackupService backup,
@@ -35,8 +36,10 @@ public sealed partial class BackupPageViewModel : ObservableObject
         IFileSaveService saver,
         IFileOpenService opener,
         TimeProvider time,
-        INavigator navigator)
+        INavigator navigator,
+        BlockPinGate pin)
     {
+        _pin = pin;
         _backup = backup;
         _settings = settings;
         _secrets = secrets;
@@ -201,6 +204,11 @@ public sealed partial class BackupPageViewModel : ObservableObject
             return;
         }
 
+        if (!await AllowRestoreAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
         try
         {
             Report(_backup.RestoreAutoCopy());
@@ -211,8 +219,25 @@ public sealed partial class BackupPageViewModel : ObservableObject
         }
     }
 
-    /// <summary>Заменить серверы и настройки содержимым копии; перед этим служба сама делает автокопию.</summary>
-    public void Apply(BackupContent content)
+    /// <summary>
+    /// Заменить серверы и настройки содержимым копии; перед этим служба сама делает автокопию. Настройки копии могут снять
+    /// блок сайтов — с PIN-кодом сначала код (решение 742).
+    /// </summary>
+    public async Task ApplyAsync(BackupContent content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.HasSettings && !await AllowRestoreAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        Apply(content);
+    }
+
+    private Task<bool> AllowRestoreAsync() =>
+        _pin.AllowAsync(Loc.Instance["block.guard.restore.title"], Loc.Instance["block.guard.restore.text"]);
+
+    private void Apply(BackupContent content)
     {
         try
         {
@@ -353,12 +378,12 @@ public sealed partial class RestoreBackupViewModel : ObservableObject
     private bool CanOpen() => !IsOpening;
 
     [RelayCommand]
-    private void Restore()
+    private async Task RestoreAsync()
     {
         if (Content is { } content)
         {
             _overlay.CloseSheet();
-            _page.Apply(content);
+            await _page.ApplyAsync(content).ConfigureAwait(true);
         }
     }
 

@@ -52,6 +52,9 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
 
     fun restoreNetwork() = account.retryNetworkRecovery()
 
+    /** Сброс PIN-кода блока сайтов (решение 742): вход тем же аккаунтом без остановки защиты. */
+    suspend fun confirm(email: String, password: String, code: String?): LoginResult = account.confirm(email, password, code)
+
     private val form = MutableStateFlow(LoginUi())
     val ui: StateFlow<LoginUi> = form.asStateFlow()
 

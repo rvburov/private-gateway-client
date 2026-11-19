@@ -98,6 +98,7 @@ fun SettingsScreen(
     backup: @Composable (onBack: () -> Unit) -> Unit = {},
     account: AccountInfo? = null,
     onSignOut: () -> Unit = {},
+    pinControl: BlockPinControl = BlockPinControl.None,
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -134,6 +135,7 @@ fun SettingsScreen(
                 onBack = { page = SettingsPage.Main },
                 onProtection = { page = SettingsPage.Protection },
                 installedApps = installedApps,
+                pinControl = pinControl,
             )
         }
 

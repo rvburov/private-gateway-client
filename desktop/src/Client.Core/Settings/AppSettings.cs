@@ -89,6 +89,12 @@ public sealed record AppSettings(
     /// <summary>После выхода еще не подтверждено восстановление сети: новый вход не разрешает подключение до повтора очистки.</summary>
     public bool AccountNetworkResetPending { get; init; }
 
+    /// <summary>
+    /// PIN-код снятия блока сайтов (решение 742); null — не задан. Относится к этому устройству: в резервную копию не идет и
+    /// восстановлением копии не меняется.
+    /// </summary>
+    public BlockPin? BlockPin { get; init; }
+
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch
     {

@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -145,7 +146,7 @@ public sealed class BackupPageTests : WindowHarness
         var file = Service<BackupService>().Create(new BackupParts(Servers: true, Settings: false, Keys: true), Password);
         store.RemoveSubscription(null);
         store.Add(Parse("trojan://pw-now@198.51.100.2:443#Сейчас"), null);
-        page.Apply(BackupService.Read(file, Password));
+        await page.ApplyAsync(BackupService.Read(file, Password));
         store.Servers.ShouldHaveSingleItem().Name.ShouldBe("Из копии");
 
         var undo = page.RestoreAutoCopyCommand.ExecuteAsync(null);
@@ -166,8 +167,35 @@ public sealed class BackupPageTests : WindowHarness
         shell.Toast.Text.ShouldBe("Восстановлено: 1 сервер, настройки");
     }
 
+    /// <summary>Решение 742: настройки из копии могут снять блок сайтов — с PIN-кодом сначала код.</summary>
     [AvaloniaFact]
-    public void Restored_language_switches_the_window_and_skipped_servers_are_named()
+    public async Task Restoring_settings_asks_the_block_pin_first()
+    {
+        var (_, shell, page) = OpenBackup();
+        Service<SettingsService>().Update(s => s with { Language = "en" });
+        var file = Service<BackupService>().Create(new BackupParts(Servers: true, Settings: true, Keys: false), Password);
+        Service<SettingsService>().Update(s => s with { Language = "ru", BlockPin = BlockPin.Create("1234") });
+
+        var restore = page.ApplyAsync(BackupService.Read(file, Password));
+        Dispatcher.UIThread.RunJobs();
+        var prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        prompt.Title.ShouldBe("Восстановить копию?");
+        prompt.KeepCommand.Execute(null);
+        await restore;
+        Service<SettingsService>().Current.Language.ShouldBe("ru", "без кода копия не восстанавливается");
+
+        restore = page.ApplyAsync(BackupService.Read(file, Password));
+        Dispatcher.UIThread.RunJobs();
+        prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        prompt.Pin = "1234";
+        prompt.ConfirmCommand.Execute(null);
+        await restore;
+        Service<SettingsService>().Current.Language.ShouldBe("en");
+        Service<SettingsService>().Current.BlockPin.ShouldNotBeNull("PIN-код — этого устройства, копия его не снимает");
+    }
+
+    [AvaloniaFact]
+    public async Task Restored_language_switches_the_window_and_skipped_servers_are_named()
     {
         var (_, shell, page) = OpenBackup();
         Service<IServerStore>().Add(Parse("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-b@198.51.100.2:443#B"), null);
@@ -176,7 +204,7 @@ public sealed class BackupPageTests : WindowHarness
         Service<IServerStore>().RemoveSubscription(null);
         Service<SettingsService>().Update(s => s with { Language = "ru" });
 
-        page.Apply(BackupService.Read(file, Password));
+        await page.ApplyAsync(BackupService.Read(file, Password));
 
         Loc.Instance.Language.ShouldBe("en");
         shell.Toast.Text.ShouldBe("Restored: 0 servers, settings · 2 servers without keys skipped");

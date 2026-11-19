@@ -52,6 +52,7 @@ import com.privategateway.client.ui.servers.ServersViewModel
 import com.privategateway.client.ui.servers.importDone
 import com.privategateway.client.ui.settings.BackupPage
 import com.privategateway.client.ui.settings.BackupViewModel
+import com.privategateway.client.ui.settings.BlockPinControl
 import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.settings.SettingsViewModel
@@ -410,6 +411,15 @@ fun AppScreen(
                         val page by settings.requestedPage.collectAsStateWithLifecycle()
                         val system by settings.systemVpn.collectAsStateWithLifecycle()
                         val updates by settings.updates.collectAsStateWithLifecycle()
+                        val blockPin by settings.blockPin.collectAsStateWithLifecycle()
+                        // PIN-код блока сайтов (решение 742): «Маршрутизация» и восстановление копии.
+                        val pinControl = BlockPinControl(
+                            blockPin,
+                            settings::setBlockPin,
+                            settings::checkPin,
+                            reset = account?.let { model -> { email, password, code -> model.confirm(email, password, code) } },
+                            email = signedInState.info?.email.orEmpty(),
+                        )
                         SettingsScreen(
                             core,
                             viewModel::loadCoreVersion,
@@ -431,12 +441,13 @@ fun AppScreen(
                             onAboutShown = settings::aboutShown,
                             backup = { back ->
                                 if (backups != null) {
-                                    BackupPage(backups, back)
+                                    BackupPage(backups, back, pinControl)
                                 }
                             },
                             // Без модели входа (тесты экранов) карточки «Аккаунт» нет.
                             account = if (account != null) signedInState.info else null,
                             onSignOut = { account?.logout() },
+                            pinControl = pinControl,
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(

@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.BlockPinResetView"
+             x:DataType="vm:BlockPinResetViewModel">
+  <!-- «Сбросить PIN-код» (решение 742, макет v2): вход аккаунтом Private Gateway, у администратора — код 2FA. -->
+  <DockPanel AutomationProperties.Name="{l:L block.pin.reset.title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock Classes="status" Text="{l:L block.pin.reset.title}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />
+      <Button x:Name="ResetPin" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding ResetCommand}" Content="{l:L block.pin.reset.button}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="12">
+      <TextBlock Classes="small" Text="{l:L block.pin.reset.text}" TextWrapping="Wrap" />
+      <StackPanel Spacing="6" IsVisible="{Binding !IsCodeStep}">
+        <TextBlock Classes="field" Text="{l:L account.email}" />
+        <TextBox x:Name="ResetEmail" Classes="input" Text="{Binding Email}" MaxLength="{x:Static vm:LoginPageViewModel.EmailMaxLength}"
+                 TextInputOptions.ContentType="Email" AutomationProperties.Name="{l:L account.email}" />
+      </StackPanel>
+      <StackPanel Spacing="6" IsVisible="{Binding !IsCodeStep}">
+        <TextBlock Classes="field" Text="{l:L account.password}" />
+        <TextBox x:Name="ResetPassword" Classes="input" Text="{Binding Password}" PasswordChar="*"
+                 MaxLength="{x:Static vm:LoginPageViewModel.PasswordMaxLength}" TextInputOptions.ContentType="Password"
+                 AutomationProperties.Name="{l:L account.password}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding ResetCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+      </StackPanel>
+      <StackPanel x:Name="ResetCodeStep" Spacing="6" IsVisible="{Binding IsCodeStep}">
+        <TextBlock Classes="field" Text="{l:L account.code}" />
+        <TextBox x:Name="ResetCode" Classes="input" Text="{Binding Code}" MaxLength="{x:Static vm:LoginPageViewModel.RecoveryMaxLength}"
+                 AutomationProperties.Name="{l:L account.code}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding ResetCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <TextBlock Classes="caption" Text="{l:L account.code.hint}" TextWrapping="Wrap" />
+      </StackPanel>
+      <TextBlock x:Name="ResetError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                 Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
+    </StackPanel>
+  </DockPanel>
+</UserControl>

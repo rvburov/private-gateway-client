@@ -26,6 +26,12 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.R
+import com.privategateway.client.core.account.AccountDevice
+import com.privategateway.client.core.account.AccountSession
+import com.privategateway.client.core.account.AccountUser
+import com.privategateway.client.core.account.LoginResult
+import com.privategateway.client.core.settings.BlockPin
+import com.privategateway.client.core.settings.BlockPinAttempts
 import com.privategateway.client.core.settings.BypassApp
 import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.CoreLogLevel
@@ -38,6 +44,7 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.ui.settings.Behavior
+import com.privategateway.client.ui.settings.BlockPinControl
 import com.privategateway.client.ui.settings.CoreScreen
 import com.privategateway.client.ui.settings.RoutingScreen
 import com.privategateway.client.ui.settings.SettingsScreen
@@ -50,6 +57,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -347,6 +355,123 @@ class AdvancedSettingsTest {
         }
 
         assertTrue(withoutGeosite(text(R.string.routing_rule_hint)).contains("203.0.113.0/24"))
+    }
+
+    /**
+     * Решение 742: PIN-код спрашивается перед тем, что ослабляет блок, — убрать «Блокировать», открыть остальные, разрешить сайт
+     * при блоке остальных; неверный код не снимает блок, пять неверных — пауза; добавить блок можно без кода.
+     */
+    @Test
+    fun `pin guards everything that weakens the block`() {
+        val casino = SiteRule("casino.example", RuleAction.Block)
+        var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(rules = listOf(casino), blockOthers = true)))
+        var pin by mutableStateOf<BlockPin?>(BlockPin.create("1234"))
+        val attempts = BlockPinAttempts()
+        compose.setContent {
+            WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }, BlockPinControl(pin, { pin = it }, { attempts.check(it, pin) })) }
+        }
+
+        compose.onNodeWithTag("block.pin.state").performScrollTo().assertTextEquals(text(R.string.block_pin_on))
+        compose.onNodeWithTag("routing.rule.casino.example").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.delete").performClick()
+        compose.onNodeWithText(text(R.string.block_guard_rule_title, "casino.example")).assertIsDisplayed()
+        compose.onNodeWithTag("block.pin.forgot").assertDoesNotExist()
+        compose.onNodeWithTag("block.pin.keep").performClick()
+        assertEquals(listOf(casino), tunnel.routing.rules, "«Оставить блок»")
+
+        compose.onNodeWithTag("routing.rule.casino.example").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.delete").performClick()
+        compose.onNodeWithTag("block.pin.field").performTextInput("0000")
+        compose.onNodeWithTag("block.pin.confirm").performClick()
+        compose.onNodeWithTag("block.pin.error", useUnmergedTree = true).assertTextEquals(text(R.string.block_pin_wrong))
+        assertEquals(listOf(casino), tunnel.routing.rules)
+        compose.onNodeWithTag("block.pin.field").performTextInput("1234")
+        compose.onNodeWithTag("block.pin.confirm").performClick()
+        assertEquals(emptyList(), tunnel.routing.rules, "верный код снимает блок")
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("ads.example")
+        compose.onNodeWithTag("routing.rule.action.Block").performClick()
+        compose.onNodeWithTag("routing.rule.save").performClick()
+        assertEquals(listOf(SiteRule("ads.example", RuleAction.Block)), tunnel.routing.rules, "блок — без кода")
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("example.org")
+        compose.onNodeWithTag("routing.rule.save").performClick()
+        compose.onNodeWithText(text(R.string.block_guard_allow_title, "example.org")).assertIsDisplayed()
+        compose.onNodeWithTag("block.pin.keep").performClick()
+        assertEquals(1, tunnel.routing.rules.size, "разрешение при блоке остальных — только с кодом")
+
+        compose.onNodeWithTag("routing.others.Open").performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.block_guard_others_title)).assertIsDisplayed()
+        repeat(BlockPinAttempts.ATTEMPTS) {
+            compose.onNodeWithTag("block.pin.field").performTextInput("9999")
+            compose.onNodeWithTag("block.pin.confirm").performClick()
+        }
+        compose.onNodeWithTag("block.pin.error", useUnmergedTree = true).assertTextEquals(text(R.string.block_pin_paused))
+        compose.onNodeWithTag("block.pin.field").performTextInput("1234")
+        compose.onNodeWithTag("block.pin.confirm").performClick()
+        assertTrue(tunnel.routing.blockOthers, "в паузе и верный код не принимается")
+    }
+
+    /** Решение 742: задать и сменить PIN-код (сначала текущий); «Забыли PIN-код?» — вход тем же аккаунтом, код снимается. */
+    @Test
+    fun `pin is set changed and reset through the account`() {
+        var pin by mutableStateOf<BlockPin?>(null)
+        val attempts = BlockPinAttempts()
+        val calls = mutableListOf<String?>()
+        val session = AccountSession("token", Instant.parse("2026-12-01T00:00:00Z"), AccountUser("anna@example.com", "Анна"), AccountDevice(1, "Телефон"))
+        compose.setContent {
+            WithToast {
+                RoutingScreen(
+                    TunnelSettings(),
+                    {},
+                    {},
+                    {},
+                    { emptyList() },
+                    BlockPinControl(
+                        pin,
+                        { pin = it },
+                        { attempts.check(it, pin) },
+                        reset = { _, _, code ->
+                            calls += code
+                            if (code == null) LoginResult.CodeRequired else LoginResult.Ok(session)
+                        },
+                        email = "anna@example.com",
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag("block.pin.state").performScrollTo().assertTextEquals(text(R.string.block_pin_off))
+        compose.onNodeWithTag("block.pin.change").performClick()
+        compose.onNodeWithTag("block.setup.remove").assertDoesNotExist()
+        compose.onNodeWithTag("block.setup.pin").performTextInput("12")
+        compose.onNodeWithTag("block.setup.save").performClick()
+        compose.onNodeWithTag("block.setup.error", useUnmergedTree = true).assertTextEquals(text(R.string.block_pin_invalid))
+        compose.onNodeWithTag("block.setup.pin").performTextInput("3456")
+        compose.onNodeWithTag("block.setup.repeat").performTextInput("123457")
+        compose.onNodeWithTag("block.setup.save").performClick()
+        compose.onNodeWithTag("block.setup.error", useUnmergedTree = true).assertTextEquals(text(R.string.block_pin_mismatch))
+        compose.onNodeWithTag("block.setup.repeat").performTextClearance()
+        compose.onNodeWithTag("block.setup.repeat").performTextInput("123456")
+        compose.onNodeWithTag("block.setup.save").performClick()
+        assertTrue(pin?.matches("123456") == true)
+        compose.onNodeWithTag("block.pin.state").assertTextEquals(text(R.string.block_pin_on))
+
+        compose.onNodeWithTag("block.pin.change").performClick()
+        compose.onNodeWithText(text(R.string.block_pin_change_title)).assertIsDisplayed()
+        compose.onNodeWithTag("block.pin.forgot").performClick()
+        compose.onNodeWithTag("block.reset.password").performTextInput("pw")
+        compose.onNodeWithTag("block.reset.submit").performClick()
+        compose.waitUntil { calls.size == 1 }
+        compose.onNodeWithTag("block.reset.code").assertIsDisplayed()
+        assertTrue(pin != null, "до входа код на месте")
+        compose.onNodeWithTag("block.reset.code").performTextInput("123456")
+        compose.onNodeWithTag("block.reset.submit").performClick()
+        compose.waitUntil { pin == null }
+        assertEquals(listOf(null, "123456"), calls)
+        compose.onNodeWithTag("block.setup.notice", useUnmergedTree = true).assertTextEquals(text(R.string.block_pin_reset_done))
     }
 
     /** Решение 741: «Все адреса YouTube» — у домена из списка сервисов, у нового правила отмечено; правило — «geosite:youtube». */

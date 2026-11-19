@@ -62,10 +62,14 @@ public sealed class SettingsStorageTests : IDisposable
             CheckUpdates = false,
             OnboardingDone = true,
             LabExpert = true,
+            BlockPin = BlockPin.Create("4321"),
         };
         Store().Save(changed);
 
         Store().Load().ShouldBe(changed);
+        Store().Load().BlockPin!.Matches("4321").ShouldBeTrue();
+        Store().Save(changed with { BlockPin = null });
+        Store().Load().BlockPin.ShouldBeNull("убранный код не остается в базе");
     }
 
     [Theory]

@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.BlockPinSetupView"
+             x:DataType="vm:BlockPinSetupViewModel">
+  <!-- «PIN-код для снятия блока» (решение 742, макет v2): что закрывает код, два поля, «Задать PIN-код» и «Отмена». -->
+  <DockPanel AutomationProperties.Name="{l:L block.pin.setup.title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock Classes="status" Text="{l:L block.pin.setup.title}" VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8">
+      <Button x:Name="RemovePin" Classes="secondary danger" Height="44" HorizontalAlignment="Stretch" Command="{Binding RemoveCommand}"
+              Content="{l:L block.pin.remove}" IsVisible="{Binding CanRemove}" />
+      <Grid ColumnDefinitions="*,8,*">
+        <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />
+        <Button x:Name="SavePin" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+                Command="{Binding SaveCommand}" Content="{l:L block.pin.save}" />
+      </Grid>
+    </StackPanel>
+
+    <StackPanel Margin="0,16,0,16" Spacing="12">
+      <TextBlock x:Name="PinNotice" Classes="small" Text="{Binding Notice}" IsVisible="{Binding HasNotice}" TextWrapping="Wrap"
+                 Foreground="{StaticResource PgBrush.Status.Success.Badge}" />
+      <TextBlock Classes="small" Text="{l:L block.pin.setup.text}" TextWrapping="Wrap" />
+      <StackPanel Spacing="6">
+        <TextBlock Classes="field" Text="{l:L block.pin.field}" />
+        <TextBox x:Name="NewPin" Classes="input" Text="{Binding Pin}" PasswordChar="•" MaxLength="8" FontFamily="{StaticResource PgFont.Mono}"
+                 TextInputOptions.ContentType="Digits" AutomationProperties.Name="{l:L block.pin.field}" />
+      </StackPanel>
+      <StackPanel Spacing="6">
+        <TextBlock Classes="field" Text="{l:L block.pin.repeat}" />
+        <TextBox x:Name="RepeatPin" Classes="input" Text="{Binding Repeat}" PasswordChar="•" MaxLength="8" FontFamily="{StaticResource PgFont.Mono}"
+                 TextInputOptions.ContentType="Digits" AutomationProperties.Name="{l:L block.pin.repeat}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+      </StackPanel>
+      <TextBlock x:Name="SetupError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                 Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
+    </StackPanel>
+  </DockPanel>
+</UserControl>

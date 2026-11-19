@@ -349,11 +349,160 @@ public sealed class RoutingPageTests : WindowHarness
         shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().IsProxy.ShouldBeTrue("новое правило — разрешение");
         shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().CancelCommand.Execute(null);
 
-        Find<RadioButton>(window, "OthersOpen").IsChecked = true;
+        Find<RadioButton>(window, "OthersOpen").Command!.Execute(null);
         Dispatcher.UIThread.RunJobs();
         Service<SettingsService>().Current.Routing.BlockOthers.ShouldBeFalse();
         shell.Overlay.Dialog.ShouldBeNull("обратно на «Открывать» — без вопроса");
         Find<StackPanel>(window, "AllowedSection").IsVisible.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Решение 742: PIN-код спрашивается перед тем, что ослабляет блок, — убрать правило «Блокировать», открыть остальные
+    /// сайты, разрешить сайт при блоке остальных; добавить блок можно без кода. Неверный код не снимает блок.
+    /// </summary>
+    [AvaloniaFact]
+    public void Pin_is_asked_before_the_block_gets_weaker()
+    {
+        var casino = new DomainRule("casino.example", RuleAction.Block);
+        var (window, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [casino], BlockOthers = true });
+        Text(window, "PinState").ShouldBe("Не задан: блок снимается без кода");
+        Service<SettingsService>().Update(s => s with { BlockPin = BlockPin.Create("1234") });
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "PinState").ShouldBe("Задан: без него блок не снять");
+
+        page.Rules.Single(r => r.Pattern == casino.Pattern).EditCommand.Execute(null);
+        shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().DeleteCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        prompt.Title.ShouldBe("Снять блок с casino.example?");
+        Find<Button>(window, "PinForgot").IsVisible.ShouldBeFalse("без аккаунта (демо) сбросить нечем");
+        prompt.KeepCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe([casino], "«Оставить блок»");
+
+        page.Rules.Single(r => r.Pattern == casino.Pattern).EditCommand.Execute(null);
+        shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().DeleteCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        prompt.Pin = "0000";
+        prompt.ConfirmCommand.Execute(null);
+        prompt.Error.ShouldBe("Неверный PIN-код");
+        Dispatcher.UIThread.RunJobs();
+        Snapshot(window, "block-pin-prompt");
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe([casino]);
+        prompt.Pin = "1234";
+        prompt.ConfirmCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.Rules.ShouldBeEmpty("верный код снимает блок");
+        shell.Overlay.HasSheet.ShouldBeFalse();
+
+        // Блок без кода, разрешение при блоке остальных — с кодом.
+        page.AddRuleCommand.Execute(null);
+        var add = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        add.Pattern = "ads.example";
+        add.IsBlock = true;
+        add.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe([new DomainRule("ads.example", RuleAction.Block)]);
+        page.AddRuleCommand.Execute(null);
+        add = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        add.Pattern = "example.org";
+        add.IsProxy = true;
+        add.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>().Title.ShouldBe("Разрешить example.org?");
+        shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>().KeepCommand.Execute(null);
+        Service<SettingsService>().Current.Routing.Rules.Count.ShouldBe(1);
+
+        Find<RadioButton>(window, "OthersOpen").Command!.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var others = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        others.Title.ShouldBe("Открыть остальные сайты?");
+        others.Pin = "1234";
+        others.ConfirmCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.BlockOthers.ShouldBeFalse();
+    }
+
+    /// <summary>Решение 742: пять неверных кодов — минута без попыток, и верный код в паузе не принимается.</summary>
+    [AvaloniaFact]
+    public void Five_wrong_pins_pause_the_attempts()
+    {
+        var casino = new DomainRule("casino.example", RuleAction.Block);
+        var (_, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [casino] });
+        Service<SettingsService>().Update(s => s with { BlockPin = BlockPin.Create("1234") });
+
+        page.Rules.Single().EditCommand.Execute(null);
+        shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().DeleteCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        for (var i = 1; i < BlockPinGate.Attempts; i++)
+        {
+            prompt.Pin = "9999";
+            prompt.ConfirmCommand.Execute(null);
+            prompt.Error.ShouldBe("Неверный PIN-код");
+        }
+
+        prompt.Pin = "9999";
+        prompt.ConfirmCommand.Execute(null);
+        prompt.Error.ShouldBe("Слишком много попыток — подождите минуту");
+        prompt.Pin = "1234";
+        prompt.ConfirmCommand.Execute(null);
+        prompt.Error.ShouldBe("Слишком много попыток — подождите минуту");
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe([casino]);
+    }
+
+    /// <summary>Решение 742: задать, сменить (сначала текущий код) и убрать PIN-код; сброс — входом в аккаунт.</summary>
+    [AvaloniaFact]
+    public void Pin_is_set_changed_and_reset_through_the_account()
+    {
+        var (window, shell, page) = OpenRouting(account: true);
+
+        page.ChangePinCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var setup = shell.Overlay.Sheet.ShouldBeOfType<BlockPinSetupViewModel>();
+        Find<Button>(window, "RemovePin").IsVisible.ShouldBeFalse("убирать еще нечего");
+        setup.Pin = "12";
+        setup.SaveCommand.Execute(null);
+        setup.Error.ShouldBe("Нужно от 4 до 8 цифр");
+        setup.Pin = "123456";
+        setup.Repeat = "123457";
+        setup.SaveCommand.Execute(null);
+        setup.Error.ShouldBe("Коды не совпадают");
+        Dispatcher.UIThread.RunJobs();
+        Snapshot(window, "block-pin-setup");
+        setup.Repeat = "123456";
+        setup.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.BlockPin.ShouldNotBeNull().Matches("123456").ShouldBeTrue();
+        Service<SettingsService>().Current.BlockPin!.Hash.ShouldNotContain("123456");
+        Find<Button>(window, "ChangePin").Content.ShouldBe("Изменить");
+
+        page.ChangePinCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+        prompt.Title.ShouldBe("Изменить PIN-код?");
+        Find<Button>(window, "PinForgot").IsVisible.ShouldBeTrue("сброс — входом в аккаунт");
+        prompt.ForgotCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var reset = shell.Overlay.Sheet.ShouldBeOfType<BlockPinResetViewModel>();
+        reset.Email.ShouldBe(FakeAccountApi.Email, "почта аккаунта программы");
+        reset.Password = "pw";
+        reset.Email = "other@example.com";
+        reset.ResetCommand.Execute(null);
+        reset.Error.ShouldNotBeNull("другой аккаунт код не сбрасывает");
+        AccountApi.Logins.ShouldBeEmpty();
+        reset.Email = FakeAccountApi.Email;
+        AccountApi.RequiresCode = true;
+        reset.ResetCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        reset.IsCodeStep.ShouldBeTrue("администратору — код 2FA");
+        Service<SettingsService>().Current.BlockPin.ShouldNotBeNull();
+        reset.Code = "123456";
+        reset.ResetCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.BlockPin.ShouldBeNull("вошли — код снят, блоки остались");
+        shell.Overlay.Sheet.ShouldBeOfType<BlockPinSetupViewModel>().Notice.ShouldBe("PIN-код сброшен. Блоки на месте — задайте новый код.");
     }
 
     [AvaloniaFact]
@@ -370,9 +519,9 @@ public sealed class RoutingPageTests : WindowHarness
         shell.CurrentKey.ShouldBe(Pages.Protection);
     }
 
-    private (MainWindow Window, ShellViewModel Shell, RoutingPageViewModel Page) OpenRouting(RoutingSettings? routing = null)
+    private (MainWindow Window, ShellViewModel Shell, RoutingPageViewModel Page) OpenRouting(RoutingSettings? routing = null, bool account = false)
     {
-        var (window, shell) = Open();
+        var (window, shell) = Open(account: account, signedIn: account);
         if (routing is not null)
         {
             Service<SettingsService>().Update(s => s with { Routing = routing });

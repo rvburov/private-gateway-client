@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.privategateway.client.core.settings.BlockPin
 import com.privategateway.client.core.settings.BypassApp
 import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.CoreLogLevel
@@ -104,6 +105,25 @@ class SettingsRepositoryTest {
         // Значение из будущей версии — по умолчанию, а не авария.
         store.edit { it[stringPreferencesKey("tunnel_dns")] = "SomethingNew" }
         assertEquals(DnsChoice.Profile, settings.tunnel.first().dns)
+    }
+
+    /** Решение 742: PIN-код хранится солью и хешем и в копию не идет; «Остальные сайты: Блокировать» в копию идет. */
+    @Test
+    fun `block pin stays on the phone while block others goes to the backup`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("pin.preferences_pb") })
+        assertNull(settings.blockPin.first())
+        val pin = BlockPin.create("1234")
+        settings.setBlockPin(pin)
+        assertEquals(pin, settings.blockPin.first())
+        settings.setTunnel(TunnelSettings(routing = RoutingSettings(blockOthers = true)))
+        val exported = settings.export()
+        assertFalse(exported.keys.any { it.startsWith("block") }, "PIN-код в копию не идет")
+        assertFalse(exported.values.any { it.contains(pin.hash) })
+        assertEquals("true", exported["routing_block_others"])
+        settings.import(mapOf("routing_block_others" to "false"))
+        assertFalse(settings.tunnel.first().routing.blockOthers)
+        settings.setBlockPin(null)
+        assertNull(settings.blockPin.first())
     }
 
     @Test

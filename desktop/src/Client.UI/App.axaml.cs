@@ -134,6 +134,7 @@ public partial class App : Avalonia.Application
             .AddClientInfrastructure(paths, demo);
         services.AddSingleton<ToastViewModel>();
         services.AddSingleton<OverlayViewModel>();
+        services.AddSingleton<BlockPinGate>();
         services.AddSingleton<AccountNetworkRecoveryViewModel>();
         services.AddSingleton<ProtectionViewModel>();
         services.AddSingleton<CheckFocus>();
