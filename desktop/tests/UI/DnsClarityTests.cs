@@ -127,7 +127,7 @@ public sealed class DnsClarityTests : WindowHarness
     }
 
     [AvaloniaTheory]
-    [InlineData("dns_no_answer", CheckState.Warning, "Не подтверждено")]
+    [InlineData("dns_no_answer", CheckState.Warning, "Частично")]
     [InlineData("dns_unavailable", CheckState.Warning, "Не измерено")]
     [InlineData("timeout", CheckState.Warning, "Нет результата")]
     [InlineData(null, CheckState.Ok, "Снимок службы")]
