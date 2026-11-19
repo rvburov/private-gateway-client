@@ -33,7 +33,7 @@ final class CheckTests: XCTestCase {
             texts.diagExitIpTitle, texts.diagOtherVpnTitle,
         ])
         XCTAssertEqual(rows.map(\.detail), [
-            texts.diagStateOkText, texts.diagCoreOk("Xray-core 26.3.27"), texts.diagAllTrafficOk, texts.diagKillSwitchOk("includeAllNetworks"),
+            texts.diagStateOkText, texts.diagCoreOk("Xray-core 26.3.27"), texts.diagAllTrafficOk, texts.diagKillSwitchOk,
             texts.diagDnsOk, texts.diagIpv6Ok, "203.0.113.24 · Amsterdam", texts.diagOtherVpnOk,
         ])
         XCTAssertEqual(rows.map(\.chip), [
@@ -41,8 +41,8 @@ final class CheckTests: XCTestCase {
             texts.diagExitIpOkChip, texts.diagOtherVpnOkChip,
         ])
         XCTAssertEqual(rows.map(\.look), Array(repeating: ChipLook.ok, count: 8), "цвета — как у плиток главной")
-        XCTAssertEqual(rows[1].detail, "Xray-core 26.3.27 запущен, конфигурация применена")
-        XCTAssertEqual(rows[3].detail, "Правила брандмауэра активны: includeAllNetworks", "слово ОС макета для iOS")
+        XCTAssertEqual(rows[1].detail, "Xray-core 26.3.27 работает")
+        XCTAssertEqual(rows[3].detail, "Включен", "пояснение — одна строка (решение владельца 2026-11-19)")
     }
 
     @MainActor

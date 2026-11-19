@@ -39,14 +39,20 @@ public sealed class CheckPageTests : WindowHarness
         Finish(page);
 
         Text(window, "RunText").ShouldBe("Проверить");
-        Row(page, DiagnosticCheck.Service).ShouldBe(("Служба", "Имитация: службы нет, подключения ненастоящие", "Демо"));
-        Row(page, DiagnosticCheck.Core).ShouldBe(("Сетевое ядро", "Xray-core запущен, конфигурация применена", "OK"));
-        Row(page, DiagnosticCheck.AllTraffic).ShouldBe(("Весь трафик", "TUN-адаптер активен, маршрут по умолчанию → туннель", "OK"));
-        Row(page, DiagnosticCheck.KillSwitch).Detail.ShouldStartWith("Правила брандмауэра активны: ");
-        Row(page, DiagnosticCheck.Dns).ShouldBe(("DNS", "Служба передала состояние DNS-политики без уточнения сетевой пробы. Это не подтверждение проверки всех DNS-путей браузера.", "Снимок службы"));
+        Row(page, DiagnosticCheck.Service).ShouldBe(("Служба", "Имитация: службы нет", "Демо"));
+        Row(page, DiagnosticCheck.Core).ShouldBe(("Сетевое ядро", "Xray-core работает", "OK"));
+        Row(page, DiagnosticCheck.AllTraffic).ShouldBe(("Весь трафик", "Идет через туннель", "OK"));
+        Row(page, DiagnosticCheck.KillSwitch).Detail.ShouldBe("Включен");
+        Row(page, DiagnosticCheck.Dns).ShouldBe(("DNS", "Защита DNS включена, браузер не проверен", "Снимок службы"));
         Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Заблокирован вне туннеля", "Закрыт"));
         Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "203.0.113.24 · Амстердам · дата-центр", "Скрыт"));
         Row(page, DiagnosticCheck.OtherVpn).ShouldBe(("Другие VPN и прокси", "Не найдены", "Нет"));
+        // На экране — короткое, в отчете — прежнее подробное пояснение.
+        var report = page.BuildReport();
+        report.ShouldContain("[OK] Сетевое ядро — Xray-core запущен, конфигурация применена");
+        report.ShouldContain("[OK] Весь трафик — TUN-адаптер активен, маршрут по умолчанию → туннель");
+        report.ShouldContain("[OK] Блок при обрыве — Правила брандмауэра активны: ");
+        report.ShouldContain("DNS-политики без уточнения сетевой пробы");
         page.Journal.Select(j => j.Message).ShouldContain("tunnel up  server «Нидерланды 01»");
         page.Journal[0].Message.ShouldStartWith("checks done", Case.Sensitive, "новые записи сверху");
         Snapshot(window, "check");
@@ -87,7 +93,7 @@ public sealed class CheckPageTests : WindowHarness
         var page = OpenCheck(shell);
         Finish(page);
 
-        Row(page, DiagnosticCheck.AllTraffic).ShouldBe(("Весь трафик", "Остановлен блоком при обрыве — утечки нет", "Стоп"));
+        Row(page, DiagnosticCheck.AllTraffic).ShouldBe(("Весь трафик", "Остановлен блоком, утечки нет", "Стоп"));
         Row(page, DiagnosticCheck.Core).ShouldBe(("Сетевое ядро", "Запущено, но сервер не отвечает", "Нет ответа"));
         Row(page, DiagnosticCheck.ExitIp).Chip.ShouldBe("Скрыт");
         page.Journal.Select(j => j.Level).ShouldContain("WRN");
@@ -260,7 +266,7 @@ public sealed class CheckPageTests : WindowHarness
         WaitFor(() => !page.IsRunning);
 
         Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов",
-            "203.0.113.24 — только для программ, которые идут через прокси; остальные — напрямую, с вашим IP", "Через прокси"));
+            "203.0.113.24 — только для программ с прокси", "Через прокси"));
     }
 
     [AvaloniaFact]
@@ -285,7 +291,7 @@ public sealed class CheckPageTests : WindowHarness
         service.Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Warning, "same_ip")];
         page.RunCommand.Execute(null);
         WaitFor(() => !page.IsRunning);
-        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Сайты видят ваш реальный IP — трафик идет мимо туннеля", "Виден"));
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Сайты видят ваш реальный IP", "Виден"));
         Snapshot(window, "check-leak");
 
         service.Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Warning, "no_answer")];
@@ -297,11 +303,11 @@ public sealed class CheckPageTests : WindowHarness
         service.Checks = [new DiagnosticResult(DiagnosticCheck.Ipv6, CheckState.Warning, "leak")];
         page.RunCommand.Execute(null);
         WaitFor(() => !page.IsRunning);
-        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Сайты видят ваш адрес IPv6: замер показал, что IPv6 идет мимо туннеля", "Виден"));
+        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Замер: сайты видят ваш IPv6", "Виден"));
 
         Loc.Instance.SetLanguage("en");
         Dispatcher.UIThread.RunJobs();
-        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Sites see your IPv6 address: the measurement shows IPv6 going around the tunnel", "Visible"));
+        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Measured: sites see your IPv6", "Visible"));
     }
 
     [AvaloniaFact]
@@ -421,9 +427,13 @@ public sealed class CheckPageTests : WindowHarness
 
         var initial = Row(page, DiagnosticCheck.VirtualMachines);
         (initial.Title, initial.Chip).ShouldBe(("Защита WSL2 и Hyper-V", "Недоступно"));
-        initial.Detail.ShouldStartWith("Брандмауэр Hyper-V недоступен. При потере туннеля трафик ВМ может пойти напрямую.");
-        initial.Detail.ShouldContain("Windows Sandbox");
-        page.BuildReport().ShouldContain("Защита WSL2 и Hyper-V");
+        initial.Detail.ShouldBe("Без защиты при обрыве", "на экране — одна строка (решение владельца 2026-11-19)");
+        // Подробное пояснение и то, чего проверка не доказывает, — в отчете.
+        var report = page.BuildReport();
+        report.ShouldContain("Защита WSL2 и Hyper-V");
+        report.ShouldContain("Брандмауэр Hyper-V недоступен. При потере туннеля трафик ВМ может пойти напрямую. Наличие правил");
+        report.ShouldContain("Windows Sandbox");
+        report.ShouldNotContain("Без защиты при обрыве");
 
         service!.Checks = [new DiagnosticResult(DiagnosticCheck.VirtualMachines, CheckState.Warning, "rules_applied")];
         await page.RunCommand.ExecuteAsync(null);
@@ -432,7 +442,8 @@ public sealed class CheckPageTests : WindowHarness
         var row = page.Rows.Single(r => r.Check == DiagnosticCheck.VirtualMachines);
         row.State.ShouldBe(CheckState.Warning);
         row.ChipText.ShouldBe("Не проверено");
-        row.Detail.ShouldContain("Проверка трафика ВМ не выполнена");
+        row.Detail.ShouldBe("Правила Hyper-V включены");
+        row.ReportDetail.ShouldContain("Проверка трафика ВМ не выполнена");
     }
 
     private static CheckPageViewModel OpenCheck(ShellViewModel shell)

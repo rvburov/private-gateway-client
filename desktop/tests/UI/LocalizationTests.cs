@@ -35,6 +35,22 @@ public partial class LocalizationTests
     private static partial Regex Placeholder();
 
     [Fact]
+    public void Check_explanations_fit_one_line_and_keep_the_full_text_for_the_report()
+    {
+        // «Проверка», вариант 1 (решение владельца 2026-11-19): пояснение строки — одна строка простыми словами, а прежнее
+        // подробное — в «ключ.full»: его берут отчет и «Защита и утечки».
+        var shortened = Ru.Keys.Where(k => k.EndsWith(".full", StringComparison.Ordinal)).Select(k => k[..^".full".Length]).ToList();
+        shortened.Count.ShouldBeGreaterThan(40);
+        foreach (var key in shortened)
+        {
+            Ru.ShouldContainKey(key);
+            Ru[key].Length.ShouldBeLessThanOrEqualTo(40, key);
+            En[key].Length.ShouldBeLessThanOrEqualTo(40, key);
+            Ru[key].Length.ShouldBeLessThan(Ru[key + ".full"].Length, key);
+        }
+    }
+
+    [Fact]
     public void Russian_texts_have_no_yo_letter()
     {
         Ru.Where(p => p.Value.Contains('ё', StringComparison.Ordinal) || p.Value.Contains('Ё', StringComparison.Ordinal))

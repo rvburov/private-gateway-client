@@ -35,10 +35,11 @@ public sealed class CheckPageResponsivenessTests : WindowHarness
         failed.DisplayState.ShouldBe(CheckState.Waiting);
         failed.ChipText.ShouldBe("Нет результата");
         failed.Icon.ShouldBe("Icon.Chip.Dash");
-        failed.Detail.ShouldContain(reason == "probe_failed" ? "эту проверку" : "изменились");
+        failed.Detail.ShouldBe(reason == "probe_failed" ? "Проверка не удалась — повторите" : "Сеть изменилась — повторите");
+        failed.ReportDetail.ShouldContain(reason == "probe_failed" ? "эту проверку" : "изменились");
         page.Rows.Single(row => row.Check == DiagnosticCheck.Service).State.ShouldBe(CheckState.Ok);
         page.Rows.Single(row => row.Check == DiagnosticCheck.Core).State.ShouldBe(CheckState.Ok);
-        page.BuildReport().ShouldContain(failed.Detail);
+        page.BuildReport().ShouldContain(failed.ReportDetail);
         shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
         page.Dispose();
     }
@@ -70,7 +71,8 @@ public sealed class CheckPageResponsivenessTests : WindowHarness
 
         page.Rows.ShouldAllBe(row => row.IsInconclusive && row.DisplayState == CheckState.Waiting
             && row.Icon == "Icon.Chip.Dash" && row.ChipText == "Нет результата"
-            && row.Detail == "Проверка не получила ответ службы. Состояние защиты этим запросом не подтверждено.");
+            && row.Detail == "Служба не ответила — повторите"
+            && row.ReportDetail == "Проверка не получила ответ службы. Состояние защиты этим запросом не подтверждено.");
         shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
         page.Dispose();
     }
@@ -187,10 +189,11 @@ public sealed class CheckPageResponsivenessTests : WindowHarness
         page.Rows.Count.ShouldBe(Enum.GetValues<DiagnosticCheck>().Length);
         page.Rows.ShouldAllBe(r => r.State == CheckState.Warning && r.Reason == "timeout");
         page.Rows.Where(r => r.Check != DiagnosticCheck.Dns).ShouldAllBe(r => r.ChipText == "Нет ответа"
-            && r.Detail == "Проверка не завершилась вовремя — повторите ее");
+            && r.Detail == "Не успела — повторите проверку" && r.ReportDetail == "Проверка не завершилась вовремя — повторите ее");
         var dns = page.Rows.Single(r => r.Check == DiagnosticCheck.Dns);
         dns.ChipText.ShouldBe("Нет результата");
-        dns.Detail.ShouldBe("Проверка DNS не завершилась вовремя. Это неизвестный результат, а не подтверждение отсутствия обхода. DoH/DoT браузера этой пробой не измеряются.");
+        dns.Detail.ShouldBe("Проверка DNS не успела");
+        dns.ReportDetail.ShouldBe("Проверка DNS не завершилась вовремя. Это неизвестный результат, а не подтверждение отсутствия обхода. DoH/DoT браузера этой пробой не измеряются.");
         dns.IsInconclusive.ShouldBeTrue();
         dns.DisplayState.ShouldBe(CheckState.Waiting);
         dns.Icon.ShouldBe("Icon.Chip.Dash");

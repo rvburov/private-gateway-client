@@ -67,8 +67,6 @@ struct CheckInput: Equatable {
 /// IP для сайтов, другие VPN и прокси. Пояснение — diag.<id>.<причина>, иначе diag.<id>.<итог>, иначе diag.state.<итог>.text;
 /// чип — то же с «.chip». Пока идет проверка — все строки «Проверяется» и «…».
 enum CheckRows {
-    /// Чем iOS держит блок при обрыве — слово ОС макета (data-os-word="engine").
-    static let engine = "includeAllNetworks"
     static let coreName = "Xray-core"
     /// Реальный IP вместо адреса, когда он не измерен.
     static let hidden = "***"
@@ -181,7 +179,7 @@ enum CheckRows {
             let why = reason == "no_reply" ? texts.statusBlockedSub : input.error
             return [texts.diagCoreStopped, why].compactMap { $0 }.joined(separator: " · ")
         case (.killSwitch, .ok):
-            return texts.diagKillSwitchOk(engine)
+            return texts.diagKillSwitchOk
         case (.exitIp, .ok):
             let place = input.ip.info?.city
             return [input.ip.address, place].compactMap { $0 }.joined(separator: " · ")

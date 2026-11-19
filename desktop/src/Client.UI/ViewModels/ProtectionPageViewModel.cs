@@ -92,7 +92,9 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         {
             var reason = _gateway.Status.VirtualMachines?.Reason ?? "not_checked";
             var key = "diag.virtual_machines." + reason;
-            return Loc.Instance[Loc.Instance.Has(key) ? key : "diag.virtual_machines.not_checked"];
+            key = Loc.Instance.Has(key) ? key : "diag.virtual_machines.not_checked";
+            // Здесь, под переключателем, — подробное пояснение: на «Проверке» оно короткое (решение владельца 2026-11-19).
+            return Loc.Instance[Loc.Instance.Has(key + ".full") ? key + ".full" : key];
         }
     }
 

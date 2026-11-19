@@ -341,6 +341,11 @@ public sealed class AboutPageTests : WindowHarness
         licenses.Components.ShouldContain(c => c.Name == "SQLite" && c.Label == "Public domain", "непонятный людям SPDX — подписью");
         Dispatcher.UIThread.RunJobs();
         Snapshot(window, "about-licenses");
+        // Список длиннее листа и прокручивается, но полосы прокрутки нет: она закрывала правую колонку с лицензиями.
+        var scroll = Find<ScrollViewer>(window, "SheetScroll");
+        scroll.VerticalScrollBarVisibility.ShouldBe(ScrollBarVisibility.Hidden);
+        scroll.Extent.Height.ShouldBeGreaterThan(scroll.Viewport.Height);
+        scroll.GetVisualDescendants().OfType<ScrollBar>().ShouldAllBe(bar => !bar.IsVisible);
         licenses.CloseCommand.Execute(null);
 
         Press(window, "PrivacyLink");

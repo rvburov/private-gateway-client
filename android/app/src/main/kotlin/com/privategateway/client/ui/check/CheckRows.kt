@@ -79,8 +79,6 @@ object CheckRows {
         return rows.map { it.copy(detail = listOf(CheckText.of(R.string.diag_checking)), chip = CheckText.of(R.string.diag_state_waiting_chip), look = ChipLook.Waiting) }
     }
 
-    /** Слово ОС в «Правила брандмауэра активны: {0}» — блок держит сам Android (app.js макета, слово engine). */
-    private val lockdownWord = CheckText.of(R.string.android_settings_vpn_lockdown)
 
     private enum class Phase {
         /** Туннель работает: «Защищено» и «Утечка IP». */
@@ -175,7 +173,7 @@ object CheckRows {
         return when (phase(ui.view)) {
             Phase.Stopped -> row("kill_switch", title, ChipLook.Ok, R.string.diag_state_ok_chip, CheckText.of(R.string.diag_kill_switch_stopped))
             Phase.Up, Phase.Connecting, Phase.Holding -> when (ui.status.lockdown) {
-                true -> row("kill_switch", title, ChipLook.Ok, R.string.diag_state_ok_chip, CheckText.of(R.string.diag_kill_switch_ok, lockdownWord))
+                true -> row("kill_switch", title, ChipLook.Ok, R.string.diag_state_ok_chip, CheckText.of(R.string.diag_kill_switch_ok))
                 false -> row("kill_switch", title, ChipLook.Off, R.string.diag_state_off_chip, CheckText.of(R.string.diag_kill_switch_off))
                 null -> row("kill_switch", title, ChipLook.Warning, R.string.diag_state_warning_chip, CheckText.of(R.string.android_settings_vpn_never))
             }

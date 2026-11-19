@@ -61,7 +61,7 @@ public static class DnsReport
             }
             else
             {
-                yield return "  " + loc.Format("diag.report.dns.probe", row.ChipText, row.Detail);
+                yield return "  " + loc.Format("diag.report.dns.probe", row.ChipText, row.ReportDetail);
             }
         }
         else

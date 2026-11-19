@@ -95,7 +95,7 @@ class CheckScreenTest {
         assertRow(
             "kill_switch",
             R.string.diag_kill_switch_title,
-            text(R.string.diag_kill_switch_ok, text(R.string.android_settings_vpn_lockdown)),
+            text(R.string.diag_kill_switch_ok),
             text(R.string.diag_state_ok_chip),
         )
         assertRow("dns", R.string.diag_dns_title, text(R.string.diag_dns_ok), text(R.string.diag_dns_ok_chip))

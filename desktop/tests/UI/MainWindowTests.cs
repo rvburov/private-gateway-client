@@ -482,7 +482,7 @@ public sealed class MainWindowTests : WindowHarness
         var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
         WaitFor(() => !check.IsRunning);
         var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
-        (row.Detail, row.ChipText).ShouldBe(("Программы и сайты из раздельного режима идут мимо туннеля", "Частично"));
+        (row.Detail, row.ChipText).ShouldBe(("Исключения идут мимо туннеля", "Частично"));
     }
 
     [AvaloniaFact]
@@ -518,7 +518,7 @@ public sealed class MainWindowTests : WindowHarness
         var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
         WaitFor(() => !check.IsRunning);
         var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
-        (row.Detail, row.ChipText).ShouldBe(("Проверка обнаружила ваш реальный IP вне туннеля", "IP открыт"));
+        (row.Detail, row.ChipText).ShouldBe(("Ваш IP виден вне туннеля", "IP открыт"));
     }
 
     [AvaloniaTheory]
@@ -579,15 +579,15 @@ public sealed class MainWindowTests : WindowHarness
         var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
         WaitFor(() => !check.IsRunning);
         var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
-        (row.Detail, row.ChipText).ShouldBe(("Правила защиты не подтверждены: трафик может идти напрямую", "Нет гарантии"));
+        (row.Detail, row.ChipText).ShouldBe(("Правила защиты не подтверждены", "Нет гарантии"));
     }
 
     [AvaloniaTheory]
     [InlineData(true, CheckState.Ok, "IPv6 в туннеле", "через сервер", "Сервер открывает IPv6: сайты по IPv6 идут через туннель, как и по IPv4.",
-        "Идет через туннель: сервер открывает IPv6", "В туннеле")]
+        "Идет через туннель", "В туннеле")]
     [InlineData(false, CheckState.Warning, "IPv6 открыт", "мимо туннеля",
         "Сервер без IPv6, и IPv6 идет напрямую, мимо туннеля: сайты видят ваш адрес IPv6. Закроет его «Блокировать IPv6 вне туннеля» или блок при обрыве.",
-        "Идет мимо туннеля: сайты видят ваш адрес IPv6", "Открыт")]
+        "Сайты видят ваш IPv6", "Открыт")]
     [InlineData(false, CheckState.Ok, "IPv6 закрыт", "нет обхода",
         "IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля.", "Заблокирован вне туннеля", "Закрыт")]
     public async Task Ipv6_chip_tells_tunneled_open_and_closed_apart(
@@ -621,13 +621,13 @@ public sealed class MainWindowTests : WindowHarness
 
     [AvaloniaTheory]
     [InlineData(false, "lan_dns",
-        "Запросы к DNS роутера могут идти мимо туннеля: локальная сеть разрешена", "Видны роутеру")]
+        "Роутер может видеть запросы DNS", "Видны роутеру")]
     [InlineData(true, "own_dns",
-        "Запросы идут к своему DNS в локальной сети, мимо туннеля", "Свой DNS")]
+        "Запросы идут к вашему DNS в сети", "Свой DNS")]
     [InlineData(null, "ipv6_dns",
-        "Запросы по IPv6 могут идти к DNS провайдера мимо туннеля", "Видны провайдеру")]
+        "Провайдер может видеть запросы IPv6", "Видны провайдеру")]
     [InlineData(false, "dns_open",
-        "Получен прямой ответ DNS через внешний интерфейс в обход туннеля: IPv4 UDP/53. Проверка выявила открытый контрольный путь; DoH/DoT браузера и список внешних DNS-узлов не проверялись.", "Прямой ответ", true)]
+        "Запрос DNS прошел мимо туннеля", "Прямой ответ", true)]
     public async Task Dns_policy_does_not_infer_a_service_reason_from_fresh_settings(
         bool? ownDns, string reason, string detail, string chipText, bool closedBySettings = false)
     {

@@ -596,8 +596,8 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         // Реальный IP пользователя в отчет не попадает, даже если он сейчас виден сайтам.
         string WithoutRealIp(CheckRowViewModel row) =>
             row.Check == DiagnosticCheck.ExitIp && Protection.Status.Exit.DirectIp is { } ip
-                ? row.Detail.Replace(ip, Hidden, StringComparison.Ordinal)
-                : row.Detail;
+                ? row.ReportDetail.Replace(ip, Hidden, StringComparison.Ordinal)
+                : row.ReportDetail;
     }
 
     /// <summary>
@@ -653,10 +653,11 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
             return new CheckRowViewModel(
                 check,
                 Loc.Instance[$"diag.{Id(check)}.title"],
-                result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, ViaProxy(check, result.State) ? "proxy" : result.Reason),
+                result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, reason, full: false),
                 result is null ? Loc.Instance["diag.state.waiting.chip"] : Chip(check, state, reason),
                 state,
-                reason);
+                reason,
+                result is null ? null : Detail(check, result.State, reason, full: true));
         }).ToList();
 
         Rows.Clear();
@@ -725,27 +726,30 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     private bool ViaProxy(DiagnosticCheck check, CheckState state) =>
         check == DiagnosticCheck.ExitIp && state == CheckState.Ok && Protection.Status.Mode == ConnectionMode.Proxy;
 
-    /// <summary>Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее.</summary>
-    private string Detail(DiagnosticCheck check, CheckState state, string? reason)
+    /// <summary>
+    /// Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее. На экране — короткое, в одну строку (вариант 1,
+    /// решение владельца 2026-11-19); <paramref name="full"/> — прежнее подробное («ключ.full») для отчета.
+    /// </summary>
+    private string Detail(DiagnosticCheck check, CheckState state, string? reason, bool full)
     {
         if (reason == "service_no_reply" || check == DiagnosticCheck.Service && reason == "no_reply")
         {
-            return Loc.Instance["diag.result.no_reply"];
+            return Text("diag.result.no_reply", full);
         }
 
         if (reason is "unsupported" or "access_denied" or "check_failed" or "incomplete" or "probe_failed" or "session_changed")
         {
-            return Loc.Instance["diag.result." + reason];
+            return Text("diag.result." + reason, full);
         }
 
         if (check == DiagnosticCheck.Dns)
         {
-            return First($"desktop.diag.dns.{reason}", $"diag.dns.{reason}", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}");
+            return Text(FirstKey($"desktop.diag.dns.{reason}", $"diag.dns.{reason}", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}"), full);
         }
 
         if (reason == "timeout")
         {
-            return Loc.Instance["diag.timeout"];
+            return Text("diag.timeout", full);
         }
 
         var id = Id(check);
@@ -754,24 +758,32 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         switch (check)
         {
             case DiagnosticCheck.ExitIp when reason == "proxy":
-                return Loc.Instance.Format("diag.exit_ip.proxy", status.Exit.Ip ?? Hidden);
+                return Loc.Instance.Format(Key("diag.exit_ip.proxy", full), status.Exit.Ip ?? Hidden);
             case DiagnosticCheck.ExitIp when state == CheckState.Ok && status.Exit.Ip is not null:
                 return string.Join(" · ", new[] { status.Exit.Ip, status.Exit.City, status.Exit.NetworkType }
                     .Where(s => !string.IsNullOrEmpty(s)));
             case DiagnosticCheck.ExitIp when state == CheckState.Off:
-                return Loc.Instance.Format("diag.exit_ip.off", status.Exit.DirectIp ?? Hidden);
+                return Loc.Instance.Format(Key("diag.exit_ip.off", full), status.Exit.DirectIp ?? Hidden);
             case DiagnosticCheck.Core when state == CheckState.Ok:
                 var server = _target.InUse(status);
-                return Loc.Instance.Format("diag.core.ok", ServerFacts.CoreName(server?.Protocol ?? ProxyProtocol.Vless));
+                return Loc.Instance.Format(Key("diag.core.ok", full), ServerFacts.CoreName(server?.Protocol ?? ProxyProtocol.Vless));
             case DiagnosticCheck.KillSwitch when state == CheckState.Ok:
-                return Loc.Instance.Format("diag.kill_switch.ok", FirewallName);
+                return Loc.Instance.Format(Key("diag.kill_switch.ok", full), FirewallName);
             case DiagnosticCheck.VirtualMachines:
-                return First($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", "diag.virtual_machines.not_checked")
-                    + " " + Loc.Instance["diag.virtual_machines.scope"];
+                // Чего проверка не доказывает (коммутаторы Hyper-V, Sandbox, WinNAT) — только в подробном пояснении.
+                var machines = Text(FirstKey($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", "diag.virtual_machines.not_checked"), full);
+                return full ? machines + " " + Loc.Instance["diag.virtual_machines.scope"] : machines;
         }
 
-        return First($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", $"diag.state.{stateKey}.text");
+        return Text(FirstKey($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", $"diag.state.{stateKey}.text"), full);
     }
+
+    /// <summary>Ключ подробного пояснения («ключ.full»), если он есть и нужен; иначе сам ключ.</summary>
+    private static string Key(string key, bool full) => full && Loc.Instance.Has(key + ".full") ? key + ".full" : key;
+
+    private static string Text(string key, bool full) => Loc.Instance[Key(key, full)];
+
+    private static string FirstKey(params string[] keys) => keys.FirstOrDefault(Loc.Instance.Has) ?? keys[^1];
 
     private static string Chip(DiagnosticCheck check, CheckState state, string? reason)
     {
@@ -815,9 +827,16 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         OperatingSystem.IsWindows() ? "Windows Filtering Platform" : OperatingSystem.IsMacOS() ? "pf" : "nftables";
 }
 
-/// <summary>Строка проверки: кружок и чип по состоянию, заголовок, пояснение.</summary>
-public sealed record CheckRowViewModel(DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State, string? Reason = null)
+/// <summary>
+/// Строка проверки: кружок и чип по состоянию, заголовок, короткое пояснение; <paramref name="FullDetail"/> — подробное для
+/// отчета (нет — то же короткое).
+/// </summary>
+public sealed record CheckRowViewModel(
+    DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State, string? Reason = null, string? FullDetail = null)
 {
+    /// <summary>Пояснение для отчета: подробное, если есть.</summary>
+    public string ReportDetail => FullDetail ?? Detail;
+
     /// <summary>Неизвестный замер не является ни успешным доказательством, ни подтвержденной утечкой.</summary>
     public bool IsInconclusive => Reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete" or "probe_failed" or "session_changed"
         || Check == DiagnosticCheck.Service && Reason == "no_reply"

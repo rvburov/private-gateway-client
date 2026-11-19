@@ -19,7 +19,9 @@
       </Button>
     </Grid>
 
-    <ScrollViewer Margin="0,12,0,0">
+    <!-- Полосы прокрутки нет, как на страницах (ScrollViewer.page): постоянная полоса Windows ложилась на правую колонку и
+         резала лицензии («CC-BY-4.0»). Колесо, тачпад и перетаскивание прокручивают как прежде. -->
+    <ScrollViewer x:Name="SheetScroll" Margin="0,12,0,0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden">
       <StackPanel Spacing="12" Margin="0,0,0,16">
         <TextBlock x:Name="SheetText" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="20" />
         <ItemsControl x:Name="ComponentList" ItemsSource="{Binding Components}" IsVisible="{Binding HasComponents}">
