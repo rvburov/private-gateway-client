@@ -45,6 +45,9 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 
 ## Тема, тексты и иконки
 
+Оформление только светлое (макет): `UIUserInterfaceStyle = Light` в Info.plist приложения (решение 737) — темный режим
+iPhone не меняет цвет подписей без явного цвета и системных элементов. Сверяет `ScreensTests`.
+
 Как у Android (build-logic), код темы не хранится в git, а пишется при каждой сборке модуля `PrivateGatewayTheme`: плагин
 SwiftPM `SharedResources` запускает `SharedGen`, тот читает `design-tokens.json`, `localization/ru.json` и `en.json` и
 `desktop/src/Client.UI/Themes/Icons.axaml` и пишет `Tokens.swift`, `Texts.swift` и `Icons.swift` в папку сборки. Правка

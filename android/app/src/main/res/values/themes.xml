@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Окно до первого кадра Compose: фон из токенов (color.bg.window), без белой вспышки. Остальное рисует Compose. -->
     <style name="Theme.PrivateGateway" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/pg_window_background</item>
+        <!-- Только светлая тема (макет): темный режим телефона (Android 10+, MIUI «Темный режим для приложений») не
+             перекрашивает приложение — иначе темный текст становился белым на светлых карточках (решение 737). -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 </resources>

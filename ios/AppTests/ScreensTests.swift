@@ -255,6 +255,11 @@ final class ScreensTests: XCTestCase {
         }
     }
 
+    /// Решение 737: только светлое оформление — темный режим iPhone не перекрашивает подписи без явного цвета.
+    func testAppStaysLightInDarkMode() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "UIUserInterfaceStyle") as? String, "Light")
+    }
+
     /// Пакет приложения несет список компонентов, тексты всех их лицензий и коммит libXray (ios/project.yml).
     @MainActor
     func testAppCarriesTheLicensesAndVersions() throws {

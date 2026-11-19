@@ -63,6 +63,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [en, ru]
+        # Только светлое оформление, как в макете: темный режим iPhone не меняет цвет подписей без явного цвета (решение 737).
+        UIUserInterfaceStyle: Light
         UILaunchScreen: {}
         # Пользователь может явно добавить HTTP-подписку (с предупреждением в импорте). Это исключение только для
         # URLSession приложения; доверие сертификатам HTTPS остается системным, challenge TLS не переопределяется.

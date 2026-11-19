@@ -99,6 +99,10 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // Тема уже запрещает перекраску; оболочки вроде MIUI смотрят и на само окно (решение 737).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.decorView.isForceDarkAllowed = false
+        }
         requestedAutomaticConnection = savedInstanceState?.getBoolean("vpn.request.automatic") ?: false
         val actions = AppActions(
             power = ::power,

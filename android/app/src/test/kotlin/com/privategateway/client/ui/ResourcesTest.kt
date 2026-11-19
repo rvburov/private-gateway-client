@@ -43,6 +43,18 @@ class ResourcesTest {
         }
     }
 
+    /** Решение 737: темный режим телефона (Android 10+, MIUI) не перекрашивает светлое приложение — иначе белый текст. */
+    @Test
+    fun `phone dark mode does not repaint the light theme`() {
+        val theme = context.resources.newTheme().apply { applyStyle(R.style.Theme_PrivateGateway, true) }
+        val values = theme.obtainStyledAttributes(intArrayOf(android.R.attr.forceDarkAllowed))
+        try {
+            assertEquals(false, values.getBoolean(0, true), "forceDarkAllowed в теме приложения")
+        } finally {
+            values.recycle()
+        }
+    }
+
     @Test
     fun `placeholders are filled by android formatting`() {
         assertEquals("порт 443", resources("ru").getString(R.string.server_port, "443"))
