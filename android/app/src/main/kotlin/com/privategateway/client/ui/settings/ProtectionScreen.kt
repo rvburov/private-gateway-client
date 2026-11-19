@@ -188,18 +188,19 @@ private enum class AddressChoice(val ipv6: Boolean, val label: Int) {
 /**
  * «Блок при обрыве» на Android: Kill Switch — «Блокировать подключения без VPN», на месте «Защиты при загрузке» десктопа —
  * «Постоянная VPN» (поднимает защиту после перезагрузки, решение 537). Значения — как сообщил Android, откуда они известны, —
- * строкой под ними; нажатие на строку и кнопка открывают настройки VPN телефона. Строгого режима отдельно нет: блок без VPN
+ * строкой под ними; нажатие на строку — лист «Как включить» (решение 738), кнопка открывает настройки VPN телефона. Строгого режима отдельно нет: блок без VPN
  * Android держит и после ручного отключения.
  */
 @Composable
 private fun KillSwitch(system: SystemVpnView, openVpnSettings: () -> Unit) {
+    var help by rememberSaveable { mutableStateOf(false) }
     SystemVpnRow(
         stringResource(R.string.prot_ks_title),
         stringResource(R.string.android_check_ks_text),
         system.flags.lockdown,
         "prot.ks.value",
         "prot.ks",
-        openVpnSettings,
+        { help = true },
         Rows,
     )
     SystemVpnRow(
@@ -208,10 +209,13 @@ private fun KillSwitch(system: SystemVpnView, openVpnSettings: () -> Unit) {
         system.flags.alwaysOn,
         "prot.alwaysOn.value",
         "prot.alwaysOn",
-        openVpnSettings,
+        { help = true },
         Rows,
         divider = true,
     )
+    if (help) {
+        KillSwitchHelpSheet(system, openVpnSettings) { help = false }
+    }
     Column(
         Modifier.fillMaxWidth().pgTopDivider(true).padding(Rows),
         verticalArrangement = Arrangement.spacedBy(PgSpace.M),

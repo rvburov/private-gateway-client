@@ -137,27 +137,33 @@ class SettingsScreensTest {
     }
 
     @Test
-    fun `kill switch row shows what android said and opens vpn settings`() {
+    fun `kill switch row is one line and its sheet says how to turn it on`() {
         var system by mutableStateOf(SystemVpnView(SystemVpn(), SystemVpnSource.Unknown))
         var opened = 0
         compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, { opened++ }, TunnelSettings(), {}, system = system) } }
         compose.onNodeWithText(text(R.string.settings_section_basic).uppercase()).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.settings_ks_title)).assertIsDisplayed()
-        // Значения — внутри нажимаемой строки: в общем дереве их текст слит в строку.
+        // Решение 738: в строке одна короткая подпись, откуда значение — в листе.
+        compose.onNodeWithText(text(R.string.android_settings_ks_text)).assertIsDisplayed()
+        compose.onNodeWithTag("settings.vpn.source", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("settings.vpn.lockdown", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_unknown))
-        compose.onNodeWithTag("settings.vpn.source", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_never))
 
         system = SystemVpnView(SystemVpn(alwaysOn = true, lockdown = false), SystemVpnSource.Now)
         compose.onNodeWithTag("settings.vpn.lockdown", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_off))
-        compose.onNodeWithTag("settings.vpn.source", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_now))
 
-        system = SystemVpnView(SystemVpn(alwaysOn = true, lockdown = true), SystemVpnSource.LastConnection)
-        compose.onNodeWithTag("settings.vpn.lockdown", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_on))
-        compose.onNodeWithTag("settings.vpn.source", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_last))
-
-        // Переключателя нет: строка ведет в настройки VPN Android.
+        // Нажатие — лист «Как включить»: три шага, что сообщил Android, и кнопка в настройки VPN.
         compose.onNodeWithTag("settings.ks").performScrollTo().performClick()
+        assertEquals(0, opened, "строка сама настройки не открывает — сначала объясняет")
+        compose.onNodeWithText(text(R.string.android_ks_help_title)).assertIsDisplayed()
+        compose.onNodeWithTag("ks.help.step1").assertIsDisplayed()
+        compose.onNodeWithTag("ks.help.step3").assertIsDisplayed()
+        compose.onNodeWithTag("ks.help.alwaysOn", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_on))
+        compose.onNodeWithTag("ks.help.lockdown", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_off))
+        compose.onNodeWithTag("ks.help.source").assertTextEquals(text(R.string.android_settings_vpn_now))
+        compose.onNodeWithTag("ks.help.open").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_open)).performClick()
         assertEquals(1, opened)
+        compose.onNodeWithTag("ks.help.close").performClick()
+        compose.onNodeWithTag("ks.help").assertDoesNotExist()
     }
 
     @Test
@@ -273,11 +279,17 @@ class SettingsScreensTest {
         compose.onNodeWithTag("prot.alwaysOn.value", useUnmergedTree = true).assertTextEquals(text(R.string.android_settings_vpn_off))
         compose.onNodeWithTag("prot.ks.source").assertTextEquals(text(R.string.android_settings_vpn_last))
 
-        // Строки и кнопка ведут в настройки VPN Android: включить блок может только пользователь.
+        // Строки открывают лист «Как включить» (решение 738), кнопки — настройки VPN Android: включить блок может только
+        // пользователь.
         compose.onNodeWithTag("prot.ks").performClick()
+        compose.onNodeWithTag("ks.help.step2").assertIsDisplayed()
+        compose.onNodeWithTag("ks.help.open").performScrollTo().performClick()
+        compose.onNodeWithTag("ks.help.close").performClick()
         compose.onNodeWithTag("prot.alwaysOn").performClick()
+        compose.onNodeWithTag("ks.help").assertIsDisplayed()
+        compose.onNodeWithTag("ks.help.close").performClick()
         compose.onNodeWithTag("prot.ks.open").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_open)).performClick()
-        assertEquals(3, opened)
+        assertEquals(2, opened)
 
         // Строк, которых телефон не умеет, нет — ни как работающих, ни как выключенных. «Вход в Wi-Fi» есть (решение 557).
         compose.onNodeWithText(text(R.string.prot_strict_title)).assertDoesNotExist()

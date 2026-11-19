@@ -7,12 +7,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
 import com.privategateway.client.core.vpn.SystemVpnSource
+import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgIcon
@@ -36,6 +41,7 @@ import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgRadius
 import com.privategateway.client.ui.theme.PgSetting
+import com.privategateway.client.ui.theme.PgSheet
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 
@@ -131,5 +137,56 @@ internal fun OpenVpnSettingsButton(onClick: () -> Unit, tag: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(stringResource(R.string.android_settings_vpn_open), color = PgColor.Accent.Text, style = PgType.BodyStrong)
+    }
+}
+
+/**
+ * «Как включить блок при обрыве» (доска 4, Android; решение 738): Android не дает приложению включить блок и не открывает
+ * страницу именно этого VPN — только общий список. Поэтому лист говорит, что нажать там, показывает, что Android сообщил
+ * сейчас, и ведет в его настройки. Теги: лист — «ks.help», шаги — «ks.help.step1…3», кнопка — «ks.help.open».
+ */
+@Composable
+internal fun KillSwitchHelpSheet(system: SystemVpnView, openVpnSettings: () -> Unit, onClose: () -> Unit) {
+    PgSheet(onClose, "ks.help") {
+        SheetHeader(stringResource(R.string.android_ks_help_title), onClose, "ks.help.close")
+        Spacer(Modifier.height(PgSpace.M))
+        Text(stringResource(R.string.android_ks_help_text), color = PgColor.Text.Secondary, style = PgType.Small.copy(lineHeight = PgType.Body.lineHeight))
+        Spacer(Modifier.height(PgSpace.Card))
+        Column(verticalArrangement = Arrangement.spacedBy(PgSpace.L)) {
+            listOf(R.string.android_ks_help_step1, R.string.android_ks_help_step2, R.string.android_ks_help_step3).forEachIndexed { index, step ->
+                HelpStep(index + 1, stringResource(step), "ks.help.step${index + 1}")
+            }
+        }
+        Spacer(Modifier.height(PgSpace.M))
+        Text(stringResource(R.string.android_ks_help_note), color = PgColor.Text.Muted, style = PgType.Caption)
+        Spacer(Modifier.height(PgSpace.Card))
+        Overline(stringResource(R.string.android_ks_help_now))
+        Spacer(Modifier.height(PgSpace.S))
+        HelpFlag(stringResource(R.string.android_settings_vpn_alwaysOn), system.flags.alwaysOn, "ks.help.alwaysOn")
+        HelpFlag(stringResource(R.string.android_settings_vpn_lockdown), system.flags.lockdown, "ks.help.lockdown")
+        Spacer(Modifier.height(PgSpace.Xs))
+        SystemVpnSourceText(system.source, "ks.help.source")
+        Spacer(Modifier.height(PgSpace.Card))
+        OpenVpnSettingsButton(openVpnSettings, "ks.help.open")
+    }
+}
+
+/** Шаг: номер в кружке accent.tint и текст. */
+@Composable
+private fun HelpStep(number: Int, text: String, tag: String) {
+    Row(Modifier.fillMaxWidth().testTag(tag), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(PgSpace.M)) {
+        Box(Modifier.size(24.dp).clip(RoundedCornerShape(12.dp)).background(PgColor.Accent.Tint), contentAlignment = Alignment.Center) {
+            Text(number.toString(), color = PgColor.Accent.Text, style = PgType.Caption.copy(fontWeight = PgType.BodyStrong.fontWeight))
+        }
+        Text(text, Modifier.weight(1f).padding(top = 2.dp), color = PgColor.Text.Primary, style = PgType.Body)
+    }
+}
+
+/** Флаг Android строкой: название и «вкл», «выкл» или «неизвестно». */
+@Composable
+private fun HelpFlag(title: String, value: Boolean?, tag: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = PgSpace.Xs), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f).padding(end = PgSpace.M), color = PgColor.Text.Primary, style = PgType.Small)
+        SystemVpnValue(value, tag)
     }
 }

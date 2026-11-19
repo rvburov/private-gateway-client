@@ -242,8 +242,9 @@ private fun MainSettings(
 }
 
 /**
- * «Основные»: блок при обрыве (что сообщил Android и откуда это известно; нажатие — настройки VPN), «Подключаться при
- * запуске», уведомления сегментами с подписью по выбору и язык. Переподключение — на странице «Подключение и ядро».
+ * «Основные»: блок при обрыве (одна строка и что сообщил Android; нажатие — лист «Как включить» с шагами и кнопкой в
+ * настройки VPN, решение 738), «Подключаться при запуске», уведомления сегментами с подписью по выбору и язык.
+ * Переподключение — на странице «Подключение и ядро».
  */
 @Composable
 private fun Basic(
@@ -253,16 +254,19 @@ private fun Basic(
     onBehavior: (Behavior) -> Unit,
     language: ((String) -> Unit)?,
 ) {
+    var help by rememberSaveable { mutableStateOf(false) }
     SystemVpnRow(
         stringResource(R.string.settings_ks_title),
-        stringResource(R.string.android_settings_vpn_text),
+        stringResource(R.string.android_settings_ks_text),
         system.flags.lockdown,
         "settings.vpn.lockdown",
         "settings.ks",
-        openVpnSettings,
+        { help = true },
         BasicRow,
-        extra = { SystemVpnSourceText(system.source, "settings.vpn.source") },
     )
+    if (help) {
+        KillSwitchHelpSheet(system, openVpnSettings) { help = false }
+    }
 
     PgSettingSwitch(
         stringResource(R.string.settings_connectOnLaunch_title),
