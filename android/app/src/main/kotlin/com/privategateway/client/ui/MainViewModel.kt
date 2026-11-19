@@ -470,15 +470,18 @@ class MainViewModel @Inject constructor(
 
     private fun currentPath(): IpPath? = path(monitor.status.value, monitor.blocked.value, HomeNetwork.identity(networks.networks.value))
 
-    /** Другая сеть — прежний реальный IP не тот; новый путь (или прямой путь в новой сети) — замер. */
-    private fun follow(path: IpPath?, network: List<String>?) {
+    /**
+     * Другая сеть — прежний реальный IP не тот; новый путь (или прямой путь в новой сети) — замер. Через туннель — только с
+     * «Проверять утечки после подключения» (решение 749): выключено — выход меряет «Проверить».
+     */
+    private suspend fun follow(path: IpPath?, network: List<String>?) {
         val moved = network != lastNetwork
         if (moved) {
             lastNetwork = network
             webIp.update { it.copy(direct = null) }
         }
 
-        if (path != null && (path != lastPath || moved && !path.viaTunnel)) {
+        if (path != null && (path != lastPath || moved && !path.viaTunnel) && (!path.viaTunnel || settings.tunnel.first().checkLeaks)) {
             measure(path, retry = path.viaTunnel)
         }
 

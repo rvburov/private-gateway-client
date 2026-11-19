@@ -107,6 +107,25 @@ class SettingsRepositoryTest {
         assertEquals(DnsChoice.Profile, settings.tunnel.first().dns)
     }
 
+    /** Решение 749: FakeDNS (выключен) и проверка утечек после подключения (включена) — как у десктопа, и в копии. */
+    @Test
+    fun `fake dns and leak check come back as saved and go to the backup`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("dns.preferences_pb") })
+        assertFalse(settings.tunnel.first().fakeDns)
+        assertTrue(settings.tunnel.first().checkLeaks)
+        settings.setTunnel(TunnelSettings(fakeDns = true, checkLeaks = false))
+        assertTrue(settings.tunnel.first().fakeDns)
+        assertFalse(settings.tunnel.first().checkLeaks)
+        assertTrue(settings.tunnel.first().core().fakeDns, "FakeDNS получает ядро")
+        assertTrue(TunnelSettings().needsReconnect(TunnelSettings(fakeDns = true)))
+        assertFalse(TunnelSettings().needsReconnect(TunnelSettings(checkLeaks = false)), "проверка — дело окна, не ядра")
+        val exported = settings.export()
+        assertEquals("true", exported["tunnel_fake_dns"])
+        assertEquals("false", exported["tunnel_check_leaks"])
+        settings.import(mapOf("tunnel_fake_dns" to "false", "tunnel_check_leaks" to "true"))
+        assertEquals(TunnelSettings(), settings.tunnel.first())
+    }
+
     /** Решение 742: PIN-код хранится солью и хешем и в копию не идет; «Остальные сайты: Блокировать» в копию идет. */
     @Test
     fun `block pin stays on the phone while block others goes to the backup`() = runBlocking<Unit> {

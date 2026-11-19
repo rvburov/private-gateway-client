@@ -27,7 +27,8 @@
 3. ~~Вход в аккаунт сайта — iOS (`account.*`, `dialog.signOut.*`, `settings.account.*`)~~ — сделано 2026-11-19 (решение 747);
    ~~PIN-код блока сайтов на iOS~~ — сделано 2026-11-19 (решение 748): «Блок сайтов → PIN-код», лист «Снять блок…» со сбросом
    входом, PIN-код перед восстановлением копии.
-4. «Защита и утечки»: FakeDNS (`prot.fakeDns`), «Проверять утечки после подключения» (`prot.leaks`) — Android и iOS.
+4. ~~«Защита и утечки»: FakeDNS (`prot.fakeDns`), «Проверять утечки после подключения» (`prot.leaks`)~~ — сделано
+   2026-11-19 на Android и iOS (решение 749).
 5. Первый запуск (`welcome.*`): из шести шагов десктопа у телефонов три.
 6. «Проверка»: подробный отчет (`diag.report.*`), «Почему сайт не открывается» (`problem.*`), сведения о сети (`network.*`).
 7. «Лаборатория» (`path`, `vpnpath`, `layers`, `compare`, `events`, `trouble`) — последней очередью.
@@ -739,12 +740,13 @@ mDNS/SSDP» (правило брандмауэра десктопа), «Стек
   Сейчас: Строки нет. В KDoc сказано, что телефону это не нужно
   Код: android/app/src/main/kotlin/com/privategateway/client/ui/settings/ProtectionScreen.kt:48-50; ios/App/Sources/Settings/ProtectionView.swift:49-79
   Сделать: Добавить строку (на телефоне можно сделать ее всегда включенной и недоступной) или записать решение и пометить строку в макете data-os="desktop"
-- **DNS → «FakeDNS»** — Android и iOS, нет (доска 05-protection).
+- ~~**DNS → «FakeDNS»** — Android и iOS, нет (доска 05-protection).~~ Сделано 2026-11-19 (решение 749).
   Макет: 05-protection.html:116-122: тумблер prot.fakeDns.title и prot.fakeDns.text (выкл)
   Сейчас: Строки и настройки нет. В KDoc Android сказано, что FakeDNS телефону не нужен
   Код: android/app/src/main/kotlin/com/privategateway/client/ui/settings/ProtectionScreen.kt:48-50; android/core/src/main/kotlin/com/privategateway/client/core/settings/TunnelSettings.kt:21-26; ios/App/Sources/Settings/ProtectionView.swift:49-79
   Сделать: Добавить тумблер и FakeDNS в конфиг Xray телефона или записать решение и пометить строку в макете
-- **DNS → «Проверять утечки после подключения»** — Android и iOS, нет (доска 05-protection).
+- ~~**DNS → «Проверять утечки после подключения»** — Android и iOS, нет (доска 05-protection).~~ Сделано 2026-11-19
+  (решение 749): переключатель решает, мерить ли выход сразу после подключения; итог — на главной, как раньше.
   Макет: 05-protection.html:123-129: тумблер prot.leaks.title и prot.leaks.text (вкл), результат показывается на главной
   Сейчас: Строки и настройки нет
   Код: android/core/src/main/kotlin/com/privategateway/client/core/settings/TunnelSettings.kt:21-26; ios/Core/Sources/PrivateGatewayCore/Settings/TunnelSettings.swift:16-30; ProtectionScreen.kt:67-95; ProtectionView.swift:49-79

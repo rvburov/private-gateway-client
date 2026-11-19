@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import kotlin.test.assertFalse
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -291,14 +292,27 @@ class SettingsScreensTest {
         compose.onNodeWithTag("prot.ks.open").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_open)).performClick()
         assertEquals(2, opened)
 
-        // Строк, которых телефон не умеет, нет — ни как работающих, ни как выключенных. «Вход в Wi-Fi» есть (решение 557).
+        // Строк, которых телефон не умеет, нет — ни как работающих, ни как выключенных. «Вход в Wi-Fi» есть (решение 557),
+        // FakeDNS и проверка утечек после подключения — тоже (решение 749).
         compose.onNodeWithText(text(R.string.prot_strict_title)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.prot_captive_title)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.prot_dnsBlock_title)).assertDoesNotExist()
-        compose.onNodeWithText(text(R.string.prot_fakeDns_title)).assertDoesNotExist()
-        compose.onNodeWithText(text(R.string.prot_leaks_title)).assertDoesNotExist()
+        compose.onNodeWithTag("fakeDns").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("checkLeaks").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.prot_lanDisc_title)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.prot_otherVpn_title)).assertDoesNotExist()
+    }
+
+    /** Решение 749: FakeDNS (выключен) и «Проверять утечки после подключения» (включено) меняют свои настройки. */
+    @Test
+    fun `fake dns and leak check switches change the tunnel settings`() {
+        var tunnel by mutableStateOf(TunnelSettings())
+        compose.setContent { PgTheme { ProtectionScreen(tunnel, { tunnel = it }, {}) } }
+        compose.onNodeWithTag("fakeDns").performScrollTo().assertIsOff().performClick()
+        assertTrue(tunnel.fakeDns)
+        compose.onNodeWithTag("checkLeaks").performScrollTo().assertIsOn().performClick()
+        assertFalse(tunnel.checkLeaks)
+        assertTrue(tunnel.fakeDns, "прежнее изменение осталось")
     }
 
     @Test

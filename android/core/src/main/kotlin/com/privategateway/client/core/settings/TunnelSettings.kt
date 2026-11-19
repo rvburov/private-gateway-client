@@ -18,13 +18,16 @@ enum class DnsChoice {
 /**
  * Настройки туннеля Android: DNS, IPv6 через сервер, локальная сеть («Защита и утечки»), подключение и ядро ([connection],
  * доска 6) и маршрутизация ([routing], доска 13). По умолчанию — как решено для защиты: локальная сеть закрыта, IPv6
- * закрывает сам Android (решение 397), DNS — DoH по адресу, весь трафик — через VPN.
+ * закрывает сам Android (решение 397), DNS — DoH по адресу, весь трафик — через VPN. [fakeDns] — FakeDNS ядра, как у
+ * десктопа (выключен); [checkLeaks] — проверять внешний IP сразу после подключения (включено, решение 749).
  */
 data class TunnelSettings(
     val dns: DnsChoice = DnsChoice.Profile,
     val customDns: String? = null,
     val ipv6: Boolean = false,
     val allowLan: Boolean = false,
+    val fakeDns: Boolean = false,
+    val checkLeaks: Boolean = true,
     val connection: ConnectionSettings = ConnectionSettings(),
     val routing: RoutingSettings = RoutingSettings(),
 ) {
@@ -57,6 +60,7 @@ data class TunnelSettings(
         fragment = connection.tlsFragment,
         rules = routing.coreRules,
         blockOthers = routing.blockOthers,
+        fakeDns = fakeDns,
     )
 
     /** Что получает VpnService.Builder: карта туннеля, программы мимо нее (раздельный режим) и строгие маршруты. */

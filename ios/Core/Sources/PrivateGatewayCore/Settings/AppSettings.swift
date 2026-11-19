@@ -78,6 +78,9 @@ extension AppSettings: Codable {
         case customDns = "tunnel_custom_dns"
         case ipv6 = "tunnel_ipv6"
         case allowLan = "tunnel_allow_lan"
+        /// FakeDNS и проверка утечек после подключения (решение 749).
+        case fakeDns = "tunnel_fake_dns"
+        case checkLeaks = "tunnel_check_leaks"
         case killSwitch = "kill_switch"
         case refresh = "subs_refresh"
         case onlyViaVpn = "subs_only_vpn"
@@ -143,7 +146,8 @@ extension AppSettings: Codable {
             selectedServerId: read(.selectedServer),
             tunnel: TunnelSettings(
                 dns: dns.flatMap(DnsChoice.init(rawValue:)) ?? defaults.tunnel.dns, customDns: read(.customDns),
-                ipv6: read(.ipv6) ?? defaults.tunnel.ipv6, allowLan: read(.allowLan) ?? defaults.tunnel.allowLan
+                ipv6: read(.ipv6) ?? defaults.tunnel.ipv6, allowLan: read(.allowLan) ?? defaults.tunnel.allowLan,
+                fakeDns: read(.fakeDns) ?? defaults.tunnel.fakeDns, checkLeaks: read(.checkLeaks) ?? defaults.tunnel.checkLeaks
             ),
             killSwitch: read(.killSwitch) ?? defaults.killSwitch,
             subscriptions: SubscriptionSettings(
@@ -164,6 +168,8 @@ extension AppSettings: Codable {
         try values.encodeIfPresent(tunnel.customDns, forKey: .customDns)
         try values.encode(tunnel.ipv6, forKey: .ipv6)
         try values.encode(tunnel.allowLan, forKey: .allowLan)
+        try values.encode(tunnel.fakeDns, forKey: .fakeDns)
+        try values.encode(tunnel.checkLeaks, forKey: .checkLeaks)
         try values.encode(killSwitch, forKey: .killSwitch)
         try values.encode(subscriptions.refresh.rawValue, forKey: .refresh)
         try values.encode(subscriptions.onlyViaVpn, forKey: .onlyViaVpn)

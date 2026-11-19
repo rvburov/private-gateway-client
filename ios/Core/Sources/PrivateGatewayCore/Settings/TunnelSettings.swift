@@ -20,12 +20,18 @@ public struct TunnelSettings: Equatable, Hashable, Sendable {
     public var customDns: String?
     public var ipv6: Bool
     public var allowLan: Bool
+    /// FakeDNS ядра, как у десктопа и Android (решение 749); выключен.
+    public var fakeDns: Bool
+    /// Проверять внешний IP сразу после подключения (решение 749); включено. Ядру не нужно — дело окна.
+    public var checkLeaks: Bool
 
-    public init(dns: DnsChoice = .profile, customDns: String? = nil, ipv6: Bool = false, allowLan: Bool = false) {
+    public init(dns: DnsChoice = .profile, customDns: String? = nil, ipv6: Bool = false, allowLan: Bool = false, fakeDns: Bool = false, checkLeaks: Bool = true) {
         self.dns = dns
         self.customDns = customDns
         self.ipv6 = ipv6
         self.allowLan = allowLan
+        self.fakeDns = fakeDns
+        self.checkLeaks = checkLeaks
     }
 
     /// Сервер DNS для ядра; свой адрес не годится — DNS по умолчанию (экран настроек такой адрес не сохраняет).
@@ -64,7 +70,7 @@ public struct TunnelSettings: Equatable, Hashable, Sendable {
         CoreSettings(
             dns: dnsServer, allowLan: allowLan, ipv6: ipv6, mux: connection.mux, fingerprint: connection.fingerprint.xray, sniffing: connection.sniffing,
             mtu: connection.tunMtu, logLevel: connection.coreLog, lanDns: lanDns, tlsFragment: connection.tlsFragment, siteRules: routing.activeRules,
-            blockOthers: routing.blockOthers
+            blockOthers: routing.blockOthers, fakeDns: fakeDns
         )
     }
 

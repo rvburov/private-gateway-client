@@ -49,11 +49,14 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
     public var siteRules: [SiteRule]
     /// «Остальные сайты: Блокировать» (решение 740): после правил — «Пропускается всегда», остальное из туннеля — блок.
     public var blockOthers: Bool
+    /// FakeDNS, как у десктопа (решение 749): DNS отвечает адресами пула `XrayConfig.fakeDnsPool`, ядро по ним знает имя сайта;
+    /// настоящий адрес нужен только имени самого сервера.
+    public var fakeDns: Bool
 
     public init(
         dns: String = XrayConfig.defaultDns, allowLan: Bool = false, ipv6: Bool = false, mux: Bool = false, fingerprint: String? = nil,
         sniffing: Bool = true, mtu: Int = ConnectionSettings.autoMtu, logLevel: CoreLogLevel = .warning, lanDns: String? = nil, tlsFragment: Bool = false,
-        siteRules: [SiteRule] = [], blockOthers: Bool = false
+        siteRules: [SiteRule] = [], blockOthers: Bool = false, fakeDns: Bool = false
     ) {
         self.dns = dns
         self.allowLan = allowLan
@@ -67,6 +70,7 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
         self.tlsFragment = tlsFragment
         self.siteRules = siteRules
         self.blockOthers = blockOthers
+        self.fakeDns = fakeDns
     }
 }
 
@@ -102,6 +106,9 @@ public enum XrayConfig {
     /// DNS по умолчанию: DoH через туннель.
     public static let defaultDns = "https://1.1.1.1/dns-query"
 
+    /// Пул адресов FakeDNS — как у десктопа и Android (198.18.0.0/15, адреса для испытаний сетей).
+    public static let fakeDnsPool = "198.18.0.0/15"
+
     /// Локальные и особые адреса — тот же список, что у десктопа (`LocalNetworks`) и Android.
     public static let localNetworks = [
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
@@ -126,13 +133,8 @@ public enum XrayConfig {
         let log: Json = .object([
             ("loglevel", .string(settings.logLevel.xray)), ("access", .string("none")), ("dnsLog", .bool(false)),
         ])
-        let dns: Json = .object([("servers", .array([.string(settings.dns)])), ("queryStrategy", .string(settings.ipv6 ? "UseIP" : "UseIPv4"))])
-        // Домен из TLS, HTTP и QUIC — только для правил: соединение идет туда, куда просили.
-        let sniffing: Json = .object([
-            ("enabled", .bool(settings.sniffing)),
-            ("destOverride", .array([.string("http"), .string("tls"), .string("quic")])),
-            ("routeOnly", .bool(true)),
-        ])
+        let dns: Json = .object([("servers", .array(dnsServers(server, settings))), ("queryStrategy", .string(settings.ipv6 ? "UseIP" : "UseIPv4"))])
+        let sniffing = sniffing(settings)
         let tun: Json = .object([
             ("tag", .string(tunTag)),
             ("protocol", .string("tun")),
@@ -142,7 +144,9 @@ public enum XrayConfig {
         let direct: Json = .object([
             ("tag", .string(directTag)),
             ("protocol", .string("freedom")),
-            ("settings", .object([("domainStrategy", .string(settings.ipv6 ? "AsIs" : "UseIPv4"))])),
+            // С FakeDNS у соединения имя, а не адрес: его разрешает DNS этого конфига (через сервер), а не DNS телефона; IPv4
+            // раньше, IPv6 — запасным, как «Сначала IPv4» десктопа.
+            ("settings", .object([("domainStrategy", .string(!settings.ipv6 ? "UseIPv4" : settings.fakeDns ? "UseIPv4v6" : "AsIs"))])),
         ])
         let block: Json = .object([("tag", .string(blockTag)), ("protocol", .string("blackhole"))])
         // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (dnsRules); без правил Xray 26 — пустой NOERROR.
@@ -163,21 +167,69 @@ public enum XrayConfig {
                 ("type", .string("field")), ("inboundTag", .array([.string(subscriptionTag)])), ("outboundTag", .string(proxyTag)),
             ]), at: 0)
         }
-        let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(routingRules))])
+        let routing: Json = .object([("domainStrategy", .string(routingStrategy(settings))), ("rules", .array(routingRules))])
         var outbounds = [proxy, direct, block, dnsOut]
         if settings.tlsFragment {
             outbounds.append(fragment)
         }
 
-        let config: Json = .object([
+        var fields: [(String, Json)] = [
             ("log", log),
             ("env", .object([("xray.tun.fd", .string(String(tunFd)))])),
             ("dns", dns),
             ("inbounds", .array(inbounds)),
             ("outbounds", .array(outbounds)),
             ("routing", routing),
+        ]
+        if settings.fakeDns {
+            fields.append(("fakedns", .array([.object([("ipPool", .string(fakeDnsPool)), ("poolSize", .int(65535))])])))
+        }
+
+        return XrayConfigResult(json: JsonText.write(.object(fields)), rejection: nil)
+    }
+
+    /// Распознавание в TUN: домен из HTTP, TLS и QUIC — только для правил, соединение идет туда, куда просили. С FakeDNS — еще
+    /// имя по адресу из пула, и с ним соединение идет уже к имени; без распознавания HTTP и TLS имя берется только из адреса.
+    /// Как у десктопа и Android.
+    private static func sniffing(_ settings: CoreSettings) -> Json {
+        guard settings.fakeDns else {
+            return .object([
+                ("enabled", .bool(settings.sniffing)),
+                ("destOverride", .array([.string("http"), .string("tls"), .string("quic")])),
+                ("routeOnly", .bool(true)),
+            ])
+        }
+
+        let kinds = settings.sniffing ? ["http", "tls", "quic", "fakedns"] : ["fakedns"]
+        return .object([
+            ("enabled", .bool(true)), ("destOverride", .array(kinds.map { .string($0) })), ("metadataOnly", .bool(!settings.sniffing)),
+            ("routeOnly", .bool(true)),
         ])
-        return XrayConfigResult(json: JsonText.write(config), rejection: nil)
+    }
+
+    /// Серверы DNS ядра. С FakeDNS — сначала настоящий DNS для имени самого сервера (иначе ядро дозванивалось бы до адреса
+    /// пула), затем FakeDNS, затем настоящий DNS для того, что FakeDNS не отвечает (AAAA: пул только IPv4).
+    private static func dnsServers(_ server: ServerDefinition, _ settings: CoreSettings) -> [Json] {
+        guard settings.fakeDns else {
+            return [.string(settings.dns)]
+        }
+
+        let host = String(server.host.drop { $0 == "[" }.reversed().drop { $0 == "]" }.reversed())
+        var servers: [Json] = []
+        if IpAddress.parse(host) == nil {
+            servers.append(.object([
+                ("address", .string(settings.dns)), ("domains", .array([.string("full:" + host)])), ("skipFallback", .bool(true)),
+            ]))
+        }
+
+        return servers + [.string("fakedns"), .string(settings.dns)]
+    }
+
+    /// Как сравнивать правила с адресом: с FakeDNS у соединения имя, и поиск адреса нужен только правилам-адресам и открытой
+    /// локальной сети. Без FakeDNS — как раньше.
+    private static func routingStrategy(_ settings: CoreSettings) -> String {
+        let needsAddress = settings.allowLan || settings.siteRules.contains { SitePattern.isAddress($0.pattern) }
+        return settings.fakeDns && !needsAddress ? "AsIs" : "IPIfNonMatch"
     }
 
     private static func rules(_ settings: CoreSettings) -> [Json] {
@@ -185,6 +237,14 @@ public enum XrayConfig {
             // DNS из туннеля — к любому адресу: отвечает выход DNS по настройкам этого конфига, через сервер.
             .object([("type", .string("field")), ("inboundTag", .array([.string(tunTag)])), ("port", .string("53")), ("outboundTag", .string(dnsTag))]),
         ]
+        if settings.fakeDns {
+            // Адрес из пула уже стал именем при распознавании. Оставшийся назначения не имеет: в блок и при открытой локальной
+            // сети, иначе прямой выход отправил бы его снова в туннель. Как у десктопа.
+            rules.append(.object([
+                ("type", .string("field")), ("inboundTag", .array([.string(tunTag)])), ("ip", .array([.string(fakeDnsPool)])),
+                ("outboundTag", .string(blockTag)),
+            ]))
+        }
 
         // Свой DNS в частной сети (Pi-hole): запросы самого Xray к нему — напрямую, и при закрытой локальной сети: через
         // сервер частный адрес не достать. Раньше блока локальной сети, иначе DNS ядра уходит в блок целиком.

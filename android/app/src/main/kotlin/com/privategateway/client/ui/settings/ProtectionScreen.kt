@@ -104,6 +104,26 @@ fun ProtectionScreen(
                 PgSetting(stringResource(R.string.prot_dns_title), stringResource(R.string.prot_dns_text), padding = Rows) {
                     DnsSelect(tunnel, { onChange(tunnel.copy(dns = it)) }) { editingDns = true }
                 }
+                // FakeDNS и проверка утечек после подключения — как у десктопа (решение 749); «Блокировать DNS провайдера»
+                // телефону не нужен: DNS телефона и так идет в туннель.
+                PgSettingSwitch(
+                    stringResource(R.string.prot_fakeDns_title),
+                    stringResource(R.string.prot_fakeDns_text),
+                    tunnel.fakeDns,
+                    "fakeDns",
+                    { onChange(tunnel.copy(fakeDns = it)) },
+                    divider = true,
+                    padding = Rows,
+                )
+                PgSettingSwitch(
+                    stringResource(R.string.prot_leaks_title),
+                    stringResource(R.string.prot_leaks_text),
+                    tunnel.checkLeaks,
+                    "checkLeaks",
+                    { onChange(tunnel.copy(checkLeaks = it)) },
+                    divider = true,
+                    padding = Rows,
+                )
             }
 
             GroupTitle(stringResource(R.string.prot_group_ipv6), top = PgSpace.Card)

@@ -90,6 +90,26 @@ final class AppSettingsTests: XCTestCase {
         }
     }
 
+    /// FakeDNS (выключен) и проверка утечек после подключения (включена) — в файле под именами Android и в копии (решение 749).
+    func testFakeDnsAndLeakCheckComeBackAsSaved() async throws {
+        XCTAssertFalse(AppSettings().tunnel.fakeDns)
+        XCTAssertTrue(AppSettings().tunnel.checkLeaks)
+        var settings = AppSettings()
+        settings.tunnel.fakeDns = true
+        settings.tunnel.checkLeaks = false
+        let data = try JSONEncoder().encode(settings)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"tunnel_fake_dns\":true"), text)
+        XCTAssertTrue(text.contains("\"tunnel_check_leaks\":false"), text)
+        let read = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(read.tunnel.fakeDns)
+        XCTAssertFalse(read.tunnel.checkLeaks)
+        XCTAssertTrue(read.core().fakeDns, "FakeDNS получает ядро")
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"tunnel_ipv6": true}"#.utf8))
+        XCTAssertFalse(old.tunnel.fakeDns, "файл прежней версии — значения по умолчанию")
+        XCTAssertTrue(old.tunnel.checkLeaks)
+    }
+
     func testUnknownOrWrongValuesFallBackOneByOne() async throws {
         try file.write(Data("""
         {"selected_server": "server-1", "tunnel_dns": "future", "tunnel_ipv6": true, "kill_switch": "yes",

@@ -68,6 +68,8 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
             customDns = preferences[CUSTOM_DNS],
             ipv6 = preferences[IPV6] ?: false,
             allowLan = preferences[ALLOW_LAN] ?: false,
+            fakeDns = preferences[FAKE_DNS] ?: false,
+            checkLeaks = preferences[CHECK_LEAKS] ?: true,
             connection = ConnectionSettings.read(
                 preferences[CORE_LOG],
                 preferences[MTU],
@@ -94,6 +96,8 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
 
             preferences[IPV6] = settings.ipv6
             preferences[ALLOW_LAN] = settings.allowLan
+            preferences[FAKE_DNS] = settings.fakeDns
+            preferences[CHECK_LEAKS] = settings.checkLeaks
 
             // «Подключение и ядро»: «Авто» у MTU — ключа нет.
             val connection = settings.connection
@@ -348,6 +352,8 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val CUSTOM_DNS = stringPreferencesKey("tunnel_custom_dns")
         val IPV6 = booleanPreferencesKey("tunnel_ipv6")
         val ALLOW_LAN = booleanPreferencesKey("tunnel_allow_lan")
+        val FAKE_DNS = booleanPreferencesKey("tunnel_fake_dns")
+        val CHECK_LEAKS = booleanPreferencesKey("tunnel_check_leaks")
         val CORE_LOG = stringPreferencesKey("core_log")
         val MTU = intPreferencesKey("tunnel_mtu")
         val STRICT_ROUTES = booleanPreferencesKey("tunnel_strict_routes")
@@ -379,12 +385,15 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val UPDATE_COMMITTED = booleanPreferencesKey("update_committed")
 
         private val BOOLEANS: Set<Preferences.Key<*>> =
-            setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH, ROUTING_BLOCK_OTHERS)
+            setOf(
+                SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, FAKE_DNS, CHECK_LEAKS, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH,
+                ROUTING_BLOCK_OTHERS,
+            )
         private val INTS: Set<Preferences.Key<*>> = setOf(MTU, CONNECT_TIMEOUT)
 
         /** Что идет в резервную копию — настройки пользователя, а не состояние телефона. */
         val BACKED_UP: List<Preferences.Key<*>> = listOf(
-            SUBS_REFRESH, SUBS_ONLY_VPN, SUBS_NOTIFY, DNS, CUSTOM_DNS, IPV6, ALLOW_LAN, CORE_LOG, MTU, STRICT_ROUTES, SNIFFING,
+            SUBS_REFRESH, SUBS_ONLY_VPN, SUBS_NOTIFY, DNS, CUSTOM_DNS, IPV6, ALLOW_LAN, FAKE_DNS, CHECK_LEAKS, CORE_LOG, MTU, STRICT_ROUTES, SNIFFING,
             FINGERPRINT, MUX, TLS_FRAGMENT, CONNECT_TIMEOUT, ROUTING_MODE, ROUTING_APPS, ROUTING_RULES, ROUTING_BLOCK_OTHERS, NOTIFY_LEVEL,
             RECONNECT, CONNECT_ON_LAUNCH,
         )

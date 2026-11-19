@@ -54,6 +54,8 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  * @property fragment фрагментация TLS ClientHello против DPI: выход сервера дозванивается через выход фрагментации.
  * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`): точнее — раньше (решение 739).
  * @property blockOthers «Остальные сайты: Блокировать» (решение 740): после правил — «Пропускается всегда», остальное — блок.
+ * @property fakeDns FakeDNS, как у десктопа (решение 749): DNS отвечает адресами пула [XrayConfig.FAKE_DNS_POOL], ядро по ним
+ *   знает имя сайта; настоящий адрес нужен только имени самого сервера.
  */
 data class CoreSettings(
     val dns: String = XrayConfig.DEFAULT_DNS,
@@ -68,6 +70,7 @@ data class CoreSettings(
     val fragment: Boolean = false,
     val rules: List<SiteRule> = emptyList(),
     val blockOthers: Boolean = false,
+    val fakeDns: Boolean = false,
 )
 
 /**
@@ -102,6 +105,9 @@ object XrayConfig {
     /** DNS по умолчанию: DoH через туннель. */
     const val DEFAULT_DNS = "https://1.1.1.1/dns-query"
 
+    /** Пул адресов FakeDNS — как у десктопа (198.18.0.0/15, адреса для испытаний сетей): в локальной сети его нет. */
+    const val FAKE_DNS_POOL = "198.18.0.0/15"
+
     /** Локальные и особые адреса — тот же список, что у десктопа (`LocalNetworks`). */
     val localNetworks = listOf(
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
@@ -125,18 +131,13 @@ object XrayConfig {
         val config = linkedMapOf<String, Any?>(
             "log" to linkedMapOf("loglevel" to settings.logLevel.xray, "access" to "none", "dnsLog" to false),
             "env" to linkedMapOf("xray.tun.fd" to tunFd.toString()),
-            "dns" to linkedMapOf("servers" to listOf(settings.dns), "queryStrategy" to if (settings.ipv6) "UseIP" else "UseIPv4"),
+            "dns" to linkedMapOf("servers" to dnsServers(server, settings), "queryStrategy" to if (settings.ipv6) "UseIP" else "UseIPv4"),
             "inbounds" to listOfNotNull(
                 linkedMapOf(
                     "tag" to TUN_TAG,
                     "protocol" to "tun",
                     "settings" to linkedMapOf("name" to "xray0", "mtu" to settings.mtu),
-                    // Домен из TLS, HTTP и QUIC — только для правил: соединение идет туда, куда просили.
-                    "sniffing" to linkedMapOf(
-                        "enabled" to settings.sniffing,
-                        "destOverride" to listOf("http", "tls", "quic"),
-                        "routeOnly" to true,
-                    ),
+                    "sniffing" to sniffing(settings),
                 ),
                 subscriptionProxy?.let {
                     linkedMapOf(
@@ -153,16 +154,72 @@ object XrayConfig {
                 linkedMapOf(
                     "tag" to DIRECT_TAG,
                     "protocol" to "freedom",
-                    "settings" to linkedMapOf("domainStrategy" to if (settings.ipv6) "AsIs" else "UseIPv4"),
+                    // С FakeDNS у соединения имя, а не адрес: его разрешает DNS этого конфига (через сервер), а не DNS
+                    // телефона; IPv4 раньше, IPv6 — запасным, как «Сначала IPv4» десктопа.
+                    "settings" to linkedMapOf(
+                        "domainStrategy" to when {
+                            !settings.ipv6 -> "UseIPv4"
+                            settings.fakeDns -> "UseIPv4v6"
+                            else -> "AsIs"
+                        },
+                    ),
                 ),
                 linkedMapOf("tag" to BLOCK_TAG, "protocol" to "blackhole"),
                 fragment().takeIf { outbound.json?.let { usesFragment(it) } == true },
                 // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (DNS_RULES); без правил Xray 26 — пустой NOERROR.
                 linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("rules" to DNS_RULES)),
             ),
-            "routing" to linkedMapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules(settings, subscriptionProxy != null)),
+            "routing" to linkedMapOf("domainStrategy" to routingStrategy(settings), "rules" to rules(settings, subscriptionProxy != null)),
         )
+        if (settings.fakeDns) {
+            config["fakedns"] = listOf(linkedMapOf("ipPool" to FAKE_DNS_POOL, "poolSize" to 65535))
+        }
+
         return XrayConfigResult(JsonText.value(config), null)
+    }
+
+    /**
+     * Распознавание в TUN: домен из HTTP, TLS и QUIC — только для правил, соединение идет туда, куда просили. С FakeDNS — еще
+     * имя по адресу из пула, и с ним соединение идет уже к имени (ядро меняет цель для адресов FakeDNS и при routeOnly); без
+     * распознавания HTTP и TLS имя берется только из адреса, без чтения данных. Как у десктопа.
+     */
+    private fun sniffing(settings: CoreSettings): Map<String, Any?> = if (!settings.fakeDns) {
+        linkedMapOf("enabled" to settings.sniffing, "destOverride" to listOf("http", "tls", "quic"), "routeOnly" to true)
+    } else {
+        linkedMapOf(
+            "enabled" to true,
+            "destOverride" to if (settings.sniffing) listOf("http", "tls", "quic", "fakedns") else listOf("fakedns"),
+            "metadataOnly" to !settings.sniffing,
+            "routeOnly" to true,
+        )
+    }
+
+    /**
+     * Серверы DNS ядра. С FakeDNS — сначала настоящий DNS для имени самого сервера (иначе ядро дозванивалось бы до адреса
+     * пула), затем FakeDNS, затем настоящий DNS для запросов, которые FakeDNS не отвечает (AAAA: пул только IPv4).
+     */
+    private fun dnsServers(server: ServerDefinition, settings: CoreSettings): List<Any> {
+        if (!settings.fakeDns) {
+            return listOf(settings.dns)
+        }
+
+        val host = server.host.trim('[', ']')
+        val real = if (literal(host) == null) {
+            listOf(linkedMapOf("address" to settings.dns, "domains" to listOf("full:$host"), "skipFallback" to true))
+        } else {
+            emptyList()
+        }
+
+        return real + listOf("fakedns", settings.dns)
+    }
+
+    /**
+     * Как сравнивать правила с адресом: с FakeDNS у соединения имя, и поиск адреса нужен только правилам-адресам и локальной
+     * сети (разрешена — иначе локальная сеть блокируется и без имени). Без FakeDNS — как раньше.
+     */
+    private fun routingStrategy(settings: CoreSettings): String {
+        val needsAddress = settings.allowLan || settings.rules.any { SitePattern.isAddress(it.pattern) }
+        return if (settings.fakeDns && !needsAddress) "AsIs" else "IPIfNonMatch"
     }
 
     private fun rules(settings: CoreSettings, subscriptionProxy: Boolean): List<Map<String, Any?>> {
@@ -175,6 +232,11 @@ object XrayConfig {
             // DNS из туннеля — к любому адресу: отвечает выход DNS по настройкам этого конфига, через сервер.
             linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "port" to "53", "outboundTag" to DNS_TAG),
         )
+        if (settings.fakeDns) {
+            // Адрес из пула уже стал именем при распознавании. Оставшийся (запись пула забыта) назначения не имеет: в блок и при
+            // открытой локальной сети, иначе прямой выход отправил бы его снова в туннель. Как у десктопа.
+            rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "ip" to listOf(FAKE_DNS_POOL), "outboundTag" to BLOCK_TAG))
+        }
         // Свой DNS в частной сети (Pi-hole): запросы самого Xray к нему — напрямую, и при закрытой локальной сети: через
         // сервер частный адрес не достать. Раньше блока локальной сети, иначе DNS ядра уходит в блок целиком.
         settings.lanDns?.takeIf { it.isNotEmpty() }?.let {

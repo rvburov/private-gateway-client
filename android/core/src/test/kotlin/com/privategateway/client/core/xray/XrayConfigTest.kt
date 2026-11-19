@@ -413,6 +413,44 @@ class XrayConfigTest {
         assertEquals(shared["udpPorts"]!!.jsonArray.map { it.jsonPrimitive.int }, AlwaysAllowed.udpPorts)
     }
 
+    @Test
+    fun `fake dns answers from its pool and keeps the real address for the server name`() {
+        val plain = build(reality, CoreSettings(), 3)
+        assertNull(plain["fakedns"], "FakeDNS по умолчанию выключен")
+        assertEquals(listOf("http", "tls", "quic"), sniffing(plain)["destOverride"]!!.jsonArray.map { it.jsonPrimitive.content })
+
+        val byName = server(
+            "vless://11111111-2222-3333-4444-555555555555@server.example.com:443?type=tcp&security=reality&sni=www.example.com&fp=chrome" +
+                "&pbk=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&sid=0123abcd&flow=xtls-rprx-vision#NL",
+        )
+        val fake = build(byName, CoreSettings(fakeDns = true, ipv6 = true), 3)
+        val pool = fake["fakedns"]!!.jsonArray.single().jsonObject
+        assertEquals(XrayConfig.FAKE_DNS_POOL, pool["ipPool"]!!.jsonPrimitive.content)
+        val servers = fake["dns"]!!.jsonObject["servers"]!!.jsonArray
+        val real = servers[0].jsonObject
+        assertEquals(listOf("full:server.example.com"), real["domains"]!!.jsonArray.map { it.jsonPrimitive.content }, "имя сервера — настоящим адресом")
+        assertTrue(real["skipFallback"]!!.jsonPrimitive.boolean)
+        assertEquals(listOf("fakedns", XrayConfig.DEFAULT_DNS), servers.drop(1).map { it.jsonPrimitive.content })
+        assertEquals(listOf("http", "tls", "quic", "fakedns"), sniffing(fake)["destOverride"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(sniffing(fake)["routeOnly"]!!.jsonPrimitive.boolean)
+        assertEquals("UseIPv4v6", outbound(fake, "direct")["settings"]!!.jsonObject["domainStrategy"]!!.jsonPrimitive.content)
+        assertEquals("AsIs", fake["routing"]!!.jsonObject["domainStrategy"]!!.jsonPrimitive.content)
+        val poolRule = rules(fake)[1]
+        assertEquals(JsonArray(listOf(JsonPrimitive(XrayConfig.FAKE_DNS_POOL))), poolRule["ip"], "остаток пула — в блок сразу после DNS")
+        assertEquals("block", poolRule["outboundTag"]!!.jsonPrimitive.content)
+
+        // Сервер по адресу — настоящий DNS ему не нужен; без распознавания — имя только из адреса пула.
+        val byAddress = build(reality, CoreSettings(fakeDns = true, sniffing = false, allowLan = true), 3)
+        assertEquals(listOf("fakedns", XrayConfig.DEFAULT_DNS), byAddress["dns"]!!.jsonObject["servers"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("fakedns"), sniffing(byAddress)["destOverride"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(sniffing(byAddress)["metadataOnly"]!!.jsonPrimitive.boolean)
+        assertEquals("IPIfNonMatch", byAddress["routing"]!!.jsonObject["domainStrategy"]!!.jsonPrimitive.content, "локальной сети нужен адрес")
+        assertEquals("UseIPv4", outbound(byAddress, "direct")["settings"]!!.jsonObject["domainStrategy"]!!.jsonPrimitive.content)
+    }
+
+    private fun sniffing(config: JsonObject) =
+        config["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"]!!.jsonPrimitive.content == XrayConfig.TUN_TAG }["sniffing"]!!.jsonObject
+
     private fun server(link: String) = LinkParser.parse(link).server ?: error("ссылка не разобралась: ${LinkParser.parse(link).error}")
 
     private fun build(server: com.privategateway.client.core.servers.ServerDefinition, settings: CoreSettings, tunFd: Int): JsonObject {

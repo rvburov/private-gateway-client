@@ -371,6 +371,46 @@ final class XrayConfigTests: XCTestCase {
 
     // MARK: Помощники
 
+    /// FakeDNS (решение 749), как у десктопа и Android: пул, настоящий DNS для имени сервера, распознавание по пулу, остаток пула — в блок.
+    func testFakeDnsAnswersFromItsPoolAndKeepsTheRealAddressForTheServerName() throws {
+        let plain = try build(try server(reality), CoreSettings())
+        XCTAssertNil(plain["fakedns"], "FakeDNS по умолчанию выключен")
+        XCTAssertEqual(try sniffing(plain)["destOverride"] as? [String], ["http", "tls", "quic"])
+
+        let byName = try server(reality.replacingOccurrences(of: "203.0.113.24", with: "server.example.com"))
+        let fake = try build(byName, CoreSettings(ipv6: true, fakeDns: true))
+        let pool = try object((fake["fakedns"] as? [Any])?.first)
+        XCTAssertEqual(pool["ipPool"] as? String, XrayConfig.fakeDnsPool)
+        XCTAssertEqual(pool["poolSize"] as? Int, 65535)
+        let servers = try XCTUnwrap(try object(fake["dns"])["servers"] as? [Any])
+        let real = try object(servers.first)
+        XCTAssertEqual(real["domains"] as? [String], ["full:server.example.com"], "имя сервера — настоящим адресом")
+        XCTAssertEqual(real["skipFallback"] as? Bool, true)
+        XCTAssertEqual(servers.dropFirst().compactMap { $0 as? String }, ["fakedns", XrayConfig.defaultDns])
+        XCTAssertEqual(try sniffing(fake)["destOverride"] as? [String], ["http", "tls", "quic", "fakedns"])
+        XCTAssertEqual(try sniffing(fake)["routeOnly"] as? Bool, true)
+        XCTAssertEqual(try object(try outbound(fake, XrayConfig.directTag)["settings"])["domainStrategy"] as? String, "UseIPv4v6")
+        XCTAssertEqual(try object(fake["routing"])["domainStrategy"] as? String, "AsIs")
+        let poolRule = try rules(fake)[1]
+        XCTAssertEqual(poolRule["ip"] as? [String], [XrayConfig.fakeDnsPool], "остаток пула — в блок сразу после DNS")
+        XCTAssertEqual(poolRule["outboundTag"] as? String, XrayConfig.blockTag)
+
+        // Сервер по адресу — настоящий DNS ему не нужен; без распознавания — имя только из адреса пула.
+        let byAddress = try build(try server(reality), CoreSettings(allowLan: true, sniffing: false, fakeDns: true))
+        XCTAssertEqual(try object(byAddress["dns"])["servers"] as? [String], ["fakedns", XrayConfig.defaultDns])
+        XCTAssertEqual(try sniffing(byAddress)["destOverride"] as? [String], ["fakedns"])
+        XCTAssertEqual(try sniffing(byAddress)["metadataOnly"] as? Bool, true)
+        XCTAssertEqual(try object(byAddress["routing"])["domainStrategy"] as? String, "IPIfNonMatch", "локальной сети нужен адрес")
+        XCTAssertEqual(try object(try outbound(byAddress, XrayConfig.directTag)["settings"])["domainStrategy"] as? String, "UseIPv4")
+        XCTAssertTrue(TunnelSettings().needsReconnect(TunnelSettings(fakeDns: true)))
+        XCTAssertFalse(TunnelSettings().needsReconnect(TunnelSettings(checkLeaks: false)), "проверка — дело окна, не ядра")
+    }
+
+    private func sniffing(_ config: [String: Any]) throws -> [String: Any] {
+        let tun = try XCTUnwrap((config["inbounds"] as? [[String: Any]])?.first { $0["tag"] as? String == XrayConfig.tunTag })
+        return try object(tun["sniffing"])
+    }
+
     private func server(_ link: String) throws -> ServerDefinition {
         let parsed = LinkParser.parse(link)
         return try XCTUnwrap(parsed.server, "ссылка не разобралась: \(parsed.error ?? "")")

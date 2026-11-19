@@ -76,6 +76,20 @@ struct ProtectionView: View {
                                 }
                             )
                         }
+                        // FakeDNS и проверка утечек после подключения — как у десктопа (решение 749); «Блокировать DNS
+                        // провайдера» телефону не нужен: DNS телефона и так идет в туннель.
+                        PgDivider().padding(.horizontal, PgSpace.card)
+                        PgToggleRow(title: texts.protFakeDnsTitle, text: texts.protFakeDnsText, isOn: tunnel.fakeDns, padded: true, identifier: "fakeDns") { on in
+                            var next = tunnel
+                            next.fakeDns = on
+                            onTunnel(next)
+                        }
+                        PgDivider().padding(.horizontal, PgSpace.card)
+                        PgToggleRow(title: texts.protLeaksTitle, text: texts.protLeaksText, isOn: tunnel.checkLeaks, padded: true, identifier: "checkLeaks") { on in
+                            var next = tunnel
+                            next.checkLeaks = on
+                            onTunnel(next)
+                        }
                     }
 
                     SettingsGroup(title: texts.protGroupIpv6) {

@@ -261,7 +261,7 @@ struct RootView: View {
                 onRefresh: {
                     // «Обновить серверы»: задержка серверов (без защиты) и внешний IP заново.
                     Task { await model.refreshLatency() }
-                    measureWebIp()
+                    measureWebIp(asked: true)
                 },
                 onCheck: {
                     // «Пинг» — подробности на «Проверке»: экран прокручивается к «Задержке», замер идет вместе с проверкой.
@@ -269,7 +269,7 @@ struct RootView: View {
                     checkPage = .main
                     tab = .check
                 },
-                onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }, onCaptive: askPause,
+                onCheckNow: { measureWebIp(asked: true) }, onRetry: { Task { await model.retry() } }, onCaptive: askPause,
                 onResume: { Task { await model.endPause() } }
             )
         case .servers:
@@ -409,10 +409,15 @@ struct RootView: View {
     }
 
     /// Внешний IP для главной: под защитой — адрес выхода (он же проверка утечки), без защиты и в «Ошибке» без туннеля —
-    /// реальный. В «Подключении», «Переподключении» и «Блокировке» мерить нечего: прямой путь закрыт, а выхода еще нет.
-    private func measureWebIp() {
+    /// реальный. В «Подключении», «Переподключении» и «Блокировке» мерить нечего: прямой путь закрыт, а выхода еще нет. Под
+    /// защитой сам — только с «Проверять утечки после подключения» (решение 749), иначе — кнопкой «Проверить».
+    private func measureWebIp(asked: Bool = false) {
         let state = model.home.status.state
         guard state == .connected || state == .off || (state == .error && !model.blocked) else {
+            return
+        }
+
+        guard asked || state != .connected || model.settings.tunnel.checkLeaks else {
             return
         }
 
