@@ -31,9 +31,38 @@ run() {
     fi
 }
 
+# macOS и Linux: режим прокси — под сторожем scripts/soak-watchdog.py (как диагностика macos-soak-debug.yml): вывод сразу в
+# журнал, отметки этапов теста (PG_SOAK_PROGRESS), а если этапы молчат 3 минуты — стеки управляемых потоков (dotnet-stack из
+# PG_SOAK_STACK_TOOL, если задан) и остановка всей группы процессов. 2026-11-15–18 macOS трижды молчал после «Режим прокси»
+# до снятия задания: при отмене живы были тест, dotnet test и xray — --timeout не помог, тест висел в ожидании, которое
+# отмену не слушает. Отчет CTRF должен подтвердить ровно один пройденный тест без пропусков. Файлы — artifacts/soak/proxy.
+watched() {
+    local dir="$PWD/artifacts/soak/$1"
+    shift
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    local stack=()
+    if [ -n "${PG_SOAK_STACK_TOOL:-}" ]; then
+        stack=(--stack-tool "$PG_SOAK_STACK_TOOL")
+    fi
+
+    python3 scripts/soak-watchdog.py \
+        --timeout-seconds $(((minutes + 20) * 60)) --stack-after-seconds $(((minutes + 15) * 60)) --idle-seconds 180 \
+        --progress "$dir/progress.log" --output-dir "$dir" --require-passed-ctrf "$dir/results" ${stack[@]+"${stack[@]}"} \
+        -- env PG_SOAK_PROGRESS="$dir/progress.log" PG_SOAK_MINUTES="$minutes" "$@" \
+        --results-directory "$dir/results" --report-ctrf -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
+}
+
 echo "Режим прокси: $minutes мин"
-run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build $limit \
-    --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
+case "$(uname -s)" in
+    Darwin | Linux)
+        watched proxy dotnet test --project desktop/tests/Network -c Release --no-build $limit --output Detailed
+        ;;
+    *)
+        run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build $limit \
+            --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
+        ;;
+esac
 
 if [ "$(uname -s)" = Linux ]; then
     echo "Режим VPN: $minutes мин (root)"

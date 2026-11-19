@@ -106,8 +106,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nftables
 
+      # Стеки зависшего режима прокси (scripts/soak.sh под soak-watchdog.py на macOS и Linux): только потоки, без дампа памяти.
+      # Официальный пакет Microsoft, MIT: NuGet dotnet-stack/10.0.750501 — тот же, что в macos-soak-debug.yml.
+      - name: Средство чтения стеков
+        if: runner.os != 'Windows'
+        run: |
+          dotnet tool install dotnet-stack --version 10.0.750501 \
+            --tool-path "$RUNNER_TEMP/dotnet-tools" --allow-roll-forward
+          echo "PG_SOAK_STACK_TOOL=$RUNNER_TEMP/dotnet-tools/dotnet-stack" >> "$GITHUB_ENV"
+
       - name: Долгий прогон
         run: |
           [[ "$MINUTES" =~ ^[0-9]+$ ]] && [ "$MINUTES" -ge 30 ] && [ "$MINUTES" -le 60 ] \
             || { echo "Для выпускного прогона требуется от 30 до 60 минут на режим" >&2; exit 1; }
           scripts/soak.sh "$MINUTES"
+
+      # Этапы, стеки и полный вывод режима прокси — только при сбое: по ним ищется место зависания (soak.md).
+      - name: Этапы и стеки режима прокси
+        if: failure() && runner.os != 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: soak-${{ matrix.os }}-${{ github.run_attempt }}
+          path: artifacts/soak/
+          if-no-files-found: warn
+          retention-days: 7
