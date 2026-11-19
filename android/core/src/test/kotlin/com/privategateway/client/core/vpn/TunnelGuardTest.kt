@@ -25,6 +25,7 @@ class TunnelGuardTest {
         val probesAt = mutableListOf<Long>()
         val restartsAt = mutableListOf<Long>()
         var policy = ReconnectPolicy.Backoff60Seconds
+        var online = true
         private val probeQueue = ArrayDeque(probes)
         private val restartQueue = ArrayDeque(restarts)
         private val clock = { scope.testScheduler.currentTime }
@@ -44,6 +45,7 @@ class TunnelGuardTest {
                 restartQueue.removeFirstOrNull()
             },
             events = this,
+            online = { online },
         )
 
         override suspend fun reconnecting(attempt: Int) {
@@ -60,6 +62,37 @@ class TunnelGuardTest {
     }
 
     private fun TestScope.start(rig: Rig): Job = launch { rig.guard.run() }
+
+    /** «Нет сети»: попытки ждут сеть — новых ядра и карты без сети нет; по концу срока политики — PGC-NET-003. */
+    @Test
+    fun `without a network attempts wait and the guard gives up as offline`() = runTest {
+        val rig = Rig(this, probes = listOf(false, false, false))
+        rig.policy = ReconnectPolicy.UpTo5Minutes
+        rig.online = false
+        val job = start(rig)
+        advanceTimeBy(10 * 60_000L)
+        job.cancel()
+
+        assertTrue(rig.restartsAt.isEmpty(), "без сети ядро не перезапускается: ${rig.log}")
+        assertEquals("gave up ${TunnelErrors.NETWORK_UNAVAILABLE}", rig.log.last().substringBefore(" @"))
+    }
+
+    /** Сеть вернулась — попытка сразу по сигналу, и защита снова включена. */
+    @Test
+    fun `network coming back resumes the attempts`() = runTest {
+        val rig = Rig(this, probes = listOf(false, false, true))
+        rig.online = false
+        val job = start(rig)
+        advanceTimeBy(30_000L)
+        assertTrue(rig.restartsAt.isEmpty())
+        rig.online = true
+        rig.guard.nudge()
+        advanceTimeBy(5_000L)
+        job.cancel()
+
+        assertEquals(1, rig.restartsAt.size, rig.log.toString())
+        assertTrue(rig.log.any { it.startsWith("protected") }, rig.log.toString())
+    }
 
     @Test
     fun `live server is probed at once and then every minute`() = runTest {

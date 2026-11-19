@@ -47,6 +47,15 @@ object NotificationPolicy {
         val code = after.error
         val traffic = if (lockdown) "blocked" else "direct"
         val notice = when {
+            // Сети нет — «Нет сети», а не «Обрыв»: пока туннель поднят, трафик ждет в нем; попытки ждут сеть (как у десктопа).
+            after.offline && after.state in WAITING && (!before.offline || moved) ->
+                Notice(
+                    NoticeKind.NetworkUnavailable,
+                    "notify.offline." + (if (after.state == TunnelState.Reconnecting) "waiting" else "active") + ".blocked",
+                    listOf(NoticeAction.Open),
+                )
+            after.state == TunnelState.Error && changed && code == TunnelErrors.NETWORK_UNAVAILABLE ->
+                Notice(NoticeKind.ReconnectStoppedOffline, "notify.offline.stopped.$traffic", listOf(NoticeAction.Open))
             // Пока идут попытки, карта туннеля остается: трафик ждет — «Интернет заблокирован» при любой настройке Android.
             after.state == TunnelState.Reconnecting && moved && before.state == TunnelState.Connected ->
                 Notice(NoticeKind.ConnectionLost, "notify.lost.blocked", listOf(NoticeAction.ChangeServer, NoticeAction.Open))
@@ -68,6 +77,9 @@ object NotificationPolicy {
 
         return notice.copy(server = server, code = if (notice.kind == NoticeKind.ProtectionFailed) code ?: Notice.UNKNOWN_CODE else null)
     }
+
+    /** Туннель поднят или поднимается: без сети трафик ждет в нем. */
+    private val WAITING = setOf(TunnelState.Connecting, TunnelState.Connected, TunnelState.Reconnecting)
 
     /** Выбранный сервер пропал из подписки или изменился; на месте — сказать нечего. */
     fun forSelected(change: SelectedChange, server: String, subscription: String): Notice? = when (change) {

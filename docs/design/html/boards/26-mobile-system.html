@@ -726,6 +726,14 @@
       <div class="lock-date">воскресенье, 1 ноября</div>
       <div class="lock-time">9:41</div>
       <div class="lock-stack">
+        <!-- «Нет сети» (решение 745): сеть под туннелем пропала — попытки ждут ее, а не тратятся; так же на Android -->
+        <button class="lock-ntf" data-nav="25-mobile-main.html">
+          <span class="lock-app"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2.2" data-size="18"></i></span>
+          <span class="pg-stack pg-grow" style="gap: 2px">
+            <span class="pg-row"><span class="lock-title pg-grow">Нет сети</span><span class="lock-when">сейчас</span></span>
+            <span class="lock-text" data-ui-text="notify.offline.waiting.blocked">Сетевого подключения нет. Блок при обрыве удерживает интернет закрытым. После восстановления сети подключение к выбранному серверу продолжится автоматически.</span>
+          </span>
+        </button>
         <button class="lock-ntf" data-nav="25-mobile-main.html">
           <span class="lock-app"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2.2" data-size="18"></i></span>
           <span class="pg-stack pg-grow" style="gap: 2px">
@@ -753,6 +761,10 @@
   <p>Подключение и сбои расширение туннеля показывает уведомлениями iOS. Тексты — те же, что у компьютера:
     <button class="btn-link" data-nav="19-notifications.html">«Уведомления»</button>. Пока расширение переподключается, маршруты
     туннеля остаются — трафик ждет, а не уходит напрямую, поэтому и текст «Интернет заблокирован».</p>
+  <p>Сеть под туннелем пропала (решение 745) — «Нет сети»: на главной заголовок «Нет сети» тоном блокировки и подпись по
+    фазе («Восстановите сетевое подключение…», «…подключение продолжится автоматически», «…повторите подключение вручную»),
+    уведомление — как у компьютера. Попытки переподключения ждут сеть; если сети нет до конца срока «Переподключения» —
+    «Подключение остановлено» (PGC-NET-003). Так же на Android.</p>
 </div>
 
 <section class="ms-tech">

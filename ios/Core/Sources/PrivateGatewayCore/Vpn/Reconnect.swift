@@ -317,10 +317,13 @@ public struct TunnelGuard: Sendable {
     private let restart: @Sendable (_ attempt: Int) async -> String?
     private let events: any GuardEvents
     private let timing: ReconnectTiming
+    /// Есть ли сеть под туннелем; нет — попытка бесполезна: ждать сеть, а по концу срока — «Нет сети» (PGC-NET-003).
+    private let online: @Sendable () -> Bool
 
     public init(
         timer: any GuardTimer, policy: @escaping @Sendable () async -> ReconnectPolicy, probe: @escaping @Sendable () async -> Bool,
-        restart: @escaping @Sendable (_ attempt: Int) async -> String?, events: any GuardEvents, timing: ReconnectTiming = ReconnectTiming()
+        restart: @escaping @Sendable (_ attempt: Int) async -> String?, events: any GuardEvents, timing: ReconnectTiming = ReconnectTiming(),
+        online: @escaping @Sendable () -> Bool = { true }
     ) {
         self.timer = timer
         self.policy = policy
@@ -328,6 +331,7 @@ public struct TunnelGuard: Sendable {
         self.restart = restart
         self.events = events
         self.timing = timing
+        self.online = online
     }
 
     public func run() async {
@@ -360,13 +364,23 @@ public struct TunnelGuard: Sendable {
     private func reconnect() async throws -> Bool {
         try Task.checkCancellation()
         guard let reconnection = Reconnection.after(timer.now(), await policy(), timing: timing) else {
-            await events.gaveUp(TunnelErrors.serverNotResponding)
+            await events.gaveUp(lost())
             return false
         }
 
         await events.reconnecting(reconnection.attempt)
         while true {
             try await waitUntil({ reconnection.nextAttemptAt }, reconnection.nudge)
+            // Сети нет — новые ядро и маршруты не помогут: срок политики идет, попытки ждут сеть (подгон таймера).
+            if !online() {
+                if reconnection.failed(timer.now(), await policy()) == .giveUp {
+                    await events.gaveUp(TunnelErrors.networkUnavailable)
+                    return false
+                }
+
+                continue
+            }
+
             let error = await restart(reconnection.begin())
             try Task.checkCancellation()
             if let error, !Self.retried.contains(error) {
@@ -382,12 +396,17 @@ public struct TunnelGuard: Sendable {
             }
 
             if reconnection.failed(timer.now(), await policy()) == .giveUp {
-                await events.gaveUp(error ?? TunnelErrors.serverNotResponding)
+                await events.gaveUp(error ?? lost())
                 return false
             }
 
             await events.reconnecting(reconnection.attempt)
         }
+    }
+
+    /// Почему связи нет: сети нет вовсе — «Нет сети», иначе — «Сервер не отвечает».
+    private func lost() -> String {
+        online() ? TunnelErrors.serverNotResponding : TunnelErrors.networkUnavailable
     }
 
     /// Ждать до `at()` — или раньше, если пришел подгон: тогда `nudge`, и срок пересчитывается.

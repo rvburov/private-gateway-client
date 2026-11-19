@@ -37,6 +37,7 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.check.CheckScreen
@@ -137,6 +138,26 @@ class ScreensTest {
 
         ui = MainUi(status.copy(serverId = "plain"), listOf(nl, plain), "nl")
         compose.onNodeWithText(text(R.string.status_connected_subPlain)).assertIsDisplayed()
+    }
+
+    /** «Нет сети» (status.offline.* десктопа): подключено без сети, ждет сеть, остановлено (PGC-NET-003). */
+    @Test
+    fun `home says there is no network and what to do`() {
+        val status = TunnelStatus(TunnelState.Connected, serverId = "nl", since = 0L, offline = true)
+        var ui by mutableStateOf(MainUi(status, listOf(nl), "nl"))
+        compose.setContent { Home(ui) }
+        compose.onNodeWithTag("status.title").assertTextEquals(text(R.string.status_offline_title))
+        compose.onNodeWithText(text(R.string.status_offline_active)).assertIsDisplayed()
+
+        ui = MainUi(TunnelStatus(TunnelState.Reconnecting, serverId = "nl", attempt = 2, offline = true), listOf(nl), "nl")
+        compose.onNodeWithText(text(R.string.status_offline_waiting)).assertIsDisplayed()
+
+        ui = MainUi(TunnelStatus(TunnelState.Error, error = TunnelErrors.NETWORK_UNAVAILABLE), listOf(nl), "nl")
+        compose.onNodeWithTag("status.title").assertTextEquals(text(R.string.status_offline_title))
+        compose.onNodeWithText(text(R.string.status_offline_stopped)).assertIsDisplayed()
+
+        ui = MainUi(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 0L), listOf(nl), "nl")
+        compose.onNodeWithTag("status.title").assertTextEquals(text(R.string.status_connected_title))
     }
 
     @Test

@@ -274,6 +274,8 @@ private final class Rig: GuardEvents, @unchecked Sendable {
     var policy = ReconnectPolicy.backoff60Seconds
     /// Политика после первой попытки — смена в настройках во время переподключения.
     var policyAfterFirstRestart: ReconnectPolicy?
+    /// Есть ли сеть под туннелем.
+    var online = true
 
     init(horizon: Int, probes: [Bool], restarts: [String?] = [], nudges: [Int] = []) {
         timer = VirtualTimer(horizon: horizon, nudges: nudges)
@@ -283,7 +285,8 @@ private final class Rig: GuardEvents, @unchecked Sendable {
 
     func run() async {
         let guarded = TunnelGuard(
-            timer: timer, policy: { [self] in locked { policy } }, probe: { [self] in probe() }, restart: { [self] in restart($0) }, events: self
+            timer: timer, policy: { [self] in locked { policy } }, probe: { [self] in probe() }, restart: { [self] in restart($0) }, events: self,
+            online: { [self] in locked { online } }
         )
         await guarded.run()
     }
@@ -338,6 +341,16 @@ private final class Rig: GuardEvents, @unchecked Sendable {
 
 /// Наблюдение и переподключение на виртуальном времени — случаи `TunnelGuardTest` Android.
 final class TunnelGuardTests: XCTestCase {
+    /// «Нет сети»: попытки ждут сеть — новых ядра и маршрутов без сети нет; по концу срока политики — PGC-NET-003.
+    func testWithoutANetworkAttemptsWaitAndTheGuardGivesUpAsOffline() async {
+        let rig = Rig(horizon: 10 * 60000, probes: [false, false, false])
+        rig.policy = .upTo5Minutes
+        rig.online = false
+        await rig.run()
+        XCTAssertTrue(rig.restartsAt.isEmpty, "без сети ядро не перезапускается: \(rig.log)")
+        XCTAssertEqual(rig.log.last?.components(separatedBy: " @").first, "gave up \(TunnelErrors.networkUnavailable)")
+    }
+
     func testLiveServerIsProbedAtOnceAndThenEveryMinute() async {
         let rig = Rig(horizon: 3 * 61000 + 1, probes: [])
         await rig.run()

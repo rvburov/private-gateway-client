@@ -20,6 +20,14 @@ struct StateLook: Equatable {
     ///   - leak: «Защищено», а замер через туннель увидел реальный IP — «Утечка IP» (`HomeFacts.leak`): тон «Ошибки», своя
     ///     подпись под щитом.
     ///   - paused: «Выключено» по паузе для входа в Wi-Fi (решение 557) — янтарный тон, «Защита на паузе», подпись «Пауза».
+    /// «Нет сети» поверх вида состояния (`status.offline.*` десктопа): тон и знак блокировки — трафик стоит, заголовок «Нет сети».
+    static func offline(_ look: StateLook, _ texts: PgTexts) -> StateLook {
+        StateLook(
+            ring: PgState.Blocked.ring, icon: PgState.Blocked.icon, glow: PgState.Blocked.glow, fill: PgState.Blocked.fill,
+            tint: PgColor.Status.Warning.tint, mark: PgIcons.markAlert, power: look.power, title: texts.statusOfflineTitle
+        )
+    }
+
     static func of(_ state: TunnelState, _ texts: PgTexts, blocked: Bool = false, leak: Bool = false, paused: Bool = false) -> StateLook {
         if state == .off, paused {
             return StateLook(

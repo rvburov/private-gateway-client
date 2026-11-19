@@ -20,6 +20,12 @@ enum class NoticeKind(val important: Boolean, val titleKey: String) {
     /** VPN телефона занят другим приложением (PGC-NET-010): не дал подключиться или вытеснил наш (DECISIONS.md, п. 4). */
     OtherVpn(true, "notify.other.title.mobile"),
 
+    /** Сети под туннелем нет (`offline`): VPN ждет ее — «Нет сети», как у десктопа. */
+    NetworkUnavailable(true, "notify.offline.title"),
+
+    /** Попытки кончились, пока сети не было (PGC-NET-003): «Подключение остановлено». */
+    ReconnectStoppedOffline(true, "notify.offline.stopped.title"),
+
     /** Защита включилась или вернулась. */
     Connected(false, "notify.on.title"),
 

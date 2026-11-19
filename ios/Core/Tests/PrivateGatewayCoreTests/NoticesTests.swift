@@ -17,6 +17,32 @@ final class NoticesTests: XCTestCase {
 
     // MARK: Политика
 
+    /// «Нет сети» (как `Offline` десктопа): сеть пропала — подключено или ждет сеть; попытки кончились без сети — остановлено.
+    func testNoNetworkSaysSoInsteadOfADrop() throws {
+        var offlineConnected = connected
+        offlineConnected.offline = true
+        let active = try XCTUnwrap(change(connected, offlineConnected))
+        XCTAssertEqual(active.kind, .networkUnavailable)
+        XCTAssertEqual(active.textKey, "notify.offline.active.blocked")
+        XCTAssertTrue(active.important)
+        XCTAssertEqual(active.tag, Notice.protectionTag)
+
+        var waiting = status(.reconnecting, attempt: 1)
+        waiting.offline = true
+        XCTAssertEqual(change(connected, waiting)?.textKey, "notify.offline.waiting.blocked")
+        var next = waiting
+        next.attempt = 2
+        XCTAssertNil(change(waiting, next), "новые попытки без сети молчат")
+
+        let stopped = try XCTUnwrap(change(waiting, status(.error, TunnelErrors.networkUnavailable)))
+        XCTAssertEqual(stopped.kind, .reconnectStoppedOffline)
+        XCTAssertEqual(stopped.textKey, "notify.offline.stopped.direct")
+        XCTAssertEqual(change(waiting, status(.error, TunnelErrors.networkUnavailable), killSwitch: true)?.textKey, "notify.offline.stopped.blocked")
+        var off = status(.off)
+        off.offline = true
+        XCTAssertNil(change(status(.off), off), "VPN выключен — молчим")
+    }
+
     func testLostConnectionSaysTheInternetWaitsForTheVpn() throws {
         let lost = try XCTUnwrap(change(connected, status(.reconnecting, attempt: 1)))
         XCTAssertEqual(lost.kind, .connectionLost)
@@ -105,7 +131,10 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notice(.serverChanged, "k", [], subscription: "Основная").tag, "servers-Основная")
         XCTAssertEqual(Notice(.serversNotUpdated, "k", [], subscription: "Основная").tag, "servers-Основная")
         XCTAssertFalse(Notice(.serversNotUpdated, "k", [], subscription: "Основная").important)
-        XCTAssertEqual(Set(NoticeKind.allCases.filter(\.important)), [.connectionLost, .serverDown, .protectionFailed, .otherVpn])
+        XCTAssertEqual(
+            Set(NoticeKind.allCases.filter(\.important)),
+            [.connectionLost, .serverDown, .protectionFailed, .otherVpn, .networkUnavailable, .reconnectStoppedOffline]
+        )
     }
 
     func testSubscriptionChangesOfTheSelectedServer() throws {

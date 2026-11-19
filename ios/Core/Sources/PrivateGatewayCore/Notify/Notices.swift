@@ -9,6 +9,10 @@ public enum NoticeKind: String, CaseIterable, Sendable {
     case protectionFailed
     /// VPN телефона занят другим приложением (PGC-NET-010): не дал подключиться или вытеснил наш (DECISIONS.md, п. 4).
     case otherVpn
+    /// Сети под туннелем нет (`offline`): VPN ждет ее — «Нет сети».
+    case networkUnavailable
+    /// Попытки кончились, пока сети не было (PGC-NET-003): «Подключение остановлено».
+    case reconnectStoppedOffline
     /// Защита включилась или вернулась.
     case connected
     /// Защиту выключили.
@@ -21,7 +25,8 @@ public enum NoticeKind: String, CaseIterable, Sendable {
     case serversNotUpdated
 
     public var important: Bool {
-        self == .connectionLost || self == .serverDown || self == .protectionFailed || self == .otherVpn
+        self == .connectionLost || self == .serverDown || self == .protectionFailed || self == .otherVpn || self == .networkUnavailable
+            || self == .reconnectStoppedOffline
     }
 
     public var titleKey: String {
@@ -30,6 +35,8 @@ public enum NoticeKind: String, CaseIterable, Sendable {
         case .serverDown: return "notify.down.title"
         case .protectionFailed: return "notify.failed.title"
         case .otherVpn: return "notify.other.title.mobile"
+        case .networkUnavailable: return "notify.offline.title"
+        case .reconnectStoppedOffline: return "notify.offline.stopped.title"
         case .connected: return "notify.on.title"
         case .disconnected: return "notify.off.title"
         case .serverGone: return "notify.gone.title"
@@ -128,7 +135,13 @@ public enum NotificationPolicy {
         let changed = moved || before.error != after.error
         let traffic = killSwitch ? "blocked" : "direct"
         var notice: Notice
+        let waiting: Set<TunnelState> = [.connecting, .connected, .reconnecting]
         switch after.state {
+        // Сети нет — «Нет сети», а не «Обрыв»: пока туннель поднят, трафик ждет в нем; попытки ждут сеть (как у десктопа).
+        case let state where after.offline && waiting.contains(state) && (!before.offline || moved):
+            notice = Notice(.networkUnavailable, "notify.offline.\(state == .reconnecting ? "waiting" : "active").blocked", [.open])
+        case .error where changed && after.error == TunnelErrors.networkUnavailable:
+            notice = Notice(.reconnectStoppedOffline, "notify.offline.stopped.\(traffic)", [.open])
         case .reconnecting where moved && before.state == .connected:
             // Пока идут попытки, маршруты туннеля остаются: трафик ждет — «Интернет заблокирован» при любой настройке.
             notice = Notice(.connectionLost, "notify.lost.blocked", [.changeServer, .open])

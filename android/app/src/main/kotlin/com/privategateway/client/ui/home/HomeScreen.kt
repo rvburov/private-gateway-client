@@ -72,6 +72,7 @@ import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.ChipLook
 import com.privategateway.client.ui.MainUi
+import com.privategateway.client.ui.OfflinePhase
 import com.privategateway.client.ui.ProtectionChip
 import com.privategateway.client.ui.ProtectionChips
 import com.privategateway.client.ui.ProtectionView
@@ -206,7 +207,7 @@ private fun Header(onAdd: () -> Unit) {
 @Composable
 private fun StatusCard(ui: MainUi, actions: HomeActions) {
     val view = ui.view
-    val look = StateLook.of(view)
+    val look = StateLook.of(view).let { if (ui.offline != null) StateLook.offline(it) else it }
     PgCard(Modifier.fillMaxWidth().testTag("status"), contentPadding = PaddingValues(start = PgSpace.Card, top = 14.dp, end = 14.dp, bottom = PgSpace.L)) {
         Column(verticalArrangement = Arrangement.spacedBy(PgSpace.L)) {
             Row {
@@ -254,6 +255,14 @@ private fun StatusCard(ui: MainUi, actions: HomeActions) {
 private fun subtitle(ui: MainUi, view: ProtectionView): String {
     // Кода нет — общий код службы, как у десктопа.
     val code = ui.status.error ?: "PGC-SVC"
+    // «Нет сети» — что делать, по фазе: подключено без сети, ждет сеть, остановлено (status.offline.* десктопа).
+    when (ui.offline) {
+        OfflinePhase.Active -> return stringResource(R.string.status_offline_active)
+        OfflinePhase.Waiting -> return stringResource(R.string.status_offline_waiting)
+        OfflinePhase.Stopped -> return stringResource(R.string.status_offline_stopped)
+        null -> Unit
+    }
+
     return when (view) {
         ProtectionView.Connected -> stringResource(if (ui.inUse?.encrypted == false) R.string.status_connected_subPlain else R.string.status_connected_sub)
         ProtectionView.Leak -> stringResource(R.string.status_leak_sub)

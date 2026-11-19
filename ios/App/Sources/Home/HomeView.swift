@@ -120,7 +120,8 @@ struct StatusCard: View {
 
     var body: some View {
         let leak = facts.leak(status.state)
-        let look = StateLook.of(status.state, texts, blocked: facts.blocked, leak: leak, paused: facts.paused != nil)
+        let plain = StateLook.of(status.state, texts, blocked: facts.blocked, leak: leak, paused: facts.paused != nil)
+        let look = OfflinePhase.of(status) != nil ? StateLook.offline(plain, texts) : plain
         let chips = ProtectionChips.of(status.state, killSwitch: killSwitch, texts, blocked: facts.blocked, leak: leak)
         VStack(alignment: .leading, spacing: PgSpace.l) {
             HStack(alignment: .top, spacing: 0) {
@@ -272,11 +273,38 @@ struct StatusCard: View {
     }
 }
 
+/// «Нет сети»: подключено без сети, ждет сеть для переподключения, остановлено (PGC-NET-003) — фазы `Offline` десктопа.
+enum OfflinePhase: Equatable {
+    case active
+    case waiting
+    case stopped
+
+    static func of(_ status: TunnelStatus) -> OfflinePhase? {
+        if status.state == .error, status.error == TunnelErrors.networkUnavailable {
+            return .stopped
+        }
+
+        guard status.offline else { return nil }
+        switch status.state {
+        case .reconnecting: return .waiting
+        case .connected, .connecting: return .active
+        default: return nil
+        }
+    }
+}
+
 /// Подзаголовок состояния — `StatusSubtitle` десктопа.
 enum StatusText {
     static func subtitle(_ status: TunnelStatus, blocked: Bool, leak: Bool, server: ServerItem?, _ texts: PgTexts, paused: Bool = false) -> String {
         if status.state == .off, paused {
             return texts.statusPausedSub
+        }
+
+        switch OfflinePhase.of(status) {
+        case .active: return texts.statusOfflineActive
+        case .waiting: return texts.statusOfflineWaiting
+        case .stopped: return texts.statusOfflineStopped
+        case nil: break
         }
 
         switch status.state {

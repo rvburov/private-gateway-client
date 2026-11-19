@@ -21,6 +21,8 @@ object NoticeTexts {
         NoticeKind.ServerGone -> R.string.notify_gone_title
         NoticeKind.ServerChanged -> R.string.notify_changed_title
         NoticeKind.ServersNotUpdated -> R.string.notify_stale_title
+        NoticeKind.NetworkUnavailable -> R.string.notify_offline_title
+        NoticeKind.ReconnectStoppedOffline -> R.string.notify_offline_stopped_title
     }
 
     /** Текст по ключу уведомления; в нем {0} — сервер, {1} — подписка, {2} — причина. Неизвестный ключ — null. */
@@ -33,6 +35,10 @@ object NoticeTexts {
         "notify.failed.blocked" -> R.string.notify_failed_blocked
         "notify.failed.direct" -> R.string.notify_failed_direct
         "notify.other.text.mobile" -> R.string.notify_other_text_mobile
+        "notify.offline.active.blocked" -> R.string.notify_offline_active_blocked
+        "notify.offline.waiting.blocked" -> R.string.notify_offline_waiting_blocked
+        "notify.offline.stopped.blocked" -> R.string.notify_offline_stopped_blocked
+        "notify.offline.stopped.direct" -> R.string.notify_offline_stopped_direct
         "notify.on.text" -> R.string.notify_on_text
         "notify.on.back" -> R.string.notify_on_back
         "notify.off.text" -> R.string.notify_off_text

@@ -40,6 +40,22 @@ class NotificationPolicyTest {
         assertNull(forChange(status(TunnelState.Connecting), status(TunnelState.Reconnecting).copy(attempt = 1)), "еще не было защиты — не обрыв")
     }
 
+    /** «Нет сети» (как `Offline` десктопа): сеть пропала — подключено или ждет сеть; попытки кончились без сети — остановлено. */
+    @Test
+    fun `no network says so instead of a drop`() {
+        val active = assertNotNull(forChange(connected, connected.copy(offline = true)))
+        assertEquals(NoticeKind.NetworkUnavailable to "notify.offline.active.blocked", active.kind to active.textKey)
+        assertTrue(active.important)
+        val waiting = assertNotNull(forChange(connected, status(TunnelState.Reconnecting).copy(attempt = 1, offline = true)))
+        assertEquals(NoticeKind.NetworkUnavailable to "notify.offline.waiting.blocked", waiting.kind to waiting.textKey)
+        assertNull(forChange(waiting.let { status(TunnelState.Reconnecting).copy(attempt = 1, offline = true) }, status(TunnelState.Reconnecting).copy(attempt = 2, offline = true)), "новые попытки без сети молчат")
+
+        val stopped = assertNotNull(forChange(status(TunnelState.Reconnecting).copy(offline = true), status(TunnelState.Error, TunnelErrors.NETWORK_UNAVAILABLE).copy(offline = true)))
+        assertEquals(NoticeKind.ReconnectStoppedOffline to "notify.offline.stopped.direct", stopped.kind to stopped.textKey)
+        assertEquals("notify.offline.stopped.blocked", forChange(status(TunnelState.Reconnecting), status(TunnelState.Error, TunnelErrors.NETWORK_UNAVAILABLE), lockdown = true)?.textKey)
+        assertNull(forChange(status(TunnelState.Off), status(TunnelState.Off).copy(offline = true)), "VPN выключен — молчим")
+    }
+
     @Test
     fun `further attempts say nothing`() {
         // Входа в Wi-Fi на Android нет: портал входа Android открывает сам — новые попытки молчат.
@@ -132,10 +148,14 @@ class NotificationPolicyTest {
         assertEquals("servers-Основная", Notice(NoticeKind.ServersNotUpdated, "k", emptyList(), subscription = "Основная").tag)
         assertFalse(Notice(NoticeKind.ServersNotUpdated, "k", emptyList(), subscription = "Основная").important)
         assertEquals(
-            setOf(NoticeKind.ConnectionLost, NoticeKind.ServerDown, NoticeKind.ProtectionFailed, NoticeKind.OtherVpn),
+            setOf(
+                NoticeKind.ConnectionLost, NoticeKind.ServerDown, NoticeKind.ProtectionFailed, NoticeKind.OtherVpn, NoticeKind.NetworkUnavailable,
+                NoticeKind.ReconnectStoppedOffline,
+            ),
             NoticeKind.entries.filter { it.important }.toSet(),
-            "важные — обрыв, сервер не отвечает, защита не включилась, VPN занят другим",
+            "важные — обрыв, сервер не отвечает, защита не включилась, VPN занят другим, нет сети",
         )
+        assertEquals(Notice.PROTECTION_TAG, Notice(NoticeKind.NetworkUnavailable, "k", emptyList()).tag, "«Нет сети» заменяет прежнее о защите")
     }
 
     @Test

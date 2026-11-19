@@ -40,6 +40,11 @@ data class TunnelStatus(
      * состояние в это время — [TunnelState.Off]. null — паузы нет.
      */
     val pausedUntil: Long? = null,
+    /**
+     * Сети под туннелем нет (Android сообщил, что сеть пропала) — «Нет сети», как `NetworkUnavailable` десктопа: попытки
+     * переподключения ждут сеть, а не тратятся впустую.
+     */
+    val offline: Boolean = false,
 ) {
     /** Пауза идет — на главной «Защита на паузе» с отсчетом и «Вернуть защиту», а не «Выключено». */
     val paused: Boolean get() = state == TunnelState.Off && pausedUntil != null
@@ -76,6 +81,9 @@ object TunnelErrors {
 
     /** Сервер не отвечает: попытки переподключения кончились по политике («До 5 минут», «Не повторять»). */
     const val SERVER_NOT_RESPONDING = "PGC-NET-001"
+
+    /** Сети нет: попытки переподключения кончились по политике, пока сети не было (как у десктопа). */
+    const val NETWORK_UNAVAILABLE = "PGC-NET-003"
 
     /** Android не дал поднять VPN: VPN другой программы занял место или разрешение отозвано. */
     const val OTHER_VPN = "PGC-NET-010"

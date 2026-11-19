@@ -142,6 +142,10 @@ class GatewayVpnService : VpnService() {
     @Volatile
     private var lastNetwork: Network? = null
 
+    /** Есть ли сеть под туннелем: Android сообщил, что лучшая сеть пропала, — «Нет сети», попытки ждут ее (TunnelGuard). */
+    @Volatile
+    private var online = true
+
     /** Телефон вышел из глубокого сна (Doze) — проба связи сразу, а не через минуту. */
     private val wake = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -343,7 +347,7 @@ class GatewayVpnService : VpnService() {
         journal.error("stopped  error=$error")
         stopCore()
         up = null
-        monitor.set(TunnelStatus(state = TunnelState.Error, error = error))
+        monitor.set(TunnelStatus(state = TunnelState.Error, error = error, offline = !online))
         // Уведомление со сбоем дает ProtectionNotifier по смене состояния: запуск «Постоянной VPN» не виден в окне.
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelfResult(startId)
@@ -356,7 +360,7 @@ class GatewayVpnService : VpnService() {
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
         val since = SystemClock.elapsedRealtime()
         journal.info("tunnel up  lockdown=" + (lockdown?.toString() ?: "unknown"))
-        monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown))
+        monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown, offline = !online))
         // Без туннеля Android этих флагов не сообщает — окно покажет их «по последнему подключению» (решение 445).
         scope.launch { settings.setSystemVpn(SystemVpn(alwaysOn, lockdown)) }
         foreground(
@@ -383,6 +387,7 @@ class GatewayVpnService : VpnService() {
             },
             // Переподключение — тоже подключение: без входа туннель не поднимается, страж сдается с «Нет доступа».
             restart = { number -> lock.withLock { signedOutMeanwhile() ?: attempt(number) } },
+            online = { online },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
                     journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")
@@ -640,6 +645,13 @@ class GatewayVpnService : VpnService() {
             // С Android 8 за onAvailable всегда идет onLinkPropertiesChanged: новая сеть приходит сюда же.
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 networkDns = linkProperties.dnsServers.mapNotNull { it.hostAddress }
+                // Сеть вернулась — «Нет сети» снимается, попытка переподключения — сразу.
+                if (!online) {
+                    online = true
+                    journal.info("network back")
+                    monitor.update { it.copy(offline = false) }
+                    guardian?.nudge()
+                }
                 scope.launch { lock.withLock { followNetwork() } }
                 // Сеть сменилась (Wi-Fi ↔ мобильная) — проба связи сразу; во время переподключения — попытка сразу.
                 val previous = lastNetwork
@@ -648,6 +660,15 @@ class GatewayVpnService : VpnService() {
                     journal.info("network changed")
                     account.checkNow()
                     guardian?.nudge()
+                }
+            }
+
+            // Лучшая сеть пропала, а замены Android не дал (иначе пришла бы новая сеть) — «Нет сети».
+            override fun onLost(network: Network) {
+                if (network == lastNetwork) {
+                    online = false
+                    journal.info("network lost")
+                    monitor.update { it.copy(offline = true) }
                 }
             }
         }

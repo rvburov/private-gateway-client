@@ -100,6 +100,19 @@ data class MainUi(
     val view: ProtectionView get() = ProtectionView.of(status.state, closedWithoutTunnel, leak, status.paused)
 
     /**
+     * «Нет сети» (`status.offline.*` десктопа): туннель поднят или поднимается, а сети под ним нет — или попытки кончились без
+     * сети (PGC-NET-003). null — сеть есть или VPN выключен.
+     */
+    val offline: OfflinePhase?
+        get() = when {
+            status.state == TunnelState.Error && status.error == TunnelErrors.NETWORK_UNAVAILABLE -> OfflinePhase.Stopped
+            !status.offline -> null
+            status.state == TunnelState.Reconnecting -> OfflinePhase.Waiting
+            status.state == TunnelState.Connected || status.state == TunnelState.Connecting -> OfflinePhase.Active
+            else -> null
+        }
+
+    /**
      * IP, который видят сайты (WebIp десктопа): под защитой — измеренный выход, без защиты и при ошибке без блока — реальный;
      * в подключении и блокировке — никакого: прямой путь закрыт, а выхода еще нет. Не измерен — null.
      */

@@ -15,6 +15,9 @@ import com.privategateway.client.ui.theme.PgState
  * трафик идет напрямую; [Leak] — защита включена, а замер внешнего IP увидел реальный — «Утечка IP». Остановка туннеля
  * выглядит как подключение, как и раньше.
  */
+/** «Нет сети»: подключено без сети, ждет сеть для переподключения, остановлено — фазы `Offline` десктопа. */
+enum class OfflinePhase { Active, Waiting, Stopped }
+
 enum class ProtectionView {
     Off,
     Strict,
@@ -60,6 +63,17 @@ data class StateLook(
     @param:StringRes val title: Int,
 ) {
     companion object {
+        /** «Нет сети» поверх вида состояния: тон и знак блокировки (трафик стоит), заголовок «Нет сети». */
+        fun offline(look: StateLook): StateLook = look.copy(
+            ring = PgState.Blocked.Ring,
+            icon = PgState.Blocked.Icon,
+            glow = PgState.Blocked.Glow,
+            fill = PgState.Blocked.Fill,
+            tint = PgColor.Status.Warning.Tint,
+            mark = PgIcons.MarkAlert,
+            title = R.string.status_offline_title,
+        )
+
         /** Вид по одному состоянию туннеля — без того, что знает главная (блок Android, замер IP). */
         fun of(state: TunnelState): StateLook = of(ProtectionView.of(state, closed = false, leak = false))
 

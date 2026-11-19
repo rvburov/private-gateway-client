@@ -159,7 +159,9 @@ class ProtectionNotifierTest {
     @Test
     fun `every text the policy gives has a resource and the arguments`() {
         val statuses = TunnelState.entries.flatMap { state ->
-            listOf(null, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.CORE_FAILED, TunnelErrors.OTHER_VPN).map { TunnelStatus(state, error = it) }
+            listOf(null, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.CORE_FAILED, TunnelErrors.OTHER_VPN, TunnelErrors.NETWORK_UNAVAILABLE).flatMap {
+                listOf(TunnelStatus(state, error = it), TunnelStatus(state, error = it, offline = true))
+            }
         }
         val notices = mutableListOf<Notice>()
         for (before in statuses) {

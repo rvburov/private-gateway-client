@@ -30,13 +30,29 @@ public struct TunnelStatus: Equatable, Codable, Sendable {
     public var since: Date?
     public var error: String?
     public var attempt: Int
+    /// Сети под туннелем нет (`NWPathMonitor` расширения) — «Нет сети», как у десктопа и Android: попытки ждут сеть.
+    public var offline: Bool
 
-    public init(state: TunnelState = .off, serverId: String? = nil, since: Date? = nil, error: String? = nil, attempt: Int = 0) {
+    public init(state: TunnelState = .off, serverId: String? = nil, since: Date? = nil, error: String? = nil, attempt: Int = 0, offline: Bool = false) {
         self.state = state
         self.serverId = serverId
         self.since = since
         self.error = error
         self.attempt = attempt
+        self.offline = offline
+    }
+
+    private enum CodingKeys: String, CodingKey { case state, serverId, since, error, attempt, offline }
+
+    /// Файл прежней версии без `offline` читается как «сеть есть».
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        state = try values.decode(TunnelState.self, forKey: .state)
+        serverId = try values.decodeIfPresent(String.self, forKey: .serverId)
+        since = try values.decodeIfPresent(Date.self, forKey: .since)
+        error = try values.decodeIfPresent(String.self, forKey: .error)
+        attempt = try values.decodeIfPresent(Int.self, forKey: .attempt) ?? 0
+        offline = try values.decodeIfPresent(Bool.self, forKey: .offline) ?? false
     }
 }
 
@@ -81,6 +97,9 @@ public enum TunnelErrors {
 
     /// Сервер не отвечает: попытки переподключения кончились.
     public static let serverNotResponding = "PGC-NET-001"
+
+    /// Сети нет: попытки переподключения кончились, пока сети не было (как у десктопа и Android).
+    public static let networkUnavailable = "PGC-NET-003"
 
     /// iOS не дала поднять VPN: VPN другой программы занял место или разрешение отозвано.
     public static let otherVpn = "PGC-NET-010"

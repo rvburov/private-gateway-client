@@ -482,7 +482,7 @@ fun AppScreen(
                     onTab = select,
                     onPower = power,
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    look = StateLook.of(ui.view),
+                    look = StateLook.of(ui.view).let { if (ui.offline != null) StateLook.offline(it) else it },
                 )
             }
 

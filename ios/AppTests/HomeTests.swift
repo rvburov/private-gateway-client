@@ -182,6 +182,24 @@ final class HomeTests: XCTestCase {
                        "туннеля нет — трафик идет напрямую")
     }
 
+    /// «Нет сети» (status.offline.* десктопа): подключено без сети, ждет сеть, остановлено (PGC-NET-003); заголовок и тон блокировки.
+    @MainActor
+    func testNoNetworkIsShownWithWhatToDo() {
+        let server = servers[0]
+        var active = TunnelStatus(state: .connected, serverId: "a", offline: true)
+        XCTAssertEqual(OfflinePhase.of(active), .active)
+        XCTAssertEqual(StatusText.subtitle(active, blocked: false, leak: false, server: server, texts), texts.statusOfflineActive)
+        active.state = .reconnecting
+        XCTAssertEqual(StatusText.subtitle(active, blocked: false, leak: false, server: server, texts), texts.statusOfflineWaiting)
+        let stopped = TunnelStatus(state: .error, error: TunnelErrors.networkUnavailable)
+        XCTAssertEqual(StatusText.subtitle(stopped, blocked: false, leak: false, server: server, texts), texts.statusOfflineStopped)
+        XCTAssertNil(OfflinePhase.of(TunnelStatus(state: .off, offline: true)), "VPN выключен — не «Нет сети»")
+        XCTAssertNil(OfflinePhase.of(TunnelStatus(state: .connected)))
+        let look = StateLook.offline(StateLook.of(.connected, texts), texts)
+        XCTAssertEqual(look.title, texts.statusOfflineTitle)
+        XCTAssertEqual(look.ring, PgState.Blocked.ring)
+    }
+
     @MainActor
     func testCheckLineFollowsTheDesktopRules() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

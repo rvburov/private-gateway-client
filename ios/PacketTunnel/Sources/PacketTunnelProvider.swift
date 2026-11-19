@@ -27,6 +27,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var guardTask: Task<Void, Never>?
     private var path: NWPathMonitor?
     private var reported = TunnelStatus()
+    /// Есть ли сеть под туннелем (`NWPathMonitor`): нет — «Нет сети», попытки переподключения ждут ее (`TunnelGuard`).
+    private var online = true
     private var serverName: String?
     private var probeNote: String?
     private let desk = NoticeDesk()
@@ -185,11 +187,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             policy: { [container] in (try? await container.settings.load().reconnect) ?? .backoff60Seconds },
             probe: { [weak self] in await self?.probe() ?? false },
             restart: { [weak self] attempt in await self?.restart(attempt, session: session) },
-            events: GuardReport(provider: self, session: session)
+            events: GuardReport(provider: self, session: session),
+            online: { [weak self] in self?.isOnline() ?? true }
         )
         let task = Task { await guarded.run() }
         let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { [timer] _ in timer.nudge() }
+        monitor.pathUpdateHandler = { [weak self, timer] path in
+            self?.pathChanged(path)
+            timer.nudge()
+        }
         monitor.start(queue: DispatchQueue(label: "com.privategateway.client.tunnel.path"))
         let previous = locked { () -> (Task<Void, Never>?, NWPathMonitor?) in
             defer {
@@ -356,7 +362,28 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
     /// Состояние для приложения и уведомление о смене; не записалось — приложение покажет состояние системы, туннель от этого
     /// не зависит.
+    private func isOnline() -> Bool {
+        locked { online }
+    }
+
+    /// Сеть под туннелем пропала или вернулась: интерфейс не туннель (у utun тип `.other`) и путь годен. Поменялось — новое
+    /// состояние с «Нет сети» или без него приложению и уведомлениям.
+    private func pathChanged(_ path: NWPath) {
+        let now = path.status == .satisfied && path.availableInterfaces.contains { $0.type != .other }
+        let current = locked { () -> TunnelStatus? in
+            guard online != now else { return nil }
+            online = now
+            return reported
+        }
+        if let current, current.state != .off {
+            log.info("network \(now ? "back" : "lost", privacy: .public)")
+            report(current)
+        }
+    }
+
     private func report(_ status: TunnelStatus) {
+        var status = status
+        status.offline = !isOnline()
         do {
             try container.status.write(status)
         } catch {

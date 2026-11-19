@@ -39,6 +39,8 @@ class TunnelGuard(
     private val restart: suspend (attempt: Int) -> String?,
     private val events: GuardEvents,
     private val timing: ReconnectTiming = ReconnectTiming(),
+    /** Есть ли сеть под туннелем; нет — попытка бесполезна: ждать сеть, а по концу срока — «Нет сети» (PGC-NET-003). */
+    private val online: () -> Boolean = { true },
 ) {
     private val nudges = Channel<Unit>(Channel.CONFLATED)
 
@@ -68,13 +70,24 @@ class TunnelGuard(
     private suspend fun reconnect(): Boolean {
         val reconnection = Reconnection.after(clock(), policy(), timing)
         if (reconnection == null) {
-            events.gaveUp(TunnelErrors.SERVER_NOT_RESPONDING)
+            events.gaveUp(lost())
             return false
         }
 
         events.reconnecting(reconnection.attempt)
         while (true) {
             waitUntil({ reconnection.nextAttemptAt }, reconnection::nudge)
+            // Сети нет — новые ядро и карта туннеля не помогут: срок политики идет, попытки ждут сеть (сигнал — nudge).
+            // Окну и уведомлениям об этом говорит «Нет сети» (offline), а не номер попытки.
+            if (!online()) {
+                if (reconnection.failed(clock(), policy()) == ReconnectStep.GiveUp) {
+                    events.gaveUp(TunnelErrors.NETWORK_UNAVAILABLE)
+                    return false
+                }
+
+                continue
+            }
+
             val error = restart(reconnection.begin())
             if (error != null && error !in RETRIED) {
                 events.gaveUp(error)
@@ -87,13 +100,16 @@ class TunnelGuard(
             }
 
             if (reconnection.failed(clock(), policy()) == ReconnectStep.GiveUp) {
-                events.gaveUp(error ?: TunnelErrors.SERVER_NOT_RESPONDING)
+                events.gaveUp(error ?: lost())
                 return false
             }
 
             events.reconnecting(reconnection.attempt)
         }
     }
+
+    /** Почему связи нет: сети нет вовсе — «Нет сети», иначе — «Сервер не отвечает». */
+    private fun lost(): String = if (online()) TunnelErrors.SERVER_NOT_RESPONDING else TunnelErrors.NETWORK_UNAVAILABLE
 
     /** Ждать до [at] — или раньше, если пришел сигнал: тогда [nudge], и срок пересчитывается. */
     private suspend fun waitUntil(at: () -> Long, nudge: () -> Unit) {
