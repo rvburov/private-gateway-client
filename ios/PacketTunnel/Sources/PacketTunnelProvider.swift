@@ -198,7 +198,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             online: { [weak self] in self?.isOnline() ?? true }
         )
         let task = Task { await guarded.run() }
-        let access = Task { [weak self] in await self?.watchAccess(session: session) }
+        let access = Task { [weak self] in
+            guard let self else { return }
+            await self.watchAccess(session: session)
+        }
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self, timer] path in
             self?.pathChanged(path)

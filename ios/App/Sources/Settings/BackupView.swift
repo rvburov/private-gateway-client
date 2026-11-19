@@ -28,11 +28,13 @@ struct BackupDocument: FileDocument {
 
 /// «Резервная копия» (доска 14, решение 559) — как `BackupScreen` Android: «Сохранить копию» — флажки, предупреждения, пароль
 /// не короче 8 знаков, «Сохранить файл…» (окно «Сохранить» iOS); «Восстановить» — выбор файла, лист с паролем и тем, что в
-/// копии; «Последняя автокопия» с вопросом «Вернуть автокопию?».
+/// копии; «Последняя автокопия» с вопросом «Вернуть автокопию?». Задан PIN-код блока сайтов — восстановление только после
+/// него (решение 742): настройки из копии могут снять блок.
 struct BackupView: View {
     let texts: PgTexts
     @ObservedObject var model: AppModel
     let onBack: () -> Void
+    var pinControl = BlockPinControl.none
 
     @Environment(\.pgLayers) private var layers
     @State private var parts = BackupParts()
@@ -48,6 +50,9 @@ struct BackupView: View {
     @State private var opened: MobileBackup?
     @State private var restored: BackupRestored?
     @State private var lastAuto: Date?
+    /// PIN-код перед восстановлением: в листе копии и отдельным листом для автокопии.
+    @State private var restorePin: PinStep?
+    @State private var autoPin: PinStep?
 
     private static let minPassword = 8
 
@@ -83,6 +88,7 @@ struct BackupView: View {
                 sheetPassword = ""
                 sheetError = nil
                 opened = nil
+                restorePin = nil
                 restoreText = text
             } else {
                 layers?.show(texts.backupErrorFile)
@@ -170,13 +176,10 @@ struct BackupView: View {
                 if let at = lastAuto {
                     PgActionButton(label: texts.backupAutoRestore, kind: .secondary, identifier: "backup.auto.restore") {
                         layers?.confirm(BackupLook.autoDialog(texts, at)) {
-                            Task {
-                                do {
-                                    restored = try await model.backupRestoreAuto()
-                                } catch {
-                                    layers?.show(texts.backupErrorAutocopy)
-                                }
-                                lastAuto = model.lastAutoCopy()
+                            if pinControl.pin == nil {
+                                restoreAuto()
+                            } else {
+                                autoPin = .prompt(PinAsk.of(.restore, texts, allow: restoreAuto))
                             }
                         }
                     }
@@ -186,10 +189,43 @@ struct BackupView: View {
             .padding(.top, PgSpace.s)
         }
         .pgCard()
+        .pgSheet(isPresented: Binding(get: { autoPin != nil }, set: { if !$0 { autoPin = nil } })) {
+            BlockPinSheet(texts: texts, control: pinControl.withoutReset, step: $autoPin)
+        }
+    }
+
+    private func restoreAuto() {
+        Task {
+            do {
+                restored = try await model.backupRestoreAuto()
+            } catch {
+                layers?.show(texts.backupErrorAutocopy)
+            }
+            lastAuto = model.lastAutoCopy()
+        }
+    }
+
+    private func restoreCopy(_ copy: MobileBackup) {
+        busy = true
+        Task {
+            defer { busy = false }
+            restored = try? await model.backupRestore(copy)
+            lastAuto = model.lastAutoCopy()
+            restoreText = nil
+        }
     }
 
     @ViewBuilder
     private var restoreSheet: some View {
+        if restorePin != nil {
+            BlockPinSheet(texts: texts, control: pinControl.withoutReset, step: $restorePin)
+        } else {
+            copySheet
+        }
+    }
+
+    @ViewBuilder
+    private var copySheet: some View {
         PgSheetHeader(title: texts.backupSheetTitle, closeLabel: texts.cardClose, identifier: "backup.sheet.close") { restoreText = nil }
         VStack(alignment: .leading, spacing: PgSpace.m) {
             if let copy = opened {
@@ -197,12 +233,10 @@ struct BackupView: View {
                     .accessibilityIdentifier("backup.sheet.summary")
                 Text(texts.backupRestoreNoteMobile).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
                 PgActionButton(label: texts.backupSheetRestore, enabled: !busy, identifier: "backup.sheet.restore", height: 50) {
-                    busy = true
-                    Task {
-                        defer { busy = false }
-                        restored = try? await model.backupRestore(copy)
-                        lastAuto = model.lastAutoCopy()
-                        restoreText = nil
+                    if pinControl.pin == nil {
+                        restoreCopy(copy)
+                    } else {
+                        restorePin = .prompt(PinAsk.of(.restore, texts) { restoreCopy(copy) })
                     }
                 }
             } else {

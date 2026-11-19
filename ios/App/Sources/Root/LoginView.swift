@@ -168,7 +168,7 @@ struct LoginView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(texts.accountPasswordShow)
-                .accessibilityValue(shown ? "1" : "0")
+                .accessibilityAddTraits(shown ? .isSelected : [])
                 .accessibilityIdentifier("login.password.show")
             }
             .modifier(LoginInput(focused: focus == .password, trailing: PgSpace.xxs))

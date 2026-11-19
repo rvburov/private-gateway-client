@@ -239,6 +239,21 @@ final class ScreensTests: XCTestCase {
             XCTAssertEqual(try render(signedIn, height: 1600).size.width, 393, accuracy: 1)
             XCTAssertEqual(SettingsDialogs.signOut(texts).yes, .secondary)
 
+            // PIN-код блока сайтов (доска 13, решение 742): «Маршрутизация» с заданным кодом и все шаги листа кода.
+            let pin = try XCTUnwrap(BlockPin.create("2468"))
+            let control = BlockPinControl(pin: pin, set: { _ in }, check: { _ in .wrong }, reset: { _, _, _ in .codeRequired }, email: "anna@example.org")
+            let routingPin = RoutingView(texts: texts, routing: RoutingSettings(), allowLan: false, pinControl: control, onRouting: { _ in }, onLan: {}, onBack: {})
+            XCTAssertEqual(try render(routingPin, height: 1600).size.width, 393, accuracy: 1)
+            let steps: [PinStep] = [.prompt(PinAsk.of(.rule("ads.example.org"), texts) {}), .reset, .setup(notice: true), .setup(notice: false)]
+            for step in steps {
+                XCTAssertNotNil(try render(BlockPinSheet(texts: texts, control: control, step: .constant(step))))
+                XCTAssertNotNil(try render(BlockPinSheet(texts: texts, control: control.withoutReset, step: .constant(step))))
+            }
+
+            XCTAssertTrue(PinAsk.of(.rule("ads.example.org"), texts) {}.title.contains("ads.example.org"))
+            XCTAssertFalse(PinAsk.of(.restore, texts) {}.text.isEmpty)
+            XCTAssertNotNil(try render(BackupView(texts: texts, model: AppModel(container: container, texts: texts), onBack: {}, pinControl: control.withoutReset), height: 1400))
+
             // Первый запуск (доска 10): приветствие на обоих языках.
             XCTAssertEqual(try render(WelcomeView(texts: texts, onAdd: {}, onDone: {})).size.width, 393, accuracy: 1)
 

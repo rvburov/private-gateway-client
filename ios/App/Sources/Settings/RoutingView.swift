@@ -10,7 +10,9 @@ import SwiftUI
 /// нет: обычному приложению выбирать, какие программы идут мимо туннеля, iOS не дает (только профилям MDM). Правила идут в
 /// конфиг Xray расширения туннеля; под защитой изменения применяются сразу — ядро перезапускается в том же туннеле.
 /// «Остальные сайты» (решение 740): «Блокировать» — только после вопроса о последствиях, ниже — предупреждение и «Пропускается
-/// всегда»; обратно на «Открывать» — сразу.
+/// всегда»; обратно на «Открывать» — сразу или, если задан PIN-код, после него. «Блок сайтов» (решения 742 и 743): подпись, что
+/// блок действует, пока VPN подключен, и карточка «PIN-код»; с кодом снять или изменить «Блокировать», открыть остальные сайты
+/// и разрешить сайт при блоке остальных можно только после верного кода.
 struct RoutingView: View {
     let texts: PgTexts
     let routing: RoutingSettings
@@ -26,19 +28,26 @@ struct RoutingView: View {
     @State private var sheetOpen: Bool
     /// Номер открытия листа: каждый раз лист начинается заново, с полями своего правила.
     @State private var opened = 0
+    /// PIN-код блока сайтов (решение 742) и шаг его листа; вопрос, отложенный до ухода листа правила.
+    let pinControl: BlockPinControl
+    @State private var pinStep: PinStep?
+    @State private var pendingAsk: PinAsk?
 
     init(
         texts: PgTexts, routing: RoutingSettings, allowLan: Bool, editing: SiteRule? = nil, sheetOpen: Bool = false,
+        pinControl: BlockPinControl = .none, pinStep: PinStep? = nil,
         onRouting: @escaping (RoutingSettings) -> Void, onLan: @escaping () -> Void, onBack: @escaping () -> Void
     ) {
         self.texts = texts
         self.routing = routing
         self.allowLan = allowLan
+        self.pinControl = pinControl
         self.onRouting = onRouting
         self.onLan = onLan
         self.onBack = onBack
         _editing = State(initialValue: editing)
         _sheetOpen = State(initialValue: sheetOpen)
+        _pinStep = State(initialValue: pinStep)
     }
 
     var body: some View {
@@ -52,6 +61,7 @@ struct RoutingView: View {
                     }
 
                     rulesSection
+                    blockSection
                     if routing.blockOthers {
                         allowedSection
                     }
@@ -62,20 +72,34 @@ struct RoutingView: View {
                 .padding(.bottom, PgLayout.scrollBottomPadding)
             }
         }
-        .pgSheet(isPresented: $sheetOpen) {
+        .pgSheet(isPresented: $sheetOpen, onDismiss: {
+            // Код спрашивается своим листом — после того, как лист правила уехал.
+            if let ask = pendingAsk {
+                pendingAsk = nil
+                pinStep = .prompt(ask)
+            }
+        }) {
             SiteRuleSheet(
                 texts: texts, original: editing, split: routing.isSplit, blockOthers: routing.blockOthers,
                 onSave: { rule in
+                    let original = editing
+                    guarded(BlockGuard.forSave(original: original, rule: rule, blockOthers: routing.blockOthers)) {
+                        onRouting(routing.saving(rule, replacing: original))
+                    }
                     sheetOpen = false
-                    onRouting(routing.saving(rule, replacing: editing))
                 },
                 onDelete: { rule in
+                    guarded(BlockGuard.forDelete(rule)) {
+                        onRouting(routing.removing(rule))
+                    }
                     sheetOpen = false
-                    onRouting(routing.removing(rule))
                 },
                 onClose: { sheetOpen = false }
             )
             .id(opened)
+        }
+        .pgSheet(isPresented: Binding(get: { pinStep != nil }, set: { if !$0 { pinStep = nil } })) {
+            BlockPinSheet(texts: texts, control: pinControl, step: $pinStep)
         }
         .accessibilityIdentifier("routing")
     }
@@ -165,7 +189,9 @@ struct RoutingView: View {
                 onSelect: { choice in
                     var next = routing
                     next.blockOthers = choice == .block
-                    onRouting(next)
+                    guarded(BlockGuard.forOthers(from: routing.blockOthers, to: next.blockOthers)) {
+                        onRouting(next)
+                    }
                 }
             )
             Text(RoutingLook.othersNote(routing.blockOthers, texts))
@@ -177,6 +203,47 @@ struct RoutingView: View {
         .padding(.vertical, 14)
         .padding(.horizontal, PgSpace.card)
         .pgCard(padding: 0)
+    }
+
+    /// «Блок сайтов» (решения 742 и 743): блок действует, пока VPN подключен; карточка «PIN-код» — «Изменить» спрашивает
+    /// текущий код.
+    private var blockSection: some View {
+        VStack(alignment: .leading, spacing: PgSpace.s) {
+            Overline(text: texts.blockTitle)
+                .padding(.horizontal, PgSpace.xs)
+                .accessibilityAddTraits(.isHeader)
+            Text(texts.blockScope)
+                .pgText(PgType.caption)
+                .foregroundStyle(Color(PgColor.Text.muted))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, PgSpace.xs)
+                .accessibilityIdentifier("block.scope")
+            BlockPinCard(texts: texts, set: pinControl.pin != nil) {
+                if pinControl.pin == nil {
+                    pinStep = .setup(notice: false)
+                } else {
+                    pinStep = .prompt(PinAsk(title: texts.blockPinChangeTitle, text: texts.blockPinChangeText) {
+                        pinStep = .setup(notice: false)
+                    })
+                }
+            }
+        }
+    }
+
+    /// Действие, которое ослабляет блок (`kind` не nil), — только после верного PIN-кода; кода нет или ослаблять нечего —
+    /// сразу. Из листа правила вопрос ждет, пока лист уедет.
+    private func guarded(_ kind: BlockGuard?, _ allow: @escaping () -> Void) {
+        guard let kind, pinControl.pin != nil else {
+            allow()
+            return
+        }
+
+        let ask = PinAsk.of(kind, texts, allow: allow)
+        if sheetOpen {
+            pendingAsk = ask
+        } else {
+            pinStep = .prompt(ask)
+        }
     }
 
     /// «Пропускается всегда» (решение 740) — только при «Остальные сайты: Блокировать»: что программа пропускает сама.

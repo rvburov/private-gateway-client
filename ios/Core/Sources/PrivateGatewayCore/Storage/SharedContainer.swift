@@ -31,6 +31,8 @@ public struct SharedContainer: Sendable {
     public let log: TunnelLog
     /// Вход в аккаунт сайта: срок — файлом (его проверяет и расширение туннеля), токен — в Связке ключей.
     public let account: AccountStore
+    /// PIN-код блока сайтов — в Связке ключей, не в резервной копии (решение 742).
+    public let blockPin: BlockPinStore
 
     public init(directory: URL, vault: any SecretVault) {
         self.directory = directory
@@ -41,6 +43,7 @@ public struct SharedContainer: Sendable {
         language = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.languageFile)))
         log = TunnelLog(file: DiskFile(url: directory.appendingPathComponent(Self.logFile)))
         account = AccountStore(file: DiskFile(url: directory.appendingPathComponent(Self.accountFile)), vault: vault)
+        blockPin = BlockPinStore(vault: vault)
     }
 
     #if canImport(Security)

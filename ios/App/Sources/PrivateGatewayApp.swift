@@ -33,6 +33,8 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     /// Вход в аккаунт сайта (решение 621): без него — только экран входа.
     @StateObject private var account: AccountModel
+    /// PIN-код блока сайтов (решение 742): «Маршрутизация» и восстановление копии.
+    @StateObject private var blockPin: BlockPinModel
     @StateObject private var importing: ImportModel
     @StateObject private var inspector = InspectorModel()
     /// Скорость туннеля для главной — по счетчикам интерфейса туннеля, пока главная на экране под защитой.
@@ -67,6 +69,7 @@ struct RootView: View {
     init(model: AppModel) {
         self.model = model
         _account = StateObject(wrappedValue: AccountModel(container: model.container))
+        _blockPin = StateObject(wrappedValue: BlockPinModel(container: model.container))
         _importing = StateObject(wrappedValue: ImportModel(container: model.container))
     }
 
@@ -313,8 +316,8 @@ struct RootView: View {
                     tab = .check
                 },
                 onCaptive: askPause,
-                backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack)) },
-                account: account.state?.record, onSignOut: { Task { await account.signOut() } }
+                backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack, pinControl: pinControl.withoutReset)) },
+                account: account.state?.record, onSignOut: { Task { await account.signOut() } }, pinControl: pinControl
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,
@@ -322,6 +325,17 @@ struct RootView: View {
                 )
             }
         }
+    }
+
+    /// PIN-код блока сайтов для экранов: забыли — сброс входом тем же аккаунтом (защита остается).
+    private var pinControl: BlockPinControl {
+        let account = account
+        let blockPin = blockPin
+        return BlockPinControl(
+            pin: blockPin.pin, set: { blockPin.set($0) }, check: { blockPin.check($0) },
+            reset: account.state?.record == nil ? nil : { email, password, code in await account.confirm(email: email, password: password, code: code) },
+            email: account.state?.record?.email ?? ""
+        )
     }
 
     private var subscriptionActions: SubscriptionsActions {

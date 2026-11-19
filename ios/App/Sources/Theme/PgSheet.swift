@@ -6,8 +6,9 @@ extension View {
     /// и жест VoiceOver «назад» его закрывают — со своим видом: полоска-захват control.grabber 40 × 5, фон surface.solid,
     /// поля 10 · 16 · 20; скругление radius.panel и белый фон самого листа — с iOS 16.4. У листа свои слои (`PgLayers`):
     /// диалог, меню и подсказка из листа встают поверх него.
-    func pgSheet<Sheet: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Sheet) -> some View {
-        sheet(isPresented: isPresented) {
+    /// `onDismiss` — лист уехал: следующий лист можно показывать только после этого.
+    func pgSheet<Sheet: View>(isPresented: Binding<Bool>, onDismiss: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Sheet) -> some View {
+        sheet(isPresented: isPresented, onDismiss: onDismiss) {
             PgSheet(content: content)
         }
     }

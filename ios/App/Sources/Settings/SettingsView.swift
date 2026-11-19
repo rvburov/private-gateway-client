@@ -46,6 +46,8 @@ struct SettingsView<Subscriptions: View>: View {
     var account: AccountRecord?
     /// «Выйти» — после вопроса «Выйти из аккаунта?».
     var onSignOut: () -> Void = {}
+    /// PIN-код блока сайтов для «Маршрутизации» (решение 742).
+    var pinControl = BlockPinControl.none
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -65,8 +67,8 @@ struct SettingsView<Subscriptions: View>: View {
             )
         case .routing:
             RoutingView(
-                texts: texts, routing: settings.routing, allowLan: settings.tunnel.allowLan, onRouting: onRouting, onLan: { page = .protection },
-                onBack: { page = .main }
+                texts: texts, routing: settings.routing, allowLan: settings.tunnel.allowLan, pinControl: pinControl, onRouting: onRouting,
+                onLan: { page = .protection }, onBack: { page = .main }
             )
         case .subscriptions:
             subscriptions { page = .main }
