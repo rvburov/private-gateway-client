@@ -229,7 +229,7 @@ enum Pbkdf2 {
         var w = [UInt32](repeating: 0, count: 64)
         while out.count < length {
             var first = inner
-            first.update(salt + [UInt8(block >> 24), UInt8(block >> 16 & 0xff), UInt8(block >> 8 & 0xff), UInt8(block & 0xff)])
+            first.update(salt + Sha256.bytes([block]))
             var second = outer
             second.update(first.finish())
             var u = Sha256.words(second.finish())
@@ -258,7 +258,7 @@ enum Pbkdf2 {
                 }
             }
 
-            out += t.flatMap { word in [UInt8(word >> 24), UInt8(word >> 16 & 0xff), UInt8(word >> 8 & 0xff), UInt8(word & 0xff)] }
+            out += Sha256.bytes(t)
             block += 1
         }
 
@@ -312,26 +312,64 @@ struct Sha256 {
         let bits = length * 8
         var tail: [UInt8] = [0x80]
         tail += [UInt8](repeating: 0, count: (55 - Int(length % 64) + 64) % 64)
-        tail += (0 ..< 8).map { UInt8(bits >> (56 - 8 * UInt64($0)) & 0xff) }
+        for index in 0 ..< 8 {
+            let shift = UInt64(56 - 8 * index)
+            tail.append(UInt8(truncatingIfNeeded: bits >> shift))
+        }
+
         update(tail)
-        return state.flatMap { word in [UInt8(word >> 24), UInt8(word >> 16 & 0xff), UInt8(word >> 8 & 0xff), UInt8(word & 0xff)] }
+        return Self.bytes(state)
     }
 
     /// Состояние после целых блоков — для HMAC, где ключ занимает ровно один блок.
     var words: [UInt32] { state }
 
     static func words(_ bytes: [UInt8]) -> [UInt32] {
-        stride(from: 0, to: bytes.count, by: 4).map { UInt32(bytes[$0]) << 24 | UInt32(bytes[$0 + 1]) << 16 | UInt32(bytes[$0 + 2]) << 8 | UInt32(bytes[$0 + 3]) }
+        var out: [UInt32] = []
+        var index = 0
+        while index + 3 < bytes.count {
+            out.append(word(bytes, index))
+            index += 4
+        }
+
+        return out
+    }
+
+    /// Слово из четырех байт с `at`, старший — первый. Шагами: длинное выражение компилятор Xcode не успевает разобрать.
+    static func word(_ bytes: [UInt8], _ at: Int) -> UInt32 {
+        var value = UInt32(bytes[at]) << 24
+        value |= UInt32(bytes[at + 1]) << 16
+        value |= UInt32(bytes[at + 2]) << 8
+        value |= UInt32(bytes[at + 3])
+        return value
+    }
+
+    /// Четыре байта слова, старший — первый.
+    static func bytes(_ words: [UInt32]) -> [UInt8] {
+        var out: [UInt8] = []
+        out.reserveCapacity(words.count * 4)
+        for value in words {
+            out.append(UInt8(truncatingIfNeeded: value >> 24))
+            out.append(UInt8(truncatingIfNeeded: value >> 16))
+            out.append(UInt8(truncatingIfNeeded: value >> 8))
+            out.append(UInt8(truncatingIfNeeded: value))
+        }
+
+        return out
     }
 
     private mutating func compress(_ data: [UInt8], _ offset: Int) {
         var w = [UInt32](repeating: 0, count: 64)
         for index in 0 ..< 16 {
-            let base = offset + index * 4
-            w[index] = UInt32(data[base]) << 24 | UInt32(data[base + 1]) << 16 | UInt32(data[base + 2]) << 8 | UInt32(data[base + 3])
+            w[index] = Self.word(data, offset + index * 4)
         }
 
         Self.rounds(&state, &w)
+    }
+
+    @inline(__always)
+    private static func rotr(_ value: UInt32, _ count: UInt32) -> UInt32 {
+        (value >> count) | (value << (32 - count))
     }
 
     /// Сжатие одного блока: первые 16 слов `w` — блок, остальные заполняются здесь.
@@ -340,20 +378,23 @@ struct Sha256 {
             w.withUnsafeMutableBufferPointer { w in
                 k.withUnsafeBufferPointer { k in
                     for index in 16 ..< 64 {
-                        let x = w[index - 15]
-                        let y = w[index - 2]
-                        let s0 = (x >> 7 | x << 25) ^ (x >> 18 | x << 14) ^ (x >> 3)
-                        let s1 = (y >> 17 | y << 15) ^ (y >> 19 | y << 13) ^ (y >> 10)
-                        w[index] = w[index - 16] &+ s0 &+ w[index - 7] &+ s1
+                        let x: UInt32 = w[index - 15]
+                        let y: UInt32 = w[index - 2]
+                        let s0: UInt32 = rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3)
+                        let s1: UInt32 = rotr(y, 17) ^ rotr(y, 19) ^ (y >> 10)
+                        let sum: UInt32 = w[index - 16] &+ s0
+                        w[index] = sum &+ w[index - 7] &+ s1
                     }
 
-                    var a = state[0], b = state[1], c = state[2], d = state[3], e = state[4], f = state[5], g = state[6], h = state[7]
+                    var a: UInt32 = state[0], b: UInt32 = state[1], c: UInt32 = state[2], d: UInt32 = state[3]
+                    var e: UInt32 = state[4], f: UInt32 = state[5], g: UInt32 = state[6], h: UInt32 = state[7]
                     for index in 0 ..< 64 {
-                        let s1 = (e >> 6 | e << 26) ^ (e >> 11 | e << 21) ^ (e >> 25 | e << 7)
-                        let choice = (e & f) ^ (~e & g)
-                        let t1 = h &+ s1 &+ choice &+ k[index] &+ w[index]
-                        let s0 = (a >> 2 | a << 30) ^ (a >> 13 | a << 19) ^ (a >> 22 | a << 10)
-                        let majority = (a & b) ^ (a & c) ^ (b & c)
+                        let s1: UInt32 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
+                        let choice: UInt32 = (e & f) ^ (~e & g)
+                        let partial: UInt32 = h &+ s1 &+ choice
+                        let t1: UInt32 = partial &+ k[index] &+ w[index]
+                        let s0: UInt32 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
+                        let majority: UInt32 = (a & b) ^ (a & c) ^ (b & c)
                         h = g
                         g = f
                         f = e
