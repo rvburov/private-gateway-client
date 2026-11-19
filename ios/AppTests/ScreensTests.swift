@@ -368,8 +368,9 @@ final class ScreensTests: XCTestCase {
     @MainActor
     func testNotificationsSpeakBothLanguagesAndTheirButtonsAreRegistered() throws {
         var notices: [Notice] = []
+        let errors = [nil, TunnelErrors.coreFailed, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn, TunnelErrors.networkUnavailable]
         let states = TunnelState.allCases.flatMap { state in
-            [nil, TunnelErrors.coreFailed, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn].map { TunnelStatus(state: state, serverId: "a", error: $0) }
+            [false, true].flatMap { offline in errors.map { TunnelStatus(state: state, serverId: "a", error: $0, offline: offline) } }
         }
         for before in states {
             for after in states {

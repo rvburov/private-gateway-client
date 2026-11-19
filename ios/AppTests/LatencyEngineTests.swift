@@ -4,7 +4,8 @@ import XCTest
 
 /// Настоящий libXray в процессе приложения: замер задержки идет здесь, а не в расширении туннеля (решение 468).
 final class LatencyEngineTests: XCTestCase {
-    /// Сервер на закрытом порту 127.0.0.1 — «нет ответа» у него, а не отказ ядра целиком: libXray в приложении меряет.
+    /// Сервер на закрытом порту 127.0.0.1 — «нет ответа» у него, а не отказ ядра целиком: libXray в приложении меряет. Причина —
+    /// по тексту ошибки ядра (решение 746): обычно «тайм-аут», а смотря по системе — «нет связи».
     func testPingBatchRunsInTheAppProcess() async throws {
         let link = "vless://11111111-2222-3333-4444-555555555555@127.0.0.1:9?encryption=none&security=none&type=tcp#Local"
         let server = try XCTUnwrap(LinkParser.parse(link).server)
@@ -14,6 +15,8 @@ final class LatencyEngineTests: XCTestCase {
         let response = await LatencyEngine.ping(request)
 
         XCTAssertTrue(XrayResponse.parse(response).success, SecretMasker.mask(response))
-        XCTAssertEqual(PingBatch.parse(response, 1), [Latency.failed(.noResponse)], SecretMasker.mask(response))
+        let latency = PingBatch.parse(response, 1)
+        XCTAssertEqual(latency.map(\.failure), [.noResponse], SecretMasker.mask(response))
+        XCTAssertTrue([.timeout, .connection].contains(latency.first?.reason), SecretMasker.mask(response))
     }
 }
