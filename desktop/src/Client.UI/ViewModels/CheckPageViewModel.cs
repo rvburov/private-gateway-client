@@ -121,7 +121,12 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         }
     });
 
-    private void OnLanguageChanged(object? sender, EventArgs e) => Refresh();
+    // Строки проверок собираются заново, остальные подписи (задержка, пояснения) перечитываются все.
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        Refresh();
+        OnPropertyChanged(string.Empty);
+    }
 
     private void OnProtectionChanged(object? sender, PropertyChangedEventArgs e)
     {

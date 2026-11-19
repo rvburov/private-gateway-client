@@ -229,7 +229,14 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     private void OnSettingsChanged(object? sender, AppSettings settings) => Dispatcher.UIThread.Post(() => OnPropertyChanged(string.Empty));
 
-    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(string.Empty);
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(string.Empty);
+        foreach (var link in Advanced)
+        {
+            link.Refresh();
+        }
+    }
 
     private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
     {
@@ -247,7 +254,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 }
 
 /// <summary>Строка раздела «Для опытных»: иконка, название, пояснение, переход.</summary>
-public sealed class AdvancedLinkViewModel(string id, string icon, SettingsPageViewModel owner)
+public sealed class AdvancedLinkViewModel(string id, string icon, SettingsPageViewModel owner) : ObservableObject
 {
     public string Id { get; } = id;
 
@@ -258,4 +265,7 @@ public sealed class AdvancedLinkViewModel(string id, string icon, SettingsPageVi
     public string Text => Loc.Instance[$"settings.adv.{Id}.text"];
 
     public IRelayCommand<string> OpenCommand => owner.OpenCommand;
+
+    /// <summary>Сменился язык — перечитать название и пояснение: строка списка сама о нем не знает.</summary>
+    public void Refresh() => OnPropertyChanged(string.Empty);
 }
