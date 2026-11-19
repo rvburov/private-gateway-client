@@ -79,6 +79,7 @@ import com.privategateway.client.ui.StateLook
 import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.maskIp
 import com.privategateway.client.ui.servers.LatencyText
+import com.privategateway.client.ui.theme.CountryFlag
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
@@ -598,8 +599,7 @@ private fun ServerRow(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSe
         RefreshButton(ui.measuring, onRefresh)
         val title = when {
             server == null -> stringResource(R.string.server_none)
-            server.countryCode.isEmpty() -> server.title
-            else -> server.countryCode + " · " + server.title
+            else -> server.title
         }
         val meta = when {
             server != null -> server.summary + " · " + stringResource(R.string.server_port, server.port.toString())
@@ -710,15 +710,7 @@ private fun QuickRow(server: ServerItem, current: Boolean, onClick: () -> Unit) 
             .testTag("quick.${server.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(30.dp, 22.dp)
-                .clip(RoundedCornerShape(PgRadius.Chip))
-                .background(PgColor.Accent.Tint),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(server.countryCode, color = PgColor.Accent.Text, style = BadgeText.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-        }
+        CountryFlag(server.countryCode)
 
         Column(Modifier.weight(1f).padding(horizontal = PgSpace.M, vertical = PgSpace.Xs), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(server.title, color = color, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)

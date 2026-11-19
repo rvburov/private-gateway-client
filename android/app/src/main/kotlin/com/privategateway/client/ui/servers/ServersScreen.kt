@@ -72,6 +72,7 @@ import com.privategateway.client.core.servers.ServerListTab
 import com.privategateway.client.core.servers.ServerSort
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.MainUi
+import com.privategateway.client.ui.theme.CountryFlag
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCheck
 import com.privategateway.client.ui.theme.PgColor
@@ -520,7 +521,7 @@ private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean,
                 .testTag("server.${server.id}"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CountryCode(server.countryCode, large = false)
+            CountryFlag(server.countryCode)
             Column(Modifier.weight(1f).padding(start = PgSpace.L, end = PgSpace.S), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     server.title,
@@ -575,28 +576,6 @@ private fun MoreButton(name: String, modifier: Modifier, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         PgIcon(PgIcons.More, more, color = if (pressed) PgColor.Accent.Base else PgColor.Text.Muted, size = 18.dp, strokeWidth = 3f)
-    }
-}
-
-/**
- * Значок страны: две буквы кода (цветные флаги шрифт рисует не везде) на accent.tint с рамкой accent.line. В строке —
- * 40 × 28 со скруглением radius.chip, в карточке ([large]) — 52 × 38 со скруглением radius.input. Кода нет — пустой.
- */
-@Composable
-internal fun CountryCode(code: String, large: Boolean) {
-    val shape = RoundedCornerShape(if (large) PgRadius.Input else PgRadius.Chip)
-    Box(
-        Modifier
-            .size(if (large) 52.dp else 40.dp, if (large) 38.dp else 28.dp)
-            .clip(shape)
-            .background(PgColor.Accent.Tint)
-            .border(1.dp, PgColor.Accent.Line, shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (code.isNotEmpty()) {
-            val style = if (large) PgType.Title else PgType.Caption
-            Text(code, color = PgColor.Accent.Text, style = style.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-        }
     }
 }
 

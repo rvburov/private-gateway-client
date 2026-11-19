@@ -109,7 +109,8 @@ class ScreensTest {
         compose.onNodeWithText(text(R.string.android_check_ks_system)).assertDoesNotExist()
         compose.onNodeWithTag("status.checked").assertTextEquals(text(R.string.checked_off))
         compose.onNodeWithTag("status.verify").assertDoesNotExist()
-        compose.onNodeWithTag("server.title").performScrollTo().assertTextEquals("NL · " + nl.displayName)
+        // Название без «NL ·»: как в макете (доска 25), флаг — в списке и быстрой смене.
+        compose.onNodeWithTag("server.title").performScrollTo().assertTextEquals(nl.displayName)
         compose.onNodeWithText("VLESS · REALITY · " + text(R.string.server_port, "443")).assertIsDisplayed()
         compose.onNodeWithTag("ip.address").assertTextEquals("—")
         compose.onNodeWithTag("ip.meta").assertTextEquals(text(R.string.ip_meta_off))

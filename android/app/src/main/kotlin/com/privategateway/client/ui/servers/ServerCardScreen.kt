@@ -69,6 +69,7 @@ import com.privategateway.client.core.servers.ServerNames
 import com.privategateway.client.core.servers.SubscriptionRef
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.qr.qrBitmap
+import com.privategateway.client.ui.theme.CountryFlag
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgColor
@@ -229,11 +230,11 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
     }
 }
 
-/** Заголовок листа: значок страны 52 × 38, название (t-status) и «откуда» под ним, звезда избранного и крестик. */
+/** Заголовок листа: флаг страны, название (t-status) и «откуда» под ним, звезда избранного и крестик. */
 @Composable
 private fun Head(server: ServerItem, subscriptions: List<SubscriptionRef>, onFavorite: (Boolean) -> Unit, onClose: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        CountryCode(server.countryCode, large = true)
+        CountryFlag(server.countryCode)
         Column(Modifier.weight(1f).padding(start = PgSpace.L, end = PgSpace.S), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(server.title, Modifier.testTag("card.title"), style = PgType.Status, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(source(server, subscriptions), Modifier.testTag("card.subtitle"), color = PgColor.Text.Muted, style = PgType.Caption)

@@ -13,6 +13,8 @@ import com.privategateway.client.account.accountDataStore
 import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.inspect.ProbeRunner
 import com.privategateway.client.data.AppDatabase
+import com.privategateway.client.data.AssetCountries
+import com.privategateway.client.data.CountryLookup
 import com.privategateway.client.data.KeystoreSecretBox
 import com.privategateway.client.data.SecretBox
 import com.privategateway.client.data.ServerDao
@@ -63,6 +65,10 @@ object AppModule {
 
     @Provides
     fun serverDao(database: AppDatabase): ServerDao = database.servers()
+
+    /** Страна адреса сервера для флага — встроенная геобаза. */
+    @Provides
+    fun countries(countries: AssetCountries): CountryLookup = countries
 
     @Provides
     fun subscriptionDao(database: AppDatabase): SubscriptionDao = database.subscriptions()

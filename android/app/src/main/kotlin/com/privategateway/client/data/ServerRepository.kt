@@ -68,7 +68,11 @@ data class UpdateResult(val added: Int, val removed: Int, val selected: Selected
  * десктопа). Все записи — по одной (Mutex) и одной транзакцией.
  */
 @Singleton
-class ServerRepository @Inject constructor(private val database: AppDatabase, private val box: SecretBox) {
+class ServerRepository @Inject constructor(
+    private val database: AppDatabase,
+    private val box: SecretBox,
+    private val countries: CountryLookup = CountryLookup.NONE,
+) {
     private val dao = database.servers()
     private val subscriptions = database.subscriptions()
 
@@ -164,7 +168,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
                 continue
             }
 
-            fresh.add(entity(server, ++position, now, groupId))
+            fresh.add(entity(server, ++position, now, groupId, countries.country(server.host)))
         }
 
         val subscription = if (group != null && groupId != null && existing == null) {
@@ -228,6 +232,23 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         URI(String(box.open(sealed), Charsets.UTF_8))
     } catch (_: Exception) {
         null
+    }
+
+    /**
+     * Страны адресов сохраненных серверов для флагов: после новой геобазы (обновление приложения) — заново для всех, иначе —
+     * только еще не определенные (серверы до миграции 3 → 4). Ссылку открывает Keystore; адрес никуда не уходит.
+     */
+    suspend fun locate() = withContext(Dispatchers.IO) {
+        writes.withLock {
+            if (countries.renewed()) {
+                dao.forgetAddressCountries()
+            }
+
+            for (entity in dao.withoutAddressCountry()) {
+                val host = open(entity)?.host ?: continue
+                dao.setAddressCountry(entity.id, countries.country(host))
+            }
+        }
     }
 
     /**
@@ -308,12 +329,12 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
             val byId = all.associateBy { it.id }
             // Запечатывание — до транзакции: Keystore не держит базу. Пишется только описание сервера: избранное, свое название,
             // задержка и время выбора, записанные тем временем, остаются.
-            val kept = merge.kept.map { (keptId, server) -> Triple(keptId, server, seal(server)) }
+            val kept = merge.kept.map { (keptId, server) -> Kept(keptId, server, seal(server), countries.country(server.host)) }
 
             var position = dao.lastPosition()
-            val added = merge.added.map { entity(it, ++position, now, id) }
+            val added = merge.added.map { entity(it, ++position, now, id, countries.country(it.host)) }
             database.withTransaction {
-                for ((keptId, server, sealed) in kept) {
+                for ((keptId, server, sealed, country) in kept) {
                     dao.refresh(
                         keptId,
                         server.name,
@@ -323,6 +344,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
                         server.transport.kind.name,
                         server.port,
                         sealed,
+                        country,
                     )
                 }
 
@@ -443,7 +465,10 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         null
     }
 
-    private fun entity(server: ServerDefinition, position: Int, now: Long, group: String?) = ServerEntity(
+    /** Свой сервер подписки после обновления: описание, запечатанная ссылка и страна нового адреса. */
+    private data class Kept(val id: String, val server: ServerDefinition, val sealed: ByteArray, val country: String)
+
+    private fun entity(server: ServerDefinition, position: Int, now: Long, group: String?, country: String) = ServerEntity(
         id = UUID.randomUUID().toString(),
         name = server.name,
         countryCode = server.countryCode,
@@ -455,6 +480,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         addedAt = now,
         sealed = seal(server),
         subscriptionId = group,
+        addressCountry = country,
     )
 
     private fun seal(server: ServerDefinition) = box.seal(LinkWriter.write(server).toByteArray(Charsets.UTF_8))
@@ -474,7 +500,8 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         ServerItem(
             id = entity.id,
             linkName = entity.name,
-            countryCode = entity.countryCode,
+            // Флаг — по адресу, как у десктопа; адрес не цифрами или без страны — флаг из названия ссылки.
+            countryCode = entity.addressCountry?.takeIf { it.isNotEmpty() } ?: entity.countryCode,
             protocol = ProxyProtocol.valueOf(entity.protocol),
             security = TransportSecurity.valueOf(entity.security),
             transport = TransportKind.valueOf(entity.transport),

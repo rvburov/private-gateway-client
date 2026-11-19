@@ -277,7 +277,11 @@ class MainViewModel @Inject constructor(
 
     init {
         // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
-        viewModelScope.launch { servers.mergeSameSubscriptions(settings.selectedServerId.first()) }
+        viewModelScope.launch {
+            servers.mergeSameSubscriptions(settings.selectedServerId.first())
+            // Флаги по адресам серверов, сохраненных до геобазы или с прежней ее версией.
+            servers.locate()
+        }
         networks.start()
         // Внешний IP — сам, когда меняется путь запросов приложения: подключились — выход (проверка, нет ли утечки),
         // выключено без блока Android или сменилась сеть — реальный IP.

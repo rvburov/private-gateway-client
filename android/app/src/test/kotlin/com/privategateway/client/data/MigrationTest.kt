@@ -92,6 +92,36 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun `servers of version 3 survive the upgrade and get their address country at start`() {
+        // Версия 3 — версия 2 и столбец выхода (MIGRATION_2_3), как в schemas/…/3.json.
+        version2 { database ->
+            database.execSQL("ALTER TABLE `servers` ADD COLUMN `sealedExit` BLOB DEFAULT NULL")
+            database.execSQL(
+                "INSERT INTO servers (id, name, countryCode, protocol, security, transport, port, position, addedAt, sealed, sealedExit) " +
+                    "VALUES ('nl', 'Нидерланды 01', 'NL', 'Vless', 'Reality', 'Tcp', 443, 0, 1000, X'500102', X'5003')",
+            )
+        }
+        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { it.version = 3 }
+
+        val database = AppDatabase.open(context, name)
+        try {
+            runBlocking {
+                val server = assertNotNull(database.servers().byId("nl"), "сервер версии 3 потерян")
+                assertEquals("NL", server.countryCode)
+                assertContentEquals(byteArrayOf(0x50, 0x03), server.sealedExit)
+                assertNull(server.addressCountry, "страну адреса еще не определяли — ее определит запуск")
+                assertEquals(listOf("nl"), database.servers().withoutAddressCountry().map { it.id })
+
+                database.servers().setAddressCountry("nl", "DE")
+                assertEquals("DE", database.servers().byId("nl")?.addressCountry)
+                assertEquals(emptyList(), database.servers().withoutAddressCountry())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
     /** База версии 2 — DDL из выгруженной схемы `schemas/…/2.json` и номер версии 2. */
     private fun version2(fill: (SQLiteDatabase) -> Unit) {
         val file = context.getDatabasePath(name)

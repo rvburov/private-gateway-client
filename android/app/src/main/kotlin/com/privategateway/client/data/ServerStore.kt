@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.Flow
  * ([subscriptionId]), без группы — «Мои серверы». [missingSince] — выбранный сервер пропал из подписки и оставлен, пока
  * выбран. [sealedExit] — запечатанный IP, который сайты видели через этот сервер (решение 583): у сервера «VPS + прокси»
  * он не совпадает с адресом подключения; у одиночного сервера это и есть его IP, поэтому открыто не хранится.
+ * [addressCountry] — страна адреса сервера по встроенной геобазе, как флаг десктопа: «» — адрес не цифрами или без страны,
+ * null — еще не определяли. [countryCode] — флаг из названия ссылки: с ним ссылка и выгружается обратно.
  */
 @Entity(tableName = "servers", indices = [Index("subscriptionId")])
 data class ServerEntity(
@@ -45,6 +47,7 @@ data class ServerEntity(
     @ColumnInfo(defaultValue = "NULL") val lastUsedAt: Long? = null,
     @ColumnInfo(defaultValue = "NULL") val missingSince: Long? = null,
     @ColumnInfo(defaultValue = "NULL") val sealedExit: ByteArray? = null,
+    @ColumnInfo(defaultValue = "NULL") val addressCountry: String? = null,
 )
 
 /**
@@ -141,7 +144,7 @@ interface ServerDao {
      */
     @Query(
         "UPDATE servers SET name = :name, countryCode = :countryCode, protocol = :protocol, security = :security, " +
-            "transport = :transport, port = :port, sealed = :sealed, missingSince = NULL WHERE id = :id",
+            "transport = :transport, port = :port, sealed = :sealed, addressCountry = :addressCountry, missingSince = NULL WHERE id = :id",
     )
     suspend fun refresh(
         id: String,
@@ -152,7 +155,19 @@ interface ServerDao {
         transport: String,
         port: Int,
         sealed: ByteArray,
+        addressCountry: String?,
     )
+
+    /** Серверы, у которых страну адреса еще не определяли (после миграции 3 → 4 и обновления геобазы). */
+    @Query("SELECT * FROM servers WHERE addressCountry IS NULL")
+    suspend fun withoutAddressCountry(): List<ServerEntity>
+
+    @Query("UPDATE servers SET addressCountry = :code WHERE id = :id")
+    suspend fun setAddressCountry(id: String, code: String)
+
+    /** Новая геобаза — страны всех адресов определить заново. */
+    @Query("UPDATE servers SET addressCountry = NULL")
+    suspend fun forgetAddressCountries()
 }
 
 /** Подписка и число ее серверов — для «Профили и подписки». */
@@ -193,7 +208,7 @@ interface SubscriptionDao {
  * дальше выгружаются в `app/schemas` (CI сверяет их с сущностями); миграции проверяет MigrationTest на базах, собранных по
  * DDL прежних версий (версия 1 не выгружалась).
  */
-@Database(entities = [ServerEntity::class, SubscriptionEntity::class], version = 3, exportSchema = true)
+@Database(entities = [ServerEntity::class, SubscriptionEntity::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun servers(): ServerDao
 
@@ -203,7 +218,7 @@ abstract class AppDatabase : RoomDatabase() {
         const val NAME = "private-gateway.db"
 
         fun open(context: Context, name: String = NAME): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
 
         /** 1 → 2: группы и подписки; свое название, избранное, задержка, когда выбирался, «пропал из подписки». */
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -228,6 +243,13 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `servers` ADD COLUMN `sealedExit` BLOB DEFAULT NULL")
+            }
+        }
+
+        /** 3 → 4: страна адреса по геобазе (флаг, как у десктопа); у прежних серверов определяется при запуске. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `servers` ADD COLUMN `addressCountry` TEXT DEFAULT NULL")
             }
         }
     }

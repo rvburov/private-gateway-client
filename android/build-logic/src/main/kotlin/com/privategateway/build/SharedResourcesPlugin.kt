@@ -29,6 +29,8 @@ import java.io.File
  * generatePgLicenses — лицензии открытых компонентов в assets (shared/licenses/android.json и тексты).
  * generatePgUpdateKeys — открытые ключи подписи обновлений (файлы .pem из shared/update/keys) в assets/update-keys: ими
  * приложение сверяет подпись update.json из ленты сайта, как служба десктопа, — подделать обновление сайт не может.
+ * generatePgCountries — геобаза стран и квадратные флаги (shared/countries: country.bin.gz и PNG из flags) в
+ * assets/countries: страну сервера по его IP и флаг приложение показывает, как десктоп, без сети.
  * Папки результата подключает к вариантам сборки приложение (android/app/build.gradle.kts).
  */
 class SharedResourcesPlugin : Plugin<Project> {
@@ -61,6 +63,12 @@ class SharedResourcesPlugin : Plugin<Project> {
             keys.from(repo.dir("shared/update/keys").asFileTree.matching { include("*.pem") })
             outputDir.set(project.layout.buildDirectory.dir("generated/pg/update-assets"))
         }
+
+        project.tasks.register("generatePgCountries", GeneratePgCountries::class.java) {
+            database.set(repo.file("shared/countries/country.bin.gz"))
+            flags.from(repo.dir("shared/countries/flags").asFileTree.matching { include("*.png") })
+            outputDir.set(project.layout.buildDirectory.dir("generated/pg/country-assets"))
+        }
     }
 }
 
@@ -79,6 +87,29 @@ abstract class GeneratePgUpdateKeys : DefaultTask() {
         outputDir.get().asFile.deleteRecursively()
         folder.mkdirs()
         keys.files.sortedBy { it.name }.forEach { it.copyTo(folder.resolve(it.name), overwrite = true) }
+    }
+}
+
+/** Геобаза и флаги стран — в assets/countries как есть: country.bin.gz и flags/<код>.png (UNKNOWN.png — Земля). */
+abstract class GeneratePgCountries : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val database: RegularFileProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val flags: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val folder = outputDir.get().asFile.resolve("countries")
+        outputDir.get().asFile.deleteRecursively()
+        folder.resolve("flags").mkdirs()
+        database.get().asFile.copyTo(folder.resolve("country.bin.gz"), overwrite = true)
+        flags.files.sortedBy { it.name }.forEach { it.copyTo(folder.resolve("flags").resolve(it.name), overwrite = true) }
     }
 }
 

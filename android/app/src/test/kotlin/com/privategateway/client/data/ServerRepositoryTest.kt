@@ -59,6 +59,55 @@ class ServerRepositoryTest {
     }
 
     @Test
+    fun `flag comes from the server address and falls back to the flag in the link name`() = runBlocking<Unit> {
+        val countries = FakeCountries(mutableMapOf("198.51.100.7" to "DE"))
+        val repository = ServerRepository(database, box, countries)
+        val base = Fixtures.servers().first()
+        repository.add(listOf(base.copy(name = "A", host = "198.51.100.7", countryCode = "NL"), base.copy(name = "B", host = "vpn.example.com", countryCode = "FI")))
+
+        val items = repository.servers.first().associateBy { it.linkName }
+        assertEquals("DE", items.getValue("A").countryCode, "страна адреса — как флаг десктопа, важнее флага в названии")
+        assertEquals("FI", items.getValue("B").countryCode, "адрес не цифрами (DNS телефон не спрашивает) — флаг из названия")
+        assertEquals("NL", repository.load(items.getValue("A").id)?.countryCode, "ссылка выгружается с флагом из названия, как пришла")
+        assertEquals(listOf("198.51.100.7", "vpn.example.com"), countries.asked.sorted())
+    }
+
+    @Test
+    fun `saved servers get their address country at start and again with a new database`() = runBlocking<Unit> {
+        val base = Fixtures.servers().first().copy(name = "A", host = "198.51.100.7", countryCode = "")
+        repository.add(listOf(base))
+        // Как после миграции 3 → 4: страну адреса еще не определяли.
+        database.servers().forgetAddressCountries()
+        val countries = FakeCountries(mutableMapOf("198.51.100.7" to "DE"))
+        val located = ServerRepository(database, box, countries)
+        assertEquals("", located.servers.first().single().countryCode)
+
+        located.locate()
+        assertEquals("DE", located.servers.first().single().countryCode)
+
+        countries.codes["198.51.100.7"] = "SE"
+        located.locate()
+        assertEquals("DE", located.servers.first().single().countryCode, "та же геобаза — определенное не пересчитывается")
+
+        countries.renewed = true
+        located.locate()
+        assertEquals("SE", located.servers.first().single().countryCode, "новая геобаза — страны заново")
+    }
+
+    /** Геобаза теста: адрес → код; [renewed] — как после обновления приложения. */
+    private class FakeCountries(val codes: MutableMap<String, String>) : CountryLookup {
+        val asked = mutableListOf<String>()
+        var renewed = false
+
+        override suspend fun country(host: String): String {
+            asked += host
+            return codes[host].orEmpty()
+        }
+
+        override suspend fun renewed() = renewed
+    }
+
+    @Test
     fun `address and keys are stored only sealed`() = runBlocking<Unit> {
         val servers = Fixtures.servers()
         repository.add(servers)

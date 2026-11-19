@@ -139,6 +139,18 @@ class ServersScreenTest {
     }
 
     @Test
+    fun `a row shows the country flag picture and the earth without a country`() {
+        list(MainUi(servers = listOf(nl, fi.copy(countryCode = "")), subscriptions = listOf(provider)))
+        // Флаг — картинка из assets/countries/flags, как на десктопе, а не буквы кода.
+        compose.onNodeWithTag("flag.NL", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("flag.UNKNOWN", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("NL").assertDoesNotExist()
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        kotlin.test.assertNotNull(com.privategateway.client.ui.theme.CountryFlags.image(context, "NL"), "картинка флага есть в приложении")
+        kotlin.test.assertNotNull(com.privategateway.client.ui.theme.CountryFlags.image(context, "UNKNOWN"))
+    }
+
+    @Test
     fun `latency is fast, slow, no answer or not measured`() {
         list(MainUi(servers = listOf(nl, us, tr, fi), subscriptions = listOf(provider)))
         val ms = text(R.string.unit_ms)

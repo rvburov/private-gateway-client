@@ -1,5 +1,6 @@
 import com.privategateway.build.GeneratePgLicenses
 import com.privategateway.build.GeneratePgUpdateKeys
+import com.privategateway.build.GeneratePgCountries
 import com.privategateway.build.GeneratePgResources
 import com.privategateway.build.MavenModules
 import com.privategateway.build.GeneratePgTheme
@@ -136,6 +137,7 @@ kotlin {
 val pgTheme = tasks.named<GeneratePgTheme>("generatePgTheme")
 val pgResources = tasks.named<GeneratePgResources>("generatePgResources")
 val pgUpdateKeys = tasks.named<GeneratePgUpdateKeys>("generatePgUpdateKeys")
+val pgCountries = tasks.named<GeneratePgCountries>("generatePgCountries")
 val pgLicenses = tasks.named<GeneratePgLicenses>("generatePgLicenses") {
     appVersion.set(android.defaultConfig.versionName.orEmpty())
 }
@@ -154,6 +156,7 @@ androidComponents {
         variant.sources.res?.addGeneratedSourceDirectory(pgResources, GeneratePgResources::outputDir)
         variant.sources.assets?.addGeneratedSourceDirectory(pgLicenses, GeneratePgLicenses::outputDir)
         variant.sources.assets?.addGeneratedSourceDirectory(pgUpdateKeys, GeneratePgUpdateKeys::outputDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(pgCountries, GeneratePgCountries::outputDir)
     }
 }
 
