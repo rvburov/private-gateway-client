@@ -3,13 +3,15 @@ import XCTest
 @testable import PrivateGatewayCore
 
 /// Открытые компоненты приложения iOS (shared/licenses/ios.json) — как сверка android.json сборкой Android: у каждого есть
-/// автор, ссылка и полный текст лицензии, и он действительно в сборке — пакет в Package.swift, .xcframework в проекте; пакет без
-/// строки в списке тоже ошибка.
+/// автор, ссылка и полный текст лицензии, и он действительно в сборке — пакет в Package.swift, .xcframework или файлы в проекте;
+/// пакет без строки в списке тоже ошибка.
 final class LicensesTests: XCTestCase {
     private static let root = LinkParserTests.testData.deletingLastPathComponent().deletingLastPathComponent()
 
     private struct Component {
         let fields: [String: String]
+        /// Списки строк (`files`).
+        var lists: [String: [String]] = [:]
 
         var name: String { fields["name"] ?? "" }
     }
@@ -33,6 +35,18 @@ final class LicensesTests: XCTestCase {
                 }
 
                 return nil
+            }, lists: values.compactMapValues { value in
+                guard case let .array(items, _, _) = value else {
+                    return nil
+                }
+
+                return items.compactMap { item in
+                    if case let .string(text) = item {
+                        return text
+                    }
+
+                    return nil
+                }
             })
         }
     }
@@ -47,8 +61,8 @@ final class LicensesTests: XCTestCase {
                 XCTAssertFalse(component.fields[field, default: ""].isEmpty, "\(component.name): нет \(field)")
             }
 
-            let sources = ["swiftpm", "xcframework", "inside"].filter { component.fields[$0] != nil }
-            XCTAssertEqual(sources.count, 1, "\(component.name): как компонент приходит в приложение — одно из swiftpm, xcframework, inside")
+            let sources = ["swiftpm", "xcframework", "inside"].filter { component.fields[$0] != nil } + (component.lists["files"].map { _ in ["files"] } ?? [])
+            XCTAssertEqual(sources.count, 1, "\(component.name): как компонент приходит в приложение — одно из swiftpm, xcframework, inside, files")
             if let parent = component.fields["inside"] {
                 XCTAssertTrue(names.contains(parent), "\(component.name): внутри неизвестного \(parent)")
             }
@@ -97,5 +111,20 @@ final class LicensesTests: XCTestCase {
             line.components(separatedBy: "/").last?.components(separatedBy: ".xcframework").first
         })
         XCTAssertEqual(frameworks, Set(list.compactMap { $0.fields["xcframework"] }), "каждый .xcframework проекта — строкой в ios.json")
+
+        // Данные из репозитория (геобаза, флаги) — ресурсом приложения в project.yml и на месте.
+        for component in list {
+            for file in component.lists["files"] ?? [] {
+                XCTAssertTrue(project.contains("- path: \(file)\n"), "\(component.name): \(file) нет в ресурсах ios/project.yml")
+                let path = Self.root.appendingPathComponent("ios").appendingPathComponent(file).standardizedFileURL.path
+                XCTAssertTrue(FileManager.default.fileExists(atPath: path), "\(component.name): нет \(file)")
+            }
+        }
+
+        let shared = Set(project.components(separatedBy: .newlines).compactMap { line -> String? in
+            let path = line.trimmingCharacters(in: .whitespaces)
+            return path.hasPrefix("- path: ../shared/countries") ? String(path.dropFirst("- path: ".count)) : nil
+        })
+        XCTAssertEqual(shared, Set(list.flatMap { $0.lists["files"] ?? [] }), "каждый файл shared/countries проекта — строкой в ios.json")
     }
 }

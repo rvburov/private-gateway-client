@@ -261,7 +261,7 @@ enum QuickMenu {
         let items = picked.map { server -> PgMenuItem in
             let latency = LatencyLook.of(server.latency, texts)
             return PgMenuItem(
-                title: server.title, current: server.id == inUse, badge: server.countryCode, caption: server.summary, trailing: latency.text,
+                title: server.title, current: server.id == inUse, flag: server.countryCode, caption: server.summary, trailing: latency.text,
                 trailingColor: latency.color
             )
         }
@@ -276,11 +276,6 @@ enum QuickMenu {
                 onSelect(ids[index])
             }
         }, title: texts.serverQuick)
-    }
-
-    /// Строка сервера в карточке IP: «NL · Нидерланды 01»; кода страны нет — одно название.
-    static func title(_ server: ServerItem) -> String {
-        server.countryCode.isEmpty ? server.title : server.countryCode + " · " + server.title
     }
 }
 

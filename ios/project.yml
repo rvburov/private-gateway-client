@@ -38,6 +38,13 @@ targets:
         buildPhase: resources
       - path: ../android/libxray.version
         buildPhase: resources
+      # Флаги стран (решение 733): геобаза DB-IP и картинки флагов — те же файлы, что у десктопа и Android (shared/countries).
+      # Картинки — папкой (flags/<код>.png в пакете приложения).
+      - path: ../shared/countries/country.bin.gz
+        buildPhase: resources
+      - path: ../shared/countries/flags
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: PrivateGatewayCore
         product: PrivateGatewayCore

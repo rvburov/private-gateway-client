@@ -324,8 +324,6 @@ final class HomeTests: XCTestCase {
         let home = HomeState(status: TunnelStatus(state: .connected, serverId: "a"), servers: servers, selectedId: "a")
         XCTAssertEqual(home.inUse?.id, "a")
         XCTAssertEqual(QuickMenu.servers(home).map(\.id), ["a", "b", "d"], "сервер в работе и два самых быстрых; Hysteria2 телефон не умеет")
-        XCTAssertEqual(QuickMenu.title(servers[0]), "NL · Нидерланды 01")
-        XCTAssertEqual(QuickMenu.title(servers[3]), "Швеция")
 
         let layers = PgLayers()
         let anchor = UUID()
@@ -341,7 +339,7 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(menu?.title, texts.serverQuick)
         XCTAssertEqual(menu?.items.map(\.title), ["Нидерланды 01", "Германия", "Польша", texts.serverAll])
         XCTAssertEqual(menu?.items.map(\.current), [true, false, false, false], "сервер в работе отмечен")
-        XCTAssertEqual(menu?.items.map(\.badge), ["NL", "DE", "PL", nil])
+        XCTAssertEqual(menu?.items.map(\.flag), ["NL", "DE", "PL", nil], "флаг страны слева")
         XCTAssertEqual(menu?.items.map(\.caption), ["VLESS · REALITY", "Trojan · WS", "VLESS · XHTTP", nil], "протокол второй строкой")
         XCTAssertEqual(menu?.items.map(\.trailing), ["48 \(texts.unitMs)", "30 \(texts.unitMs)", "90 \(texts.unitMs)", nil])
         XCTAssertEqual(menu?.items.map(\.link), [false, false, false, true], "«Все серверы ›» — под чертой")

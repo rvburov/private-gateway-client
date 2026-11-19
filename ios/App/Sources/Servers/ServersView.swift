@@ -372,7 +372,7 @@ struct ServerRow: View {
         ZStack(alignment: .trailing) {
             Button(action: onSelect) {
                 HStack(spacing: 0) {
-                    CountryBadge(code: server.countryCode, size: .row)
+                    CountryGlyph(code: server.countryCode)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(server.title).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
                         Text(server.summary)
@@ -428,34 +428,6 @@ struct ServerRow: View {
             .accessibilityLabel(texts.serversMoreName(server.title))
             .accessibilityIdentifier("more.\(server.id)")
         }
-    }
-}
-
-/// Значок страны (.sv-cc строки и .sc-cc карточки): две буквы кода на accent.tint с рамкой accent.line (цветные флаги шрифт
-/// рисует не везде); кода нет — пустая плашка, как в макете.
-struct CountryBadge: View {
-    enum Size {
-        /// Строка списка: 40 × 28, скругление radius.chip, буквы размером caption, насыщенность 700.
-        case row
-        /// Заголовок карточки: 52 × 38, скругление radius.input, буквы размером title, насыщенность 700.
-        case card
-    }
-
-    let code: String
-    var size = Size.row
-
-    var body: some View {
-        let row = size == .row
-        let shape = RoundedRectangle(cornerRadius: CGFloat(row ? PgRadius.chip : PgRadius.input), style: .continuous)
-        Text(code)
-            .pgText(PgTextStyle(size: row ? PgType.caption.size : PgType.title.size, weight: 700))
-            .foregroundStyle(Color(PgColor.Accent.text))
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .frame(width: row ? 40 : 52, height: row ? 28 : 38)
-            .background(shape.fill(Color(PgColor.Accent.tint)))
-            .overlay(shape.strokeBorder(Color(PgColor.Accent.line), lineWidth: 1))
-            .accessibilityHidden(true)
     }
 }
 

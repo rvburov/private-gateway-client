@@ -115,11 +115,11 @@ struct ServerCardView: View {
         .accessibilityIdentifier("card")
     }
 
-    /// Заголовок листа (.sc-head): значок страны 52 × 38, название (type.status) и под ним откуда сервер, звезда избранного и
+    /// Заголовок листа (.sc-head): флаг страны, название (type.status) и под ним откуда сервер, звезда избранного и
     /// крестик «Закрыть».
     private func head(_ server: ServerItem) -> some View {
         HStack(spacing: 0) {
-            CountryBadge(code: server.countryCode, size: .card)
+            CountryGlyph(code: server.countryCode)
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.title)
                     .pgText(PgType.status)

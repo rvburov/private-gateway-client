@@ -224,6 +224,37 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertNil(back.customName, "пустое — снова название из ссылки")
     }
 
+    /// Флаг — по стране адреса из геобазы, как у десктопа: адрес не цифрами или без страны («») — флаг из названия ссылки.
+    /// Без геобазы (расширение туннеля) страна не определяется; после новой геобазы — заново для всех.
+    func testFlagComesFromTheAddressCountryAndFallsBackToTheNameFlag() async throws {
+        let servers = Array(Self.unique.prefix(2))
+        try await store.add([servers[0]])
+        var flags = try await store.servers().map(\.countryCode)
+        XCTAssertEqual(flags, [servers[0].countryCode], "без геобазы — флаг из названия")
+
+        let first = servers[0].host
+        await store.useCountries { $0 == first ? "FI" : "" }
+        try await store.locate(renewed: false)
+        flags = try await store.servers().map(\.countryCode)
+        XCTAssertEqual(flags, ["FI"], "еще не определенная страна определилась")
+
+        try await store.add([servers[1]])
+        flags = try await store.servers().map(\.countryCode)
+        XCTAssertEqual(flags, ["FI", servers[1].countryCode], "без страны адреса — флаг из названия")
+
+        await store.useCountries { _ in "DE" }
+        try await store.locate(renewed: false)
+        flags = try await store.servers().map(\.countryCode)
+        XCTAssertEqual(flags, ["FI", servers[1].countryCode], "определенное не трогаем")
+        try await store.locate(renewed: true)
+        flags = try await store.servers().map(\.countryCode)
+        XCTAssertEqual(flags, ["DE", "DE"], "новая геобаза — заново для всех")
+
+        let other = ServerStore(file: file, vault: vault)
+        flags = try await other.servers().map(\.countryCode)
+        XCTAssertEqual(flags, ["DE", "DE"], "страна сохранена в файле")
+    }
+
     func testNewServersGoAfterTheOldOnes() async throws {
         try await store.add(Array(Self.unique.prefix(2)))
         try await store.add(Array(Self.unique.dropFirst(2).prefix(2)))

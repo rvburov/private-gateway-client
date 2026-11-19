@@ -159,13 +159,8 @@ struct PgMenuView: View {
 
     private func row(_ item: PgMenuItem) -> some View {
         HStack(spacing: 0) {
-            if let badge = item.badge {
-                Text(badge)
-                    .pgText(PgTextStyle(size: PgType.overline.size, weight: 700))
-                    .foregroundStyle(Color(PgColor.Accent.text))
-                    .frame(width: 30, height: 22)
-                    .background(RoundedRectangle(cornerRadius: PgRadius.chip, style: .continuous).fill(Color(PgColor.Accent.tint)))
-                    .accessibilityHidden(true)
+            if let flag = item.flag {
+                CountryGlyph(code: flag)
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -177,7 +172,7 @@ struct PgMenuView: View {
                     Text(caption).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted)).lineLimit(1)
                 }
             }
-            .padding(.horizontal, item.badge == nil ? 0 : PgSpace.m)
+            .padding(.horizontal, item.flag == nil ? 0 : PgSpace.m)
             .padding(.vertical, item.caption == nil ? 0 : PgSpace.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
 

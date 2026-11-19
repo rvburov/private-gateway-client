@@ -90,6 +90,9 @@ struct ServerRecord: Codable, Equatable, Sendable {
     var lastUsedAt: Date?
     var missingSince: Date?
     var customName: String?
+    /// Страна адреса по встроенной геобазе — для флага, как у десктопа: «» — адрес не цифрами или без страны, nil — еще не
+    /// определяли. `countryCode` — флаг из названия ссылки: с ним ссылка и выгружается.
+    var addressCountry: String?
 }
 
 /// Открытая запись группы: подписка или профиль; адрес подписки — только в `SecretVault`, открыто — маска.
@@ -132,6 +135,8 @@ public actor ServerStore {
     private let vault: any SecretVault
     private let clock: @Sendable () -> Date
     private let newId: @Sendable () -> String
+    /// Страна адреса для флага (геобаза приложения); nil — не задана (расширение туннеля, тесты): страна из названия.
+    private var countries: (@Sendable (String) -> String)?
 
     public init(
         file: any StateFile, vault: any SecretVault, clock: @escaping @Sendable () -> Date = { Date() },
@@ -141,6 +146,11 @@ public actor ServerStore {
         self.vault = vault
         self.clock = clock
         self.newId = newId
+    }
+
+    /// Страна адреса сервера для флага: приложение задает ее, когда открыло геобазу (`Countries`).
+    public func useCountries(_ lookup: @escaping @Sendable (String) -> String) {
+        countries = lookup
     }
 
     /// Ключ записи Связки ключей со ссылкой сервера и с адресом подписки.
@@ -417,6 +427,7 @@ public actor ServerStore {
             let fresh = record(server, id: keptId, position: state.servers[at].position, now: state.servers[at].addedAt, group: id)
             state.servers[at].name = fresh.name
             state.servers[at].countryCode = fresh.countryCode
+            state.servers[at].addressCountry = fresh.addressCountry
             state.servers[at].protocolName = fresh.protocolName
             state.servers[at].security = fresh.security
             state.servers[at].transport = fresh.transport
@@ -628,8 +639,34 @@ public actor ServerStore {
         ServerRecord(
             id: id, name: server.name, countryCode: server.countryCode, protocolName: server.protocol.rawValue,
             security: server.security.kind.rawValue, transport: server.transport.kind.rawValue, port: server.port, position: position,
-            addedAt: now, subscriptionId: group
+            addedAt: now, subscriptionId: group, addressCountry: countries?(server.host)
         )
+    }
+
+    /// Страны адресов сохраненных серверов для флагов: после новой геобазы (`renewed`, обновление приложения) — заново для
+    /// всех, иначе — только еще не определенные. Ссылку открывает Связка ключей; адрес никуда не уходит. Без геобазы — ничего.
+    public func locate(renewed: Bool) throws {
+        guard let countries else {
+            return
+        }
+
+        var state = try read()
+        var changed = false
+        for index in state.servers.indices where renewed || state.servers[index].addressCountry == nil {
+            guard let server = try open(state.servers[index]) else {
+                continue
+            }
+
+            let country = countries(server.host)
+            if state.servers[index].addressCountry != country {
+                state.servers[index].addressCountry = country
+                changed = true
+            }
+        }
+
+        if changed {
+            try write(state)
+        }
     }
 
     /// Сервер из ссылки в Связке ключей; название и страна — из открытой записи (по названию подписка узнает «изменился»),
@@ -661,7 +698,9 @@ public actor ServerStore {
         }
 
         return ServerItem(
-            id: record.id, linkName: record.name, countryCode: record.countryCode, protocol: proto, security: security, transport: transport,
+            // Флаг — по адресу, как у десктопа; адрес не цифрами или без страны — флаг из названия ссылки.
+            id: record.id, linkName: record.name, countryCode: record.addressCountry.flatMap { $0.isEmpty ? nil : $0 } ?? record.countryCode,
+            protocol: proto, security: security, transport: transport,
             port: record.port, subscriptionId: record.subscriptionId, favorite: record.favorite, latency: latency, lastUsedAt: record.lastUsedAt,
             missingSince: record.missingSince, customName: record.customName
         )

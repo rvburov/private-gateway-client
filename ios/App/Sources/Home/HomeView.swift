@@ -520,7 +520,7 @@ struct HomeServerRow: View {
     private var labels: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let server = home.inUse {
-                Text(QuickMenu.title(server)).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
+                Text(server.title).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
                 Text(server.summary + " · " + texts.serverPort(server.port)).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary)).lineLimit(1)
             } else {
                 Text(texts.serverNone).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)

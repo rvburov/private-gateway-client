@@ -68,6 +68,8 @@ final class AppModel: ObservableObject {
     private var blockTask: Task<Void, Never>?
     /// «Подключаться при запуске» уже решено за этот запуск приложения: окно, открытое заново, не подключает второй раз.
     private var launchHandled = false
+    /// Геобаза для флагов уже открыта за этот запуск (`Countries`).
+    private var countriesOpened = false
 
     /// Замер задержки серверов через ядро в процессе приложения — только без защиты (решения 430 и 468).
     private lazy var meter = LatencyMeter(
@@ -105,6 +107,26 @@ final class AppModel: ObservableObject {
         // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
         try? await container.servers.mergeSameSubscriptions(selectedId: try? await container.settings.load().selectedServerId)
         await reload()
+        await openCountries()
+    }
+
+    /// Флаги по адресу (решение 733): геобаза открывается вне главного потока (первый запуск распаковывает 25 МБ), страны
+    /// прежних серверов определяются сразу, после обновления приложения — заново. Список уже на экране, флаги догоняют.
+    private func openCountries() async {
+        guard !countriesOpened else {
+            return
+        }
+
+        countriesOpened = true
+        guard let countries = await Task.detached(priority: .utility, operation: { Countries.open() }).value else {
+            return
+        }
+
+        let database = countries.database
+        await container.servers.useCountries { database.lookup(host: $0) ?? "" }
+        if (try? await container.servers.locate(renewed: countries.renewed)) != nil {
+            await reload()
+        }
     }
 
     /// Нажатие на уведомление или его кнопку: «Сменить сервер», «Выбрать сервер», «Выбрать другой» — «Серверы», «Открыть» у
