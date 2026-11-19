@@ -42,9 +42,14 @@ struct SettingsView<Subscriptions: View>: View {
     var onCaptive: () -> Void = {}
     /// «Резервная копия» (решение 559): страница с моделью окна; nil — страницы нет (предпросмотр, тесты).
     var backup: ((_ onBack: @escaping () -> Void) -> AnyView)?
+    /// Вход в аккаунт сайта — карточка «Аккаунт» первой (решение 627); nil — карточки нет (тесты экранов).
+    var account: AccountRecord?
+    /// «Выйти» — после вопроса «Выйти из аккаунта?».
+    var onSignOut: () -> Void = {}
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.pgLayers) private var layers
 
     var body: some View {
         switch page {
@@ -85,6 +90,10 @@ struct SettingsView<Subscriptions: View>: View {
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top, 18)
                     .padding(.bottom, PgSpace.l)
+                if let account {
+                    accountCard(account).padding(.bottom, 18)
+                }
+
                 SettingsGroup(title: texts.settingsSectionBasic, inset: PgSpace.xxs) {
                     basic
                 }
@@ -106,6 +115,54 @@ struct SettingsView<Subscriptions: View>: View {
             .padding(.bottom, PgLayout.scrollBottomPadding)
         }
         .accessibilityIdentifier("settings")
+    }
+
+    /// «Аккаунт» (доска 04, решение 627): имя участника (нет — почта), почта, «Это устройство: …» — под каким именем телефон
+    /// записан на сайте, и «Выйти» — только после вопроса (доска 18).
+    private func accountCard(_ account: AccountRecord) -> some View {
+        let name = account.displayName.trimmingCharacters(in: .whitespaces).isEmpty ? account.email : account.displayName
+        return VStack(alignment: .leading, spacing: PgSpace.s) {
+            Overline(text: texts.settingsAccountTitle)
+                .padding(.horizontal, PgSpace.xs)
+                .accessibilityAddTraits(.isHeader)
+            // Строка настройки (.account-card макета): имя, почта и это устройство слева, «Выйти» справа.
+            HStack(alignment: .center, spacing: PgSpace.l) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name)
+                        .pgText(PgType.bodyStrong)
+                        .foregroundStyle(Color(PgColor.Text.primary))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .accessibilityIdentifier("settings.account.name")
+                    if name != account.email, !account.email.isEmpty {
+                        Text(account.email)
+                            .pgText(PgType.caption)
+                            .foregroundStyle(Color(PgColor.Text.muted))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .accessibilityIdentifier("settings.account.email")
+                    }
+
+                    if !account.deviceName.isEmpty {
+                        Text(texts.settingsAccountDevice(account.deviceName))
+                            .pgText(PgType.caption)
+                            .foregroundStyle(Color(PgColor.Text.muted))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("settings.account.device")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                PgActionButton(label: texts.settingsAccountSignOut, kind: .secondary, danger: true, identifier: "settings.account.signOut") {
+                    PgLayers.confirming(SettingsDialogs.signOut(texts), in: layers, onSignOut)
+                }
+                .fixedSize()
+            }
+            .padding(.vertical, 13)
+            .padding(.horizontal, PgSpace.card)
+            .pgCard(padding: 0)
+            .accessibilityIdentifier("settings.account")
+        }
     }
 
     /// «Основные» (доска 04): строки .setting через полосы.
@@ -284,6 +341,14 @@ enum SettingsLook {
 /// Вопросы «Настроек» и «Защиты и утечек», как SafetyDialogs десктопа (доска 18).
 enum SettingsDialogs {
     /// Выключить блок при обрыве: основная кнопка — «Оставить включенным» (тумблер остается), «да» — опасная вторая «Выключить».
+    /// «Выйти из аккаунта?» (доска 18): основная — «Остаться», опасная вторая — «Выйти».
+    static func signOut(_ texts: PgTexts) -> PgDialog {
+        PgDialog(
+            kind: .danger, icon: PgIcons.warning, title: texts.dialogSignOutTitle, text: texts.dialogSignOutText, primary: texts.dialogSignOutKeep,
+            secondary: texts.dialogSignOutConfirm, secondaryDanger: true
+        )
+    }
+
     static func ksOff(_ texts: PgTexts) -> PgDialog {
         PgDialog(
             kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogKsOffTitle, text: texts.dialogKsOffText,

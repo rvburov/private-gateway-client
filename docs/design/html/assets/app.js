@@ -110,7 +110,7 @@
   };
   // Имя устройства в карточке «Аккаунт» (доски 4, 18): десктоп — имя компьютера (Environment.MachineName),
   // Android — Build.MANUFACTURER + " " + Build.MODEL; на iOS входа пока нет (mobile-parity.md).
-  var DEVICE_NAME = { windows: "DESKTOP-7K2Q4MA", macos: "MacBook-Air", linux: "work-laptop", android: "Google Pixel 8", ios: "iPhone" };
+  var DEVICE_NAME = { windows: "DESKTOP-7K2Q4MA", macos: "MacBook-Air", linux: "work-laptop", android: "Google Pixel 8", ios: "iPhone · iOS 17.5" };
   Object.keys(OS).forEach(function (id) {
     OS[id].device = DEVICE_NAME[id];
     Object.assign(OS[id], OS_GROUPS.desktop.indexOf(id) >= 0 ? DNS_DESKTOP : DNS_PHONE);

@@ -25,6 +25,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private let work = SerialWork()
     private let lock = NSLock()
     private var guardTask: Task<Void, Never>?
+    private var accessTask: Task<Void, Never>?
     private var path: NWPathMonitor?
     private var reported = TunnelStatus()
     /// Есть ли сеть под туннелем (`NWPathMonitor`): нет — «Нет сети», попытки переподключения ждут ее (`TunnelGuard`).
@@ -141,6 +142,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// пакеты ждут в туннеле, а не уходят мимо; прежнее ядро (перезапуск) останавливается тоже после новых маршрутов.
     /// `reporting` — сообщать «Подключение» и «Защищено»; при переподключении состояние ведет наблюдение.
     private nonisolated(nonsending) func bringUp(reporting: Bool, session: UInt64) async throws {
+        // Без действующего входа в аккаунт сайта защита не поднимается (решение 619): «Пункт управления», Настройки iOS и
+        // подключение по требованию запускают расширение без приложения.
+        guard container.account.read().allowed(now: Date()) else {
+            throw TunnelFailure(TunnelErrors.noAccess, detail: "no account access")
+        }
+
         let launch = try await TunnelLaunch.prepare(settings: container.settings, servers: container.servers)
         try requireCurrent(session)
         let name = try? await container.servers.servers().first { $0.id == launch.serverId }?.displayName
@@ -191,6 +198,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             online: { [weak self] in self?.isOnline() ?? true }
         )
         let task = Task { await guarded.run() }
+        let access = Task { [weak self] in await self?.watchAccess(session: session) }
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self, timer] path in
             self?.pathChanged(path)
@@ -206,18 +214,45 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         }
         previous.0?.cancel()
         previous.1?.cancel()
+        let previousAccess = locked { () -> Task<Void, Never>? in
+            defer { accessTask = access }
+            return accessTask
+        }
+        previousAccess?.cancel()
     }
 
     private func stopWatching() {
-        let previous = locked { () -> (Task<Void, Never>?, NWPathMonitor?) in
+        let previous = locked { () -> (Task<Void, Never>?, NWPathMonitor?, Task<Void, Never>?) in
             defer {
                 guardTask = nil
                 path = nil
+                accessTask = nil
             }
-            return (guardTask, path)
+            return (guardTask, path, accessTask)
         }
         previous.0?.cancel()
         previous.1?.cancel()
+        previous.2?.cancel()
+    }
+
+    /// Срок входа в аккаунт (решение 619): расширение работает и без приложения, поэтому срок стережет само — дошел, а
+    /// приложение его не продлило, — защита закрывается с PGC-ACC-001. Запись перечитывается не реже раза в 15 минут: выход в
+    /// приложении и новый срок видны и без сообщения.
+    private func watchAccess(session: UInt64) async {
+        while !Task.isCancelled {
+            let state = container.account.read()
+            guard let expires = state.record?.expiresAt, state.allowed(now: Date()) else {
+                await work.run {
+                    guard self.current(session) else { return }
+                    let failure = self.failed(TunnelFailure(TunnelErrors.noAccess, detail: "account access ended"), "access", session: session)
+                    self.cancelTunnelWithError(failure)
+                }
+                return
+            }
+
+            let wait = min(max(1, expires.timeIntervalSinceNow), 15 * 60)
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+        }
     }
 
     /// Проба связи через туннель — как `TunnelProbe` Android: запрос к проверочному адресу через сам туннель (сокет привязан

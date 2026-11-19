@@ -209,6 +209,36 @@ final class ScreensTests: XCTestCase {
                 }
             }
 
+            // Вход в аккаунт (доска 10): первый шаг, ошибка с кнопкой на сайт и плашкой «Доступ отозван», второй шаг с кодом.
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let container = SharedContainer(directory: folder, vault: MemoryVault())
+            var failed = LoginForm(email: "user@example.com")
+            failed.setPassword("pw")
+            _ = failed.begin()
+            failed.answered(.failed(.deviceLimit))
+            var code = LoginForm(email: "admin@example.org")
+            code.setPassword("pw")
+            _ = code.begin()
+            code.answered(.codeRequired)
+            for (form, notice) in [(LoginForm(), nil), (failed, AccountNotice.revoked), (code, AccountNotice.expired)] {
+                let account = AccountModel(container: container, form: form, state: AccountState(notice: notice))
+                XCTAssertEqual(try render(LoginView(texts: texts, account: account)).size.width, 393, accuracy: 1)
+            }
+
+            for error in AccountError.allCases {
+                XCTAssertFalse(LoginLook.error(error, minutes: 2, texts).isEmpty, "\(error)")
+            }
+
+            XCTAssertTrue(LoginLook.error(.rateLimited, minutes: 0, texts).contains("1"), "не меньше минуты")
+            XCTAssertEqual(LoginLook.page(.deviceChangeLimit, texts)?.url.absoluteString, "https://private-gateway.duckdns.org/devices")
+            XCTAssertEqual(LoginLook.page(.setupRequired, texts)?.url.absoluteString, "https://private-gateway.duckdns.org/login")
+            XCTAssertNil(LoginLook.page(.invalid, texts))
+            // «Аккаунт» первой карточкой «Настроек» и вопрос перед выходом: «Выйти» — опасная вторая кнопка.
+            let record = AccountRecord(email: "anna@example.org", displayName: "Анна", deviceName: "iPhone · iOS 17.5", expiresAt: Date(), checkedAt: nil)
+            let signedIn = SettingsView(texts: texts, settings: AppSettings(), about: about, page: .constant(.main), account: record) { _ in EmptyView() }
+            XCTAssertEqual(try render(signedIn, height: 1600).size.width, 393, accuracy: 1)
+            XCTAssertEqual(SettingsDialogs.signOut(texts).yes, .secondary)
+
             // Первый запуск (доска 10): приветствие на обоих языках.
             XCTAssertEqual(try render(WelcomeView(texts: texts, onAdd: {}, onDone: {})).size.width, 393, accuracy: 1)
 

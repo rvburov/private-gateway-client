@@ -95,8 +95,10 @@
   устройств. Если сайт отозвал доступ (проверка получила 401), защита выключается и над формой — оранжевая плашка «Доступ отозван
   на сайте…»; срок входа прошел без подтверждения — та же плашка с «Срок входа истек. Войдите снова.». Сайт в макете — example.org.
   На Android при ошибке сохранения выхода подключение сразу запрещено, над формой показано: «Подключение запрещено, но сохранить выход не удалось. Приложение повторит попытку автоматически.»
-  После входа — приветствие первого запуска (следующий экран) или главная. В демо-режиме десктопа входа нет. На iOS входа пока нет
-  (решение 624, mobile-parity.md): экраны входа на рамке iOS не показываются.</p>
+  После входа — приветствие первого запуска (следующий экран) или главная. В демо-режиме десктопа входа нет. На iOS вход тот же
+  (решение 747): без сегментов языка (язык приложения выбирается в Настройках iOS), «Готово» на клавиатуре в последнем поле
+  отправляет форму, код 2FA iOS предлагает из СМС и приложений-аутентификаторов; без входа расширение туннеля не подключается
+  (PGC-ACC-001), а дошедший срок закрывает защиту и без приложения.</p>
 
 <p class="pg-board-note">Выход из аккаунта выключает VPN, блок при обрыве, строгий режим, защиту при загрузке,
   автоподключение и оба переключателя системного прокси. Новый явный вход оставляет их выключенными; серверы и
@@ -127,7 +129,7 @@
     <span class="t-muted" data-ui-text="startup.failed">Не удалось открыть приложение. Закройте его и попробуйте снова.</span>
     <button class="btn-primary" data-ui-text="card.close">Закрыть</button>
   </section>
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="0 · Вход в аккаунт сайта — до приветствия">
+  <section class="pg-screen" data-state="off" data-caption="0 · Вход в аккаунт сайта — до приветствия">
     <!-- Первый шаг: почта и пароль, «Войти» доступна, когда оба поля заполнены; Enter — «Войти». Кода здесь нет: 2FA — только у администраторов -->
     <div class="pg-page login" data-page="la" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -173,7 +175,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Администратор: код подтверждения (второй шаг)">
+  <section class="pg-screen" data-state="off" data-caption="Администратор: код подтверждения (второй шаг)">
     <!-- Сайт ответил code_required: почта и пароль верны, аккаунт администратора. Почта и пароль — в памяти окна, фокус — в поле кода; «Войти другим аккаунтом» — снова первый шаг -->
     <div class="pg-page login" data-page="lb-code" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -266,7 +268,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Неверный код администратора (400)">
+  <section class="pg-screen" data-state="off" data-caption="Неверный код администратора (400)">
     <!-- Ответ получен: код стерт, второй шаг остается, пароль ждет следующего кода -->
     <div class="pg-page login" data-page="lc-code" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -377,7 +379,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Неверная почта или пароль (401)">
+  <section class="pg-screen" data-state="off" data-caption="Неверная почта или пароль (401)">
     <!-- Ответ получен: пароль стерт, почта осталась, ошибка под формой -->
     <div class="pg-page login" data-page="ld" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -424,7 +426,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="2FA администратора не настроена (403): «Открыть сайт»">
+  <section class="pg-screen" data-state="off" data-caption="2FA администратора не настроена (403): «Открыть сайт»">
     <!-- 403 setup_required — только у администратора без 2FA: кнопка открывает /login сайта в браузере -->
     <div class="pg-page login" data-page="le" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -472,7 +474,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Лимит устройств (409): «Устройства на сайте»">
+  <section class="pg-screen" data-state="off" data-caption="Лимит устройств (409): «Устройства на сайте»">
     <!-- 409 device_limit: кнопка открывает /devices сайта в браузере -->
     <div class="pg-page login" data-page="lf" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -520,7 +522,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Много новых устройств за 30 дней (409): «Устройства на сайте»">
+  <section class="pg-screen" data-state="off" data-caption="Много новых устройств за 30 дней (409): «Устройства на сайте»">
     <!-- 409 device_change_limit — больше трех новых устройств за 30 дней: та же кнопка на /devices сайта -->
     <div class="pg-page login" data-page="lg" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -568,7 +570,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Нет связи с сайтом">
+  <section class="pg-screen" data-state="off" data-caption="Нет связи с сайтом">
     <!-- Сеть, срок ожидания, TLS или DNS: вход не выполнен, повторить можно сразу -->
     <div class="pg-page login" data-page="lh" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -615,7 +617,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Доступ отозван на сайте — защита выключена">
+  <section class="pg-screen" data-state="off" data-caption="Доступ отозван на сайте — защита выключена">
     <!-- Проверка получила 401: токен стерт, защита выключена, окно вернулось ко входу с пояснением -->
     <div class="pg-page login" data-page="li" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">

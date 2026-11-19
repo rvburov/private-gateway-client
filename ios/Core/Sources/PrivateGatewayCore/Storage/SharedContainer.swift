@@ -16,6 +16,7 @@ public struct SharedContainer: Sendable {
     public static let coreVersionFile = "core-version.txt"
     public static let languageFile = "language.txt"
     public static let logFile = "tunnel.log"
+    public static let accountFile = "account.json"
 
     public let directory: URL
     public let servers: ServerStore
@@ -28,6 +29,8 @@ public struct SharedContainer: Sendable {
     public let language: TextFile
     /// Журнал расширения туннеля для «Проверки» — без секретов.
     public let log: TunnelLog
+    /// Вход в аккаунт сайта: срок — файлом (его проверяет и расширение туннеля), токен — в Связке ключей.
+    public let account: AccountStore
 
     public init(directory: URL, vault: any SecretVault) {
         self.directory = directory
@@ -37,6 +40,7 @@ public struct SharedContainer: Sendable {
         coreVersion = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.coreVersionFile)))
         language = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.languageFile)))
         log = TunnelLog(file: DiskFile(url: directory.appendingPathComponent(Self.logFile)))
+        account = AccountStore(file: DiskFile(url: directory.appendingPathComponent(Self.accountFile)), vault: vault)
     }
 
     #if canImport(Security)

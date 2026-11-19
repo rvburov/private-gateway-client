@@ -103,4 +103,7 @@ public enum TunnelErrors {
 
     /// iOS не дала поднять VPN: VPN другой программы занял место или разрешение отозвано.
     public static let otherVpn = "PGC-NET-010"
+
+    /// Нет доступа: вход в аккаунт сайта не выполнен, отозван или истек (решение 619).
+    public static let noAccess = "PGC-ACC-001"
 }

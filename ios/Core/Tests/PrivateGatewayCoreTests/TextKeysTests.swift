@@ -32,8 +32,10 @@ final class TextKeysTests: XCTestCase {
 
     func testEveryKeyIsInBothLanguages() throws {
         let folder = LinkParserTests.testData.deletingLastPathComponent().appendingPathComponent("specifications/localization")
-        var keys = [TunnelErrors.coreFailed, TunnelErrors.noServer, TunnelErrors.unsupported, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn]
+        var keys = [TunnelErrors.coreFailed, TunnelErrors.noServer, TunnelErrors.unsupported, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn,
+                    TunnelErrors.networkUnavailable, TunnelErrors.noAccess]
             .map(TextKeys.error)
+        keys += AccountError.allCases.map(\.textKey) + [AccountNotice.revoked.textKey, AccountNotice.expired.textKey]
         keys += [
             ImportErrors.badLink, ImportErrors.unknownScheme, ImportErrors.badHost, ImportErrors.badPort, ImportErrors.noCredentials,
             ImportErrors.badEncoding, ImportErrors.unsupportedTransport, ImportErrors.unsupportedMethod, ImportErrors.unsupportedParameter,

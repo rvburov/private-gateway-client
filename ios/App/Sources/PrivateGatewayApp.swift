@@ -31,6 +31,8 @@ struct PrivateGatewayApp: App {
 /// расширение туннеля.
 struct RootView: View {
     @ObservedObject var model: AppModel
+    /// Вход в аккаунт сайта (решение 621): без него — только экран входа.
+    @StateObject private var account: AccountModel
     @StateObject private var importing: ImportModel
     @StateObject private var inspector = InspectorModel()
     /// Скорость туннеля для главной — по счетчикам интерфейса туннеля, пока главная на экране под защитой.
@@ -64,13 +66,18 @@ struct RootView: View {
 
     init(model: AppModel) {
         self.model = model
+        _account = StateObject(wrappedValue: AccountModel(container: model.container))
         _importing = StateObject(wrappedValue: ImportModel(container: model.container))
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             PgBackground()
-            if adding {
+            if account.state == nil {
+                // Вход еще не прочитан: только фон — экран входа не мелькает у тех, кто вошел.
+            } else if account.state?.signedIn != true {
+                LoginView(texts: model.texts, account: account)
+            } else if adding {
                 ImportView(model: importing, texts: model.texts, onClose: closeImport)
             } else if model.welcome {
                 WelcomeView(texts: model.texts, onAdd: { adding = true }, onDone: { model.finishOnboarding() })
@@ -96,11 +103,13 @@ struct RootView: View {
                 Task { await model.reload() }
                 imported(result, existing: existing)
             }
+            account.onLost = { await model.accessLost() }
+            await account.load()
             // Сеть телефона — для строки сети главной и «Проверки»; следим, пока окно живо.
             inspector.start()
             await model.start()
             // «Подключаться при запуске» — когда приложение открыли, а не iOS разбудила его в фоне обновить подписки.
-            if UIApplication.shared.applicationState != .background {
+            if UIApplication.shared.applicationState != .background, account.allowed {
                 await model.connectOnLaunch()
             }
 
@@ -175,6 +184,14 @@ struct RootView: View {
 
             layers.show(message, for: model.messageIsEvent ? PgToastDuration.event : PgToastDuration.action)
             model.message = nil
+        }
+        .task(id: [phase == .active, account.state != nil]) {
+            // Пока окно на экране — доступ к аккаунту: сайт при возврате в приложение и раз в 30 минут, срок — по часам.
+            guard phase == .active, account.state != nil else {
+                return
+            }
+
+            await account.watch()
         }
         .task(id: phase) {
             // Пока окно на экране — не пора ли обновить подписки: сразу и раз в 10 минут.
@@ -296,7 +313,8 @@ struct RootView: View {
                     tab = .check
                 },
                 onCaptive: askPause,
-                backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack)) }
+                backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack)) },
+                account: account.state?.record, onSignOut: { Task { await account.signOut() } }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,

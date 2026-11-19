@@ -26,7 +26,10 @@ public enum Plural {
 public enum TextKeys {
     /// error.<код> — для кодов ошибок туннеля; неизвестный код — «Ядро не запустилось».
     public static func error(_ code: String?) -> String {
-        let known = [TunnelErrors.coreFailed, TunnelErrors.noServer, TunnelErrors.unsupported, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn]
+        let known = [
+            TunnelErrors.coreFailed, TunnelErrors.noServer, TunnelErrors.unsupported, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn,
+            TunnelErrors.networkUnavailable, TunnelErrors.noAccess,
+        ]
         return "error." + (code.flatMap { known.contains($0) ? $0 : nil } ?? TunnelErrors.coreFailed)
     }
 
