@@ -468,7 +468,7 @@ public static partial class ContractMapping
 
         routing.Rules.AddRange(r.Rules
             .Where(rule => split || rule.Action != CoreRuleAction.Direct)
-            .Select(rule => new V1.DomainRule { Pattern = rule.Pattern, Action = rule.Action.ToContract() }));
+            .Select(rule => new V1.DomainRule { Pattern = rule.Pattern, Action = rule.Action.ToContract(), Exact = rule.Exact }));
         return routing;
     }
 }

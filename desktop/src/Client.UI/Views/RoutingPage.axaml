@@ -165,8 +165,11 @@
                     <Button Classes="plain" Padding="0,12" HorizontalAlignment="Stretch" Command="{Binding EditCommand}"
                             AutomationProperties.Name="{Binding EditLabel}">
                       <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="{Binding Pattern}" FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Mono}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,10,0" Spacing="2">
+                          <TextBlock Text="{Binding Pattern}" FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Mono}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="caption" Text="{l:L routing.rule.exact.row}" IsVisible="{Binding IsExact}" />
+                        </StackPanel>
                         <Border Grid.Column="1" Classes="action" Classes.direct="{Binding IsDirect}" Classes.proxy="{Binding IsProxy}"
                                 Classes.block="{Binding IsBlock}" Classes.idle="{Binding IsIdle}">
                           <TextBlock Text="{Binding ActionText}" />

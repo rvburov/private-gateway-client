@@ -125,7 +125,7 @@
             <span class="pill warning" data-direct>Напрямую</span>
           </button>
           <button class="btn-plain" data-row data-open="sheet-rule-2" aria-label="ads.example.org: Блокировать">
-            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">ads.example.org</span>
+            <span class="pg-stack pg-grow" style="gap: 2px; margin-right: 10px"><span class="t-mono pg-ellipsis">ads.example.org</span><span class="t-caption">только этот адрес</span></span>
             <span class="pill danger">Блокировать</span>
           </button>
           <button class="btn-plain" data-row data-open="sheet-rule-3" aria-label="example.org: Через VPN">
@@ -171,6 +171,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -179,6 +181,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -201,6 +204,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.com">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -209,6 +214,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -239,6 +245,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -261,6 +268,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="ads.example.org">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check on" role="checkbox" aria-checked="true"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -269,6 +278,7 @@
             <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -291,6 +301,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.org">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -299,6 +311,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -385,7 +398,7 @@
             <span class="pill warning" data-direct>Напрямую</span>
           </button>
           <button class="btn-plain" data-row data-open="sheet-rule-2-all" aria-label="ads.example.org: Блокировать">
-            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">ads.example.org</span>
+            <span class="pg-stack pg-grow" style="gap: 2px; margin-right: 10px"><span class="t-mono pg-ellipsis">ads.example.org</span><span class="t-caption">только этот адрес</span></span>
             <span class="pill danger">Блокировать</span>
           </button>
           <button class="btn-plain" data-row data-open="sheet-rule-3-all" aria-label="example.org: Через VPN">
@@ -431,6 +444,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -439,6 +454,7 @@
             <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -461,6 +477,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.com">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -469,6 +487,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -491,6 +510,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="*.local">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -499,6 +520,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -521,6 +543,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="ads.example.org">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -529,6 +553,7 @@
             <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>
@@ -551,6 +576,8 @@
             <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.org">
             <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
           </div>
+          <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+          <button class="check" role="checkbox" aria-checked="false"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Только этот адрес</span><span class="t-caption">Без поддоменов: остальные адреса сайта — по другим правилам</span></span></button>
           <div class="pg-stack pg-gap-6">
             <span class="t-small" style="font-weight: 600">Что делать</span>
             <div class="segments" role="radiogroup" aria-label="Что делать">
@@ -559,6 +586,7 @@
             <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
             </div>
             <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+            <span class="t-caption t-wrap">Если есть правило точнее, сработает оно</span>
           </div>
         </div>
         <div class="pg-grow"></div>

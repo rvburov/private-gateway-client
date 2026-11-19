@@ -349,6 +349,30 @@ class AdvancedSettingsTest {
         assertTrue(withoutGeosite(text(R.string.routing_rule_hint)).contains("203.0.113.0/24"))
     }
 
+    /** Решение 739: «Только этот адрес» — только у обычного домена, отдельное правило, подпись в строке. */
+    @Test
+    fun `exact address is offered for plain domains and kept apart from the site`() {
+        var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(rules = listOf(SiteRule("example.com", RuleAction.Proxy)))))
+        compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }) } }
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.priority", useUnmergedTree = true).assertTextEquals(text(R.string.routing_rule_priority))
+        compose.onNodeWithTag("routing.rule.exact").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("*.local")
+        compose.onNodeWithTag("routing.rule.exact").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rule.pattern").performTextClearance()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("203.0.113.9")
+        compose.onNodeWithTag("routing.rule.exact").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rule.pattern").performTextClearance()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("Example.com")
+        compose.onNodeWithTag("routing.rule.exact").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("routing.rule.save").performClick()
+
+        assertEquals(listOf(SiteRule("example.com", RuleAction.Proxy), SiteRule("example.com", RuleAction.Block, exact = true)), tunnel.routing.rules)
+        assertEquals(listOf(SiteRule("example.com", RuleAction.Block, exact = true), SiteRule("example.com", RuleAction.Proxy)), tunnel.core().rules, "точнее — раньше")
+        compose.onNodeWithTag("routing.rule.example.com.exact", useUnmergedTree = true).assertTextEquals(text(R.string.routing_rule_exact_row))
+    }
+
     @Test
     fun `new rule in the split mode is direct and goes to the core`() {
         var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(RoutingMode.Split)))

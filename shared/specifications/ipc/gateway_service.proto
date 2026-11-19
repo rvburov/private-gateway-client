@@ -579,6 +579,9 @@ message DomainRule {
   // Домен, *.домен или geosite:категория.
   string pattern = 1;
   RuleAction action = 2;
+  // «Только этот адрес»: домен без поддоменов (у зоны, списка и адреса не действует). Старая служба поле не знает и
+  // применяет правило к домену с поддоменами.
+  bool exact = 3;
 }
 
 message RoutingSettings {

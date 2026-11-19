@@ -297,7 +297,7 @@ class XrayConfigTest {
     }
 
     @Test
-    fun `site rules follow the service rules in list order`() {
+    fun `site rules follow the service rules most precise first`() {
         val routing = RoutingSettings(
             RoutingMode.Split,
             rules = listOf(
@@ -315,11 +315,31 @@ class XrayConfigTest {
         assertEquals("direct", own[0]["outboundTag"]!!.jsonPrimitive.content)
         assertEquals(JsonArray(listOf(JsonPrimitive("domain:local"))), own[1]["domain"], "«*.local» — зона целиком")
         assertEquals("block", own[1]["outboundTag"]!!.jsonPrimitive.content)
-        assertEquals(JsonArray(listOf(JsonPrimitive("203.0.113.0/24"))), own[2]["ip"], "подсеть — условием IP")
-        assertNull(own[2]["domain"])
-        assertEquals("proxy", own[2]["outboundTag"]!!.jsonPrimitive.content)
-        assertEquals(JsonArray(listOf(JsonPrimitive("2001:db8::1"))), own[3]["ip"])
+        // Точнее — раньше (решение 739): адрес раньше подсети, хотя в списке он ниже.
+        assertEquals(JsonArray(listOf(JsonPrimitive("2001:db8::1"))), own[2]["ip"])
+        assertEquals(JsonArray(listOf(JsonPrimitive("203.0.113.0/24"))), own[3]["ip"], "подсеть — условием IP")
+        assertNull(own[3]["domain"])
+        assertEquals("proxy", own[3]["outboundTag"]!!.jsonPrimitive.content)
         assertTrue(own.all { it["inboundTag"] == null })
+    }
+
+    /** Решение 739: «Только этот адрес» — условием «full:», и точнее — раньше, как у десктопа. */
+    @Test
+    fun `exact address and more precise rules go first`() {
+        val routing = RoutingSettings(
+            rules = listOf(
+                SiteRule("youtube.com", RuleAction.Block),
+                SiteRule("music.youtube.com", RuleAction.Proxy),
+                SiteRule("example.com", RuleAction.Block, exact = true),
+                SiteRule("*.example.com", RuleAction.Proxy),
+            ),
+        )
+        val rules = rules(build(reality, TunnelSettings(routing = routing).core(), 1))
+        val own = rules.filter { it["domain"] != null }.map { it["domain"]!!.jsonArray.single().jsonPrimitive.content to it["outboundTag"]!!.jsonPrimitive.content }
+        assertEquals(
+            listOf("full:example.com" to "block", "domain:music.youtube.com" to "proxy", "domain:youtube.com" to "block", "domain:example.com" to "proxy"),
+            own,
+        )
     }
 
     @Test

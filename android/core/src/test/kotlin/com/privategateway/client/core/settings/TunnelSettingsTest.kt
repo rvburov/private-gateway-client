@@ -130,7 +130,7 @@ class TunnelSettingsTest {
 
         val split = all.copy(routing = all.routing.copy(mode = RoutingMode.Split))
         assertEquals(listOf("org.example.game"), split.plan().disallowedApps, "только включенные")
-        assertEquals(rules, split.core().rules)
+        assertEquals(rules.reversed(), split.core().rules, "точнее — раньше (решение 739)")
     }
 
     @Test

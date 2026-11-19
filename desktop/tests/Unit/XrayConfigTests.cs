@@ -304,9 +304,9 @@ public sealed class XrayConfigTests
         all.ShouldBe(
         [
             (Local, "block"),
-            ("domain:domain:example.net", "block"), ("domain:geosite:category-ads-all", "block"), ("domain:domain:example.org", "proxy"),
+            ("domain:domain:example.net", "block"), ("domain:domain:example.org", "proxy"), ("domain:geosite:category-ads-all", "block"),
             ("ip:203.0.113.9", "block"),
-        ], "адрес и подсеть — условием IP, в порядке списка");
+        ], "адрес и подсеть — условием IP; точнее — раньше: домены, списки, адреса (решение 739)");
 
         var split = Rules(Build(Link("vless/reality-vision"),
             protection: ProtectionSettings.Default with { AllowLan = true, BlockIpv6 = false },
@@ -357,13 +357,43 @@ public sealed class XrayConfigTests
     }
 
     [Theory]
-    [InlineData("example.com", "domain:example.com")]
-    [InlineData("*.example.com", "domain:example.com")]
-    [InlineData("*.local", "domain:local")]
-    [InlineData("geosite:category-ads-all", "geosite:category-ads-all")]
-    public void Site_patterns_become_xray_conditions(string pattern, string condition)
+    [InlineData("example.com", false, "domain:example.com")]
+    [InlineData("example.com", true, "full:example.com")]
+    [InlineData("*.example.com", true, "domain:example.com")]
+    [InlineData("*.local", false, "domain:local")]
+    [InlineData("geosite:category-ads-all", true, "geosite:category-ads-all")]
+    public void Site_patterns_become_xray_conditions(string pattern, bool exact, string condition)
     {
-        XrayConfigBuilder.DomainCondition(pattern).ShouldBe(condition);
+        XrayConfigBuilder.DomainCondition(pattern, exact).ShouldBe(condition);
+    }
+
+    /// <summary>Решение 739: точнее — раньше, иначе правило для части сайта терялось за правилом для всего сайта.</summary>
+    [Fact]
+    public void More_precise_rules_are_checked_first_whatever_the_list_order()
+    {
+        var rules = new[]
+        {
+            new DomainRule("youtube.com", RuleAction.Block),
+            new DomainRule("geosite:google", RuleAction.Proxy),
+            new DomainRule("198.51.100.0/24", RuleAction.Block),
+            new DomainRule("music.youtube.com", RuleAction.Proxy),
+            new DomainRule("example.com", RuleAction.Block, Exact: true),
+            new DomainRule("198.51.100.7", RuleAction.Proxy),
+            new DomainRule("*.example.com", RuleAction.Proxy),
+        };
+
+        Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules))).Skip(1).ShouldBe(
+        [
+            ("domain:full:example.com", "block"),
+            ("domain:domain:music.youtube.com", "proxy"),
+            ("domain:domain:youtube.com", "block"),
+            ("domain:domain:example.com", "proxy"),
+            ("domain:geosite:google", "proxy"),
+            ("ip:198.51.100.7", "proxy"),
+            ("ip:198.51.100.0/24", "block"),
+        ]);
+        new DomainRule("*.example.com", RuleAction.Block, Exact: true).IsExact.ShouldBeFalse("у зоны «только этот адрес» не действует");
+        new DomainRule("203.0.113.9", RuleAction.Block, Exact: true).IsExact.ShouldBeFalse();
     }
 
     [Fact]

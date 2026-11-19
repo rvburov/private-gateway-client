@@ -24,8 +24,15 @@ public enum RuleAction
 /// <summary>Программа мимо VPN: путь к исполняемому файлу, имя для подписи, включена ли.</summary>
 public sealed record BypassApp(string Path, string Name, bool IsEnabled = true);
 
-/// <summary>Правило для сайта: домен, «*.домен», «geosite:категория», адрес или подсеть.</summary>
-public sealed record DomainRule(string Pattern, RuleAction Action);
+/// <summary>
+/// Правило для сайта: домен, «*.домен», «geosite:категория», адрес или подсеть. <paramref name="Exact"/> — «Только этот
+/// адрес» (решение 739): домен без поддоменов; у зоны, списка и адреса не действует.
+/// </summary>
+public sealed record DomainRule(string Pattern, RuleAction Action, bool Exact = false)
+{
+    /// <summary>Действует ли «Только этот адрес»: только у обычного домена.</summary>
+    public bool IsExact => Exact && SitePattern.IsPlainDomain(Pattern);
+}
 
 /// <summary>
 /// «Маршрутизация» (доска 13). По умолчанию весь трафик через VPN: раздельный режим — только
@@ -41,6 +48,18 @@ public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> 
 
     /// <summary>Идут ли сайты мимо VPN: правила «Напрямую» действуют только в раздельном режиме.</summary>
     public bool HasBypassSites => Mode == RoutingMode.Split && Rules.Any(r => r.Action == RuleAction.Direct);
+
+    /// <summary>
+    /// Правила в порядке проверки ядром — точнее раньше (решение 739): «только этот адрес», затем домены от длинного к
+    /// короткому (music.youtube.com раньше youtube.com), готовые списки geosite, адреса и подсети от узкой к широкой.
+    /// Равные — в порядке списка. Так правило для части сайта не теряется за правилом для всего сайта.
+    /// </summary>
+    public static IReadOnlyList<DomainRule> Ordered(IEnumerable<DomainRule> rules) =>
+        [.. rules.Select((rule, index) => (Rule: rule, Index: index))
+            .OrderBy(p => SitePattern.Rank(p.Rule).Group)
+            .ThenBy(p => SitePattern.Rank(p.Rule).Detail)
+            .ThenBy(p => p.Index)
+            .Select(p => p.Rule)];
 
     /// <summary>Списки сравниваются по содержимому — иначе сохраненные настройки не равны прочитанным.</summary>
     public bool Equals(RoutingSettings? other) =>
@@ -93,6 +112,35 @@ public static class SitePattern
 
     /// <summary>Шаблон — адрес или подсеть, а не имя: правило сравнивает IP соединения.</summary>
     public static bool IsAddress(string pattern) => Address(pattern) is not null;
+
+    /// <summary>Обычный домен («example.com»): не зона «*.», не список geosite и не адрес — у него есть «Только этот адрес».</summary>
+    public static bool IsPlainDomain(string pattern) =>
+        !pattern.StartsWith("*.", StringComparison.Ordinal) && !pattern.StartsWith(Geosite, StringComparison.Ordinal) && !IsAddress(pattern);
+
+    /// <summary>
+    /// Место правила при проверке (меньше — раньше): группа (0 — только этот адрес, 1 — домен или зона, 2 — geosite,
+    /// 3 — адрес или подсеть) и порядок внутри нее (больше меток домена или длиннее префикс подсети — раньше).
+    /// </summary>
+    public static (int Group, int Detail) Rank(DomainRule rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        var pattern = rule.Pattern;
+        if (pattern.StartsWith(Geosite, StringComparison.Ordinal))
+        {
+            return (2, 0);
+        }
+
+        if (IsAddress(pattern))
+        {
+            var slash = pattern.IndexOf('/', StringComparison.Ordinal);
+            var prefix = slash < 0 ? (pattern.Contains(':', StringComparison.Ordinal) ? 128 : 32)
+                : int.Parse(pattern[(slash + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+            return (3, -prefix);
+        }
+
+        var labels = (pattern.StartsWith("*.", StringComparison.Ordinal) ? pattern[2..] : pattern).Split('.').Length;
+        return (rule.IsExact ? 0 : 1, -labels);
+    }
 
     /// <summary>
     /// Адрес или подсеть в каноническом виде; иначе null. IPv4 — только четыре числа через точку

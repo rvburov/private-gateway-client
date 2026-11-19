@@ -115,13 +115,13 @@ extension AppSettings: Codable {
         // Правило — объект «шаблон и действие»; неполное, с неизвестным действием или шаблоном, которого ядро телефона не
         // примет, пропускается, остальные остаются. Текст не JSON или список не из строк — правил нет.
         let rulesText: String? = read(.routingRules)
-        let records = rulesText.flatMap { try? JSONDecoder().decode([[String: String]].self, from: Data($0.utf8)) }
+        let records = rulesText.flatMap { try? JSONDecoder().decode([[String: RuleField]].self, from: Data($0.utf8)) }
         let rules = (records ?? []).compactMap { record -> SiteRule? in
-            guard let pattern = record["pattern"], let action = record["action"].flatMap(RuleAction.init(rawValue:)) else {
+            guard let pattern = record["pattern"]?.text, let action = record["action"]?.text.flatMap(RuleAction.init(rawValue:)) else {
                 return nil
             }
 
-            return SiteRule(pattern: pattern, action: action)
+            return SiteRule(pattern: pattern, action: action, exact: record["exact"]?.flag ?? false)
         }
         let sniffing: Bool? = read(.sniffing)
         let mux: Bool? = read(.mux)
@@ -176,7 +176,10 @@ extension AppSettings: Codable {
         try values.encode(connection.tlsFragment, forKey: .tlsFragment)
         try values.encode(connection.connectTimeout, forKey: .connectTimeout)
         try values.encode(routing.mode.rawValue, forKey: .routingMode)
-        let records = routing.rules.map { JsonText.Value.object([("pattern", .string($0.pattern)), ("action", .string($0.action.rawValue))]) }
+        // «exact» — только у «Только этот адрес» (решение 739): прежние записи остаются как были.
+        let records = routing.rules.map { rule in
+            JsonText.Value.object([("pattern", .string(rule.pattern)), ("action", .string(rule.action.rawValue))] + (rule.isExact ? [("exact", .bool(true))] : []))
+        }
         try values.encode(JsonText.write(.array(records)), forKey: .routingRules)
     }
 }
@@ -365,5 +368,36 @@ extension AppSettings {
 
         restored.selectedServerId = selectedServerId
         return restored
+    }
+}
+
+/// Поле записи правила в файле: текст (шаблон, действие) или флажок («exact», решение 739).
+private enum RuleField: Decodable {
+    case text(String)
+    case flag(Bool)
+
+    init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        if let flag = try? value.decode(Bool.self) {
+            self = .flag(flag)
+        } else {
+            self = .text(try value.decode(String.self))
+        }
+    }
+
+    var text: String? {
+        if case let .text(text) = self {
+            return text
+        }
+
+        return nil
+    }
+
+    var flag: Bool? {
+        if case let .flag(flag) = self {
+            return flag
+        }
+
+        return nil
     }
 }

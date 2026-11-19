@@ -69,6 +69,7 @@ import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
+import com.privategateway.client.ui.theme.PgCheck
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgIcon
@@ -391,14 +392,19 @@ private fun RuleRow(rule: SiteRule, split: Boolean, divider: Boolean, onClick: (
             .testTag("routing.rule.${rule.pattern}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            rule.pattern,
-            Modifier.weight(1f).padding(end = PgSpace.M),
-            color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary,
-            style = PgType.Mono,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column(Modifier.weight(1f).padding(end = PgSpace.M), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                rule.pattern,
+                color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary,
+                style = PgType.Mono,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // «Только этот адрес» (решение 739) — подписью под адресом.
+            if (rule.isExact) {
+                Text(stringResource(R.string.routing_rule_exact_row), Modifier.testTag("routing.rule.${rule.pattern}.exact"), color = PgColor.Text.Muted, style = PgType.Caption)
+            }
+        }
         ActionPill(rule.action, idle = rule.action == RuleAction.Direct && !split, tag = "routing.rule.${rule.pattern}.action")
     }
 }
@@ -517,12 +523,15 @@ private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) ->
     var text by rememberSaveable { mutableStateOf(original?.pattern.orEmpty()) }
     var action by rememberSaveable { mutableStateOf(original?.action ?: if (split) RuleAction.Direct else RuleAction.Block) }
     var bad by rememberSaveable { mutableStateOf(false) }
+    var exact by rememberSaveable { mutableStateOf(original?.isExact ?: false) }
+    // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса.
+    val canExact = SitePattern.normalize(text)?.let(SitePattern::isPlainDomain) ?: false
     val save: () -> Unit = {
         val pattern = SitePattern.normalize(text)
         if (pattern == null) {
             bad = true
         } else {
-            onSave(SiteRule(pattern, action))
+            onSave(SiteRule(pattern, action, exact && SitePattern.isPlainDomain(pattern)))
         }
     }
     PgSheet(onClose, "routing.rule.sheet", scroll = false) {
@@ -559,12 +568,25 @@ private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) ->
                 }
             }
 
+            if (canExact) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    PgCheck(stringResource(R.string.routing_rule_exact), exact, "routing.rule.exact", { exact = it }, Modifier.fillMaxWidth())
+                    Text(
+                        stringResource(R.string.routing_rule_exact_text),
+                        Modifier.padding(start = 38.dp),
+                        color = PgColor.Text.Muted,
+                        style = PgType.Caption,
+                    )
+                }
+            }
+
             Column(verticalArrangement = Arrangement.spacedBy(PgSpace.Xs)) {
                 FieldLabel(stringResource(R.string.routing_rule_action))
                 PgSegments(RuleAction.entries, action, { stringResource(actionLabel(it)) }, "routing.rule.action", { action = it })
                 if (action == RuleAction.Direct && !split) {
                     Text(stringResource(R.string.routing_rules_idle), Modifier.testTag("routing.rule.idle"), color = PgColor.Text.Muted, style = PgType.Caption)
                 }
+                Text(stringResource(R.string.routing_rule_priority), Modifier.testTag("routing.rule.priority"), color = PgColor.Text.Muted, style = PgType.Caption)
             }
         }
 

@@ -42,6 +42,13 @@
         <TextBlock x:Name="RuleError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
                    TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
       </StackPanel>
+      <!-- «Только этот адрес» (решение 739): только у обычного домена -->
+      <CheckBox x:Name="RuleExact" Classes="check" IsChecked="{Binding Exact}" IsVisible="{Binding CanExact}" Padding="0,4" MinHeight="44">
+        <StackPanel Spacing="2" Margin="12,0,0,0">
+          <TextBlock Classes="strong" Text="{l:L routing.rule.exact}" />
+          <TextBlock Classes="caption" Text="{l:L routing.rule.exact.text}" TextWrapping="Wrap" />
+        </StackPanel>
+      </CheckBox>
       <StackPanel Spacing="6">
         <TextBlock Classes="small" Text="{l:L routing.rule.action}" FontWeight="SemiBold"
                    Foreground="{StaticResource PgBrush.Text.Secondary}" />
@@ -57,6 +64,7 @@
         </Border>
         <TextBlock x:Name="RuleIdle" Classes="caption" Text="{l:L routing.rules.idle}" TextWrapping="Wrap"
                    IsVisible="{Binding IsIdle}" />
+        <TextBlock x:Name="RulePriority" Classes="caption" Text="{l:L routing.rule.priority}" TextWrapping="Wrap" />
       </StackPanel>
     </StackPanel>
   </DockPanel>

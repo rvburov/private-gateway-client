@@ -63,6 +63,12 @@ class RoutingSettingsTest {
         assertFalse(SitePattern.isAddress("*.local"))
         assertEquals("domain:example.com", SitePattern.domainCondition("example.com"))
         assertEquals("domain:local", SitePattern.domainCondition("*.local"))
+        // «Только этот адрес» (решение 739) — только у обычного домена.
+        assertEquals("full:example.com", SitePattern.domainCondition("example.com", exact = true))
+        assertEquals("domain:local", SitePattern.domainCondition("*.local", exact = true))
+        assertTrue(SitePattern.isPlainDomain("example.com"))
+        assertFalse(SitePattern.isPlainDomain("*.local") || SitePattern.isPlainDomain("203.0.113.0/24"))
+        assertFalse(SiteRule("*.local", RuleAction.Block, exact = true).isExact)
     }
 
     @Test
@@ -77,7 +83,7 @@ class RoutingSettingsTest {
 
         val split = all.copy(mode = RoutingMode.Split)
         assertEquals(listOf("org.example.game"), split.disallowedApps, "только включенные, без повторов")
-        assertEquals(rules, split.coreRules)
+        assertEquals(listOf(rules[1], rules[0], rules[2]), split.coreRules, "точнее — раньше (решение 739), равные — по списку")
         assertFalse(split.hasIdleRules)
         assertFalse(RoutingSettings(rules = rules.drop(1)).hasIdleRules, "без «Напрямую» молчащих правил нет")
         assertFalse(all.hasBypassApps || all.hasBypassSites, "в режиме «Весь трафик» мимо VPN не идет ничего")
@@ -105,6 +111,10 @@ class RoutingSettingsTest {
         routing = routing.saveRule(edited, SiteRule("example.com", RuleAction.Direct))
         assertEquals(listOf(SiteRule("example.com", RuleAction.Direct)), routing.rules)
         assertEquals(emptyList(), routing.removeRule(SiteRule("example.com", RuleAction.Direct)).rules)
+
+        // «Только этот адрес» и сайт с поддоменами — разные правила (решение 739).
+        val exact = SiteRule("example.com", RuleAction.Block, exact = true)
+        assertEquals(listOf(SiteRule("example.com", RuleAction.Direct), exact), routing.saveRule(null, exact).rules)
     }
 
     @Test
@@ -126,9 +136,15 @@ class RoutingSettingsTest {
         val routing = RoutingSettings(
             RoutingMode.Split,
             listOf(BypassApp("org.example.game", "Игра «Тест» \"1\""), BypassApp("org.example.call", "Звонки", enabled = false)),
-            listOf(SiteRule("example.com", RuleAction.Direct), SiteRule("203.0.113.0/24", RuleAction.Block), SiteRule("*.local", RuleAction.Proxy)),
+            listOf(
+                SiteRule("example.com", RuleAction.Direct),
+                SiteRule("203.0.113.0/24", RuleAction.Block),
+                SiteRule("*.local", RuleAction.Proxy),
+                SiteRule("example.org", RuleAction.Block, exact = true),
+            ),
         )
         assertEquals(routing, RoutingSettings.read(routing.mode.name, routing.appsJson(), routing.rulesJson()))
+        assertFalse(RoutingSettings(rules = listOf(SiteRule("example.com", RuleAction.Block))).rulesJson().contains("exact"), "прежний вид записи без флажка")
         assertEquals(RoutingSettings(), RoutingSettings.read(null, null, null))
     }
 

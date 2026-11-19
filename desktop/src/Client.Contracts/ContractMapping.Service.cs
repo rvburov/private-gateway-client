@@ -343,7 +343,7 @@ public static partial class ContractMapping
         return new RoutingSettings(
             settings.Mode.ToCore(),
             [.. settings.BypassApps.Select(path => new BypassApp(path, path))],
-            [.. settings.Rules.Select(r => new DomainRule(r.Pattern, r.Action.ToCore()))]);
+            [.. settings.Rules.Select(r => new DomainRule(r.Pattern, r.Action.ToCore(), r.Exact))]);
     }
 
     // ── Состояние ────────────────────────────────────────────────────────────

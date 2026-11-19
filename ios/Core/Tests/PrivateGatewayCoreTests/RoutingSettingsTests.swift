@@ -61,7 +61,10 @@ final class RoutingSettingsTests: XCTestCase {
         let split = RoutingSettings(mode: .split, rules: rules)
         XCTAssertTrue(split.hasBypassSites)
         XCTAssertFalse(split.hasIdleRules)
-        XCTAssertEqual(split.activeRules, rules, "в раздельном режиме — все по порядку списка")
+        XCTAssertEqual(split.activeRules, [rules[1], rules[0], rules[2]], "в раздельном режиме — все, точнее раньше (решение 739)")
+        XCTAssertEqual(SitePattern.domainCondition("example.com", exact: true), "full:example.com")
+        XCTAssertEqual(SitePattern.domainCondition("*.local", exact: true), "domain:local")
+        XCTAssertFalse(SiteRule(pattern: "203.0.113.5", action: .block, exact: true).isExact, "у адреса «только этот адрес» не действует")
 
         XCTAssertFalse(RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.org", action: .block)]).hasBypassSites)
         XCTAssertEqual(RoutingSettings(), RoutingSettings(mode: .allTraffic, rules: []), "по умолчанию весь трафик через VPN")
@@ -85,6 +88,10 @@ final class RoutingSettingsTests: XCTestCase {
 
         let duplicate = start.saving(SiteRule(pattern: "c.example.com", action: .direct))
         XCTAssertEqual(duplicate.rules, [a, b, SiteRule(pattern: "c.example.com", action: .direct)])
+
+        // «Только этот адрес» и сайт с поддоменами — разные правила (решение 739).
+        let exact = SiteRule(pattern: "a.example.com", action: .block, exact: true)
+        XCTAssertEqual(start.saving(exact).rules, [a, b, c, exact])
 
         XCTAssertEqual(start.removing(b).rules, [a, c])
         XCTAssertEqual(start.removing(SiteRule(pattern: "b.example.com", action: .direct)).rules, [a, b, c], "удаляется только то самое правило")

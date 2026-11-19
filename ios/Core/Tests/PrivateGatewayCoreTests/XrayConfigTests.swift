@@ -259,7 +259,7 @@ final class XrayConfigTests: XCTestCase {
         }
     }
 
-    func testSiteRulesGoAfterTheLocalNetworkAndIpv6InListOrder() throws {
+    func testSiteRulesGoAfterTheLocalNetworkAndIpv6MostPreciseFirst() throws {
         let rules = [
             SiteRule(pattern: "example.com", action: .direct), SiteRule(pattern: "*.local", action: .direct), SiteRule(pattern: "ads.example.org", action: .block),
             SiteRule(pattern: "198.51.100.0/24", action: .proxy), SiteRule(pattern: "2001:db8::/32", action: .block), SiteRule(pattern: "203.0.113.5", action: .direct),
@@ -269,15 +269,29 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(try canonical(Array(split.prefix(plain.count))), try canonical(plain), "служебные правила — первыми и те же")
         let own = Array(split.dropFirst(plain.count))
         XCTAssertEqual(own.count, rules.count)
-        XCTAssertEqual(own.map { $0["domain"] as? [String] }, [["domain:example.com"], ["domain:local"], ["domain:ads.example.org"], nil, nil, nil])
-        XCTAssertEqual(own.map { $0["ip"] as? [String] }, [nil, nil, nil, ["198.51.100.0/24"], ["2001:db8::/32"], ["203.0.113.5"]])
-        XCTAssertEqual(own.map { $0["outboundTag"] as? String }, ["direct", "direct", "block", "proxy", "block", "direct"])
+        // Точнее — раньше (решение 739): домены от длинного к короткому, адреса и подсети от узкой к широкой, равные — по списку.
+        XCTAssertEqual(own.map { $0["domain"] as? [String] }, [["domain:ads.example.org"], ["domain:example.com"], ["domain:local"], nil, nil, nil])
+        XCTAssertEqual(own.map { $0["ip"] as? [String] }, [nil, nil, nil, ["2001:db8::/32"], ["203.0.113.5"], ["198.51.100.0/24"]])
+        XCTAssertEqual(own.map { $0["outboundTag"] as? String }, ["block", "direct", "direct", "block", "direct", "proxy"])
         XCTAssertTrue(own.allSatisfy { $0["type"] as? String == "field" && $0["inboundTag"] == nil })
 
         // «Весь трафик»: «Напрямую» ядро не получает, остальные — в том же порядке.
         let all = try self.rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .allTraffic, rules: rules))))
-        XCTAssertEqual(Array(all.dropFirst(plain.count)).map { $0["outboundTag"] as? String }, ["block", "proxy", "block"])
+        XCTAssertEqual(Array(all.dropFirst(plain.count)).map { $0["outboundTag"] as? String }, ["block", "block", "proxy"])
         XCTAssertFalse(Array(all.dropFirst(plain.count)).contains { $0["outboundTag"] as? String == "direct" })
+    }
+
+    /// Решение 739: «Только этот адрес» — условием «full:», и точнее — раньше, как у десктопа и Android.
+    func testExactAddressAndMorePreciseRulesGoFirst() throws {
+        let rules = [
+            SiteRule(pattern: "youtube.com", action: .block), SiteRule(pattern: "music.youtube.com", action: .proxy),
+            SiteRule(pattern: "example.com", action: .block, exact: true), SiteRule(pattern: "*.example.com", action: .proxy),
+        ]
+        let config = try build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(rules: rules)))
+        let own = try self.rules(config).compactMap { rule -> String? in
+            (rule["domain"] as? [String]).map { $0[0] + " " + (rule["outboundTag"] as? String ?? "") }
+        }
+        XCTAssertEqual(own, ["full:example.com block", "domain:music.youtube.com proxy", "domain:youtube.com block", "domain:example.com proxy"])
     }
 
     func testGeositeAndBadPatternsNeverReachTheCore() throws {

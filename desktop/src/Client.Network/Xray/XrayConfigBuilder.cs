@@ -423,11 +423,15 @@ public static class XrayConfigBuilder
         }, rejections);
     }
 
-    /// <summary>Шаблон сайта из «Маршрутизации» — в условие Xray: «example.com» и «*.example.com» — домен с поддоменами.</summary>
-    public static string DomainCondition(string pattern)
+    /// <summary>
+    /// Шаблон сайта из «Маршрутизации» — в условие Xray: «example.com» и «*.example.com» — домен с поддоменами;
+    /// <paramref name="exact"/> («Только этот адрес», решение 739) — только сам домен («full:»).
+    /// </summary>
+    public static string DomainCondition(string pattern, bool exact = false)
     {
         ArgumentNullException.ThrowIfNull(pattern);
         return pattern.StartsWith("geosite:", StringComparison.Ordinal) ? pattern
+            : exact && SitePattern.IsPlainDomain(pattern) ? "full:" + pattern
             : "domain:" + (pattern.StartsWith("*.", StringComparison.Ordinal) ? pattern[2..] : pattern);
     }
 
@@ -708,14 +712,15 @@ public static class XrayConfigBuilder
 
         // «Напрямую» — только в раздельном режиме: в режиме «Весь трафик» мимо VPN ничего не идет.
         var split = request.Routing.Mode == RoutingMode.Split;
-        foreach (var rule in request.Routing.Rules.Where(r => split || r.Action != RuleAction.Direct))
+        // Точнее — раньше (решение 739): правило для части сайта не теряется за правилом для всего сайта.
+        foreach (var rule in RoutingSettings.Ordered(request.Routing.Rules.Where(r => split || r.Action != RuleAction.Direct)))
         {
             // Адрес и подсеть — условием IP: с ним сравнивается адрес соединения, а у имени — его адреса.
             var address = SitePattern.IsAddress(rule.Pattern);
             rules.Add(new JsonObject
             {
                 ["type"] = "field",
-                [address ? "ip" : "domain"] = new JsonArray(address ? rule.Pattern : DomainCondition(rule.Pattern)),
+                [address ? "ip" : "domain"] = new JsonArray(address ? rule.Pattern : DomainCondition(rule.Pattern, rule.Exact)),
                 ["outboundTag"] = rule.Action switch
                 {
                     RuleAction.Direct => DirectTag,

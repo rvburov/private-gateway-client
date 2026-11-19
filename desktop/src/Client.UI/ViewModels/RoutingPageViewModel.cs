@@ -122,11 +122,12 @@ public sealed partial class RoutingPageViewModel : ObservableObject
 
     /// <summary>
     /// Новое правило — в конец списка, измененное — на свое место. Правило для того же сайта
-    /// заменяется: два правила на один сайт противоречили бы друг другу.
+    /// заменяется: два правила на один сайт противоречили бы друг другу. «Только этот адрес» и сайт
+    /// с поддоменами — разные правила (решение 739).
     /// </summary>
     internal void SaveRule(DomainRule? original, DomainRule rule) => Set(r =>
     {
-        var rules = r.Rules.Where(other => other == original || other.Pattern != rule.Pattern).ToList();
+        var rules = r.Rules.Where(other => other == original || other.Pattern != rule.Pattern || other.IsExact != rule.IsExact).ToList();
         var index = original is null ? -1 : rules.IndexOf(original);
         if (index >= 0)
         {
@@ -221,6 +222,9 @@ public sealed partial class SiteRuleViewModel(DomainRule rule, bool isSplit, Rou
 {
     public string Pattern => rule.Pattern;
 
+    /// <summary>«Только этот адрес» — подписью под адресом (решение 739).</summary>
+    public bool IsExact => rule.IsExact;
+
     public string ActionText => RoutingPageViewModel.ActionLabel(rule.Action);
 
     public bool IsDirect => rule.Action == RuleAction.Direct;
@@ -257,6 +261,7 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
         _overlay = overlay;
         Pattern = original?.Pattern ?? string.Empty;
         Action = original?.Action ?? (isSplit ? RuleAction.Direct : RuleAction.Block);
+        Exact = original?.IsExact ?? false;
     }
 
     public bool IsNew => _original is null;
@@ -266,7 +271,14 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
     public string SaveText => Loc.Instance[IsNew ? "routing.rule.add" : "routing.rule.save"];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExact))]
     public partial string Pattern { get; set; }
+
+    /// <summary>«Только этот адрес» (решение 739): флажок есть только у обычного домена — не у зоны, списка и адреса.</summary>
+    [ObservableProperty]
+    public partial bool Exact { get; set; }
+
+    public bool CanExact => SitePattern.Normalize(Pattern) is { } pattern && SitePattern.IsPlainDomain(pattern);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDirect), nameof(IsProxy), nameof(IsBlock), nameof(IsIdle))]
@@ -309,7 +321,7 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
         }
 
         _overlay.CloseSheet();
-        _page.SaveRule(_original, new DomainRule(pattern, Action));
+        _page.SaveRule(_original, new DomainRule(pattern, Action, Exact && SitePattern.IsPlainDomain(pattern)));
     }
 
     [RelayCommand]

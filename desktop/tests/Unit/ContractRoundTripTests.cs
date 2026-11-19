@@ -67,7 +67,8 @@ public sealed class ContractRoundTripTests
             Connection = new ConnectionSettings(CoreLogLevel.Debug, TunEngine.Gvisor, 1420, false, false, TlsFingerprint.Firefox,
                 true, true, 25, ReconnectPolicy.Never, 20808, true),
             Routing = new RoutingSettings(RoutingMode.Split, [new BypassApp("/usr/bin/game", "/usr/bin/game")],
-                [new DomainRule("*.example.org", RuleAction.Direct), new DomainRule("geosite:ads", RuleAction.Block)]),
+                [new DomainRule("*.example.org", RuleAction.Direct), new DomainRule("geosite:ads", RuleAction.Block),
+                    new DomainRule("example.net", RuleAction.Block, Exact: true)]),
         };
 
         var (protection, killSwitch) = settings.ToContract().ToCore();

@@ -200,7 +200,8 @@ public enum XrayConfig {
             ]))
         }
 
-        // Правила для сайтов («Маршрутизация») — после локальной сети и IPv6, по порядку списка, как у десктопа: «Напрямую»
+        // Правила для сайтов («Маршрутизация») — после локальной сети и IPv6, точнее — раньше (решение 739, порядок дает
+        // activeRules), как у десктопа: «Напрямую»
         // приходит только из раздельного режима (прямой выход ядра — из расширения туннеля, мимо сервера). Адрес и подсеть —
         // условием IP, имя — доменом с поддоменами. Шаблон, которого ядро телефона не примет (geosite: базы нет), сюда не
         // попадает.
@@ -211,7 +212,7 @@ public enum XrayConfig {
 
             let address = SitePattern.isAddress(pattern)
             let key = address ? "ip" : "domain"
-            let condition = address ? pattern : SitePattern.domainCondition(pattern)
+            let condition = address ? pattern : SitePattern.domainCondition(pattern, exact: rule.exact)
             rules.append(.object([("type", .string("field")), (key, .array([.string(condition)])), ("outboundTag", .string(outboundTag(rule.action)))]))
         }
 

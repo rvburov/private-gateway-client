@@ -164,6 +164,43 @@ public sealed class RoutingPageTests : WindowHarness
             "подсеть — правилом по адресу, к адресу сети");
     }
 
+    /// <summary>Решение 739: «Только этот адрес» — только у обычного домена; это отдельное правило от сайта с поддоменами.</summary>
+    [AvaloniaFact]
+    public void Exact_address_is_offered_for_plain_domains_and_kept_apart()
+    {
+        var (window, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [new DomainRule("example.com", RuleAction.Proxy)] });
+
+        Press(window, "AddRuleButton");
+        var sheet = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        foreach (var pattern in new[] { "*.local", "geosite:google", "203.0.113.9", "198.51.100.0/24", string.Empty })
+        {
+            sheet.Pattern = pattern;
+            sheet.CanExact.ShouldBeFalse(pattern);
+        }
+
+        sheet.Pattern = "Example.com";
+        sheet.CanExact.ShouldBeTrue();
+        Dispatcher.UIThread.RunJobs();
+        Find<CheckBox>(window, "RuleExact").IsVisible.ShouldBeTrue();
+        Find<TextBlock>(window, "RulePriority").IsVisible.ShouldBeTrue();
+        sheet.Exact = true;
+        sheet.IsBlock = true;
+        sheet.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Service<SettingsService>().Current.Routing.Rules.ShouldBe(
+            [new DomainRule("example.com", RuleAction.Proxy), new DomainRule("example.com", RuleAction.Block, Exact: true)],
+            "сайт с поддоменами и только этот адрес — разные правила");
+        page.Rules.Select(r => r.IsExact).ShouldBe([false, true]);
+
+        Press(window, "AddRuleButton");
+        var zone = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        zone.Pattern = "*.example.org";
+        zone.Exact = true;
+        zone.SaveCommand.Execute(null);
+        Service<SettingsService>().Current.Routing.Rules[^1].ShouldBe(new DomainRule("*.example.org", RuleAction.Block), "у зоны флажок не сохраняется");
+    }
+
     [AvaloniaFact]
     public void Rule_is_edited_replaced_for_the_same_site_and_deleted()
     {

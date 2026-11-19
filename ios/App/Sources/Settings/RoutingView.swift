@@ -315,13 +315,19 @@ private struct RuleRow: View {
         let title = RoutingLook.actionTitle(rule.action, texts)
         Button(action: action) {
             HStack(spacing: 0) {
-                Text(rule.pattern)
-                    .pgText(PgType.mono)
-                    .foregroundStyle(Color(PgColor.Text.primary))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, PgSpace.m)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(rule.pattern)
+                        .pgText(PgType.mono)
+                        .foregroundStyle(Color(PgColor.Text.primary))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    // «Только этот адрес» (решение 739) — подписью под адресом.
+                    if rule.isExact {
+                        Text(texts.routingRuleExactRow).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, PgSpace.m)
                 ActionPill(text: title, action: rule.action, idle: idle)
             }
             .padding(.vertical, PgSpace.l)
@@ -394,6 +400,7 @@ struct SiteRuleSheet: View {
     @State private var pattern: String
     @State private var choice: RuleAction
     @State private var tried: Bool
+    @State private var exact: Bool
 
     init(
         texts: PgTexts, original: SiteRule?, split: Bool, tried: Bool = false, onSave: @escaping (SiteRule) -> Void,
@@ -408,6 +415,7 @@ struct SiteRuleSheet: View {
         _pattern = State(initialValue: original?.pattern ?? "")
         _choice = State(initialValue: original?.action ?? RoutingLook.newAction(split: split))
         _tried = State(initialValue: tried)
+        _exact = State(initialValue: original?.isExact ?? false)
     }
 
     var body: some View {
@@ -444,6 +452,18 @@ struct SiteRuleSheet: View {
                         }
                     }
 
+                    // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса.
+                    if SitePattern.normalize(pattern).map(SitePattern.isPlainDomain) ?? false {
+                        VStack(alignment: .leading, spacing: 2) {
+                            PgCheck(title: texts.routingRuleExact, isOn: exact, identifier: "rule.exact") { exact = $0 }
+                            Text(texts.routingRuleExactText)
+                                .pgText(PgType.caption)
+                                .foregroundStyle(Color(PgColor.Text.muted))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 40)
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: PgSpace.xs) {
                         label(texts.routingRuleAction)
                         PgSegments(options: RoutingLook.actionOptions(texts), selection: choice, identifier: "rule.action", onSelect: { choice = $0 })
@@ -454,6 +474,11 @@ struct SiteRuleSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("rule.idle")
                         }
+                        Text(texts.routingRulePriority)
+                            .pgText(PgType.caption)
+                            .foregroundStyle(Color(PgColor.Text.muted))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("rule.priority")
                     }
                 }
                 .padding(.vertical, PgSpace.card)
@@ -493,7 +518,7 @@ struct SiteRuleSheet: View {
     private func save() {
         tried = true
         if let normalized = SitePattern.normalize(pattern) {
-            onSave(SiteRule(pattern: normalized, action: choice))
+            onSave(SiteRule(pattern: normalized, action: choice, exact: exact && SitePattern.isPlainDomain(normalized)))
         }
     }
 }

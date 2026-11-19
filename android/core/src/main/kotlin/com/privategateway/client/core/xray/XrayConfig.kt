@@ -49,7 +49,7 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  *   пишет в системный журнал Android имена сайтов и адрес сервера — поэтому по умолчанию только предупреждения.
  * @property lanDns свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
  * @property fragment фрагментация TLS ClientHello против DPI: выход сервера дозванивается через выход фрагментации.
- * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`), по порядку списка.
+ * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`): точнее — раньше (решение 739).
  */
 data class CoreSettings(
     val dns: String = XrayConfig.DEFAULT_DNS,
@@ -183,7 +183,7 @@ object XrayConfig {
             rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "ip" to listOf("::/0"), "outboundTag" to BLOCK_TAG))
         }
 
-        // Правила для сайтов — по порядку списка, после служебных (как у десктопа). Адрес и подсеть — условием IP: с ним
+        // Правила для сайтов — точнее раньше (решение 739, порядок дает coreRules), после служебных (как у десктопа). Адрес и подсеть — условием IP: с ним
         // сравнивается адрес соединения; имя — условием домена: его ядро узнает из sniffing. «Напрямую» — через сокет ядра,
         // выведенный из туннеля (protect), к провайдеру.
         for (rule in settings.rules) {
@@ -191,7 +191,7 @@ object XrayConfig {
             rules.add(
                 linkedMapOf(
                     "type" to "field",
-                    (if (address) "ip" else "domain") to listOf(if (address) rule.pattern else SitePattern.domainCondition(rule.pattern)),
+                    (if (address) "ip" else "domain") to listOf(if (address) rule.pattern else SitePattern.domainCondition(rule.pattern, rule.isExact)),
                     "outboundTag" to when (rule.action) {
                         RuleAction.Direct -> DIRECT_TAG
                         RuleAction.Block -> BLOCK_TAG

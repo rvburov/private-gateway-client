@@ -44,7 +44,7 @@ final class AppSettingsTests: XCTestCase {
         try await store.setConnection(connection)
         let routing = RoutingSettings(mode: .split, rules: [
             SiteRule(pattern: "example.com", action: .direct), SiteRule(pattern: "*.local", action: .direct), SiteRule(pattern: "198.51.100.0/24", action: .block),
-            SiteRule(pattern: "example.org", action: .proxy),
+            SiteRule(pattern: "example.org", action: .proxy), SiteRule(pattern: "example.net", action: .block, exact: true),
         ])
         try await store.setRouting(routing)
 

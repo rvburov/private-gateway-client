@@ -31,8 +31,14 @@ enum class RuleAction {
 /** Программа мимо VPN: имя пакета Android, название для подписи, включена ли. */
 data class BypassApp(val packageName: String, val name: String, val enabled: Boolean = true)
 
-/** Правило для сайта: домен, «*.домен», адрес или подсеть — уже в виде [SitePattern.normalize]. */
-data class SiteRule(val pattern: String, val action: RuleAction)
+/**
+ * Правило для сайта: домен, «*.домен», адрес или подсеть — уже в виде [SitePattern.normalize]. [exact] — «Только этот адрес»
+ * (решение 739): домен без поддоменов; у зоны и адреса не действует.
+ */
+data class SiteRule(val pattern: String, val action: RuleAction, val exact: Boolean = false) {
+    /** Действует ли «Только этот адрес»: только у обычного домена. */
+    val isExact: Boolean get() = exact && SitePattern.isPlainDomain(pattern)
+}
 
 /**
  * «Маршрутизация» телефона (доска 13) — как `RoutingSettings` десктопа. По умолчанию весь трафик через VPN: раздельный режим —
@@ -49,8 +55,15 @@ data class RoutingSettings(
     /** Пакеты мимо карты туннеля: только в раздельном режиме и только включенные, без повторов. */
     val disallowedApps: List<String> get() = if (split) apps.filter { it.enabled }.map { it.packageName }.distinct() else emptyList()
 
-    /** Правила, которые получает ядро, по порядку списка: «Напрямую» — только в раздельном режиме. */
-    val coreRules: List<SiteRule> get() = rules.filter { split || it.action != RuleAction.Direct }
+    /**
+     * Правила, которые получает ядро: «Напрямую» — только в раздельном режиме; точнее — раньше (решение 739, `Ordered`
+     * десктопа): «только этот адрес», домены от длинного к короткому, адреса и подсети от узкой к широкой; равные — по списку.
+     */
+    val coreRules: List<SiteRule>
+        get() = rules.filter { split || it.action != RuleAction.Direct }
+            .withIndex()
+            .sortedWith(compareBy({ SitePattern.rank(it.value).first }, { SitePattern.rank(it.value).second }, { it.index }))
+            .map { it.value }
 
     /** Идут ли сейчас программы мимо VPN: только в раздельном режиме и только включенные (HasBypassApps десктопа). */
     val hasBypassApps: Boolean get() = disallowedApps.isNotEmpty()
@@ -66,7 +79,8 @@ data class RoutingSettings(
      * два правила на один сайт противоречили бы друг другу (как `SaveRule` десктопа).
      */
     fun saveRule(original: SiteRule?, rule: SiteRule): RoutingSettings {
-        val kept = rules.filter { it == original || it.pattern != rule.pattern }.toMutableList()
+        // «Только этот адрес» и сайт с поддоменами — разные правила (решение 739).
+        val kept = rules.filter { it == original || it.pattern != rule.pattern || it.isExact != rule.isExact }.toMutableList()
         val index = if (original == null) -1 else kept.indexOf(original)
         if (index >= 0) {
             kept[index] = rule
@@ -95,8 +109,12 @@ data class RoutingSettings(
     fun appsJson(): String =
         JsonText.value(apps.map { linkedMapOf("package" to it.packageName, "name" to it.name, "enabled" to it.enabled) })
 
-    /** Список правил для хранилища — текст JSON `[{"pattern": …, "action": …}]`. */
-    fun rulesJson(): String = JsonText.value(rules.map { linkedMapOf("pattern" to it.pattern, "action" to it.action.name) })
+    /** Список правил для хранилища — текст JSON `[{"pattern": …, "action": …}]`; «exact» — только у «Только этот адрес». */
+    fun rulesJson(): String = JsonText.value(
+        rules.map { rule ->
+            linkedMapOf<String, Any>("pattern" to rule.pattern, "action" to rule.action.name).also { if (rule.isExact) it["exact"] = true }
+        },
+    )
 
     companion object {
         /** Имя пакета Android: части через точку, каждая с буквы, из букв, цифр и «_». */
@@ -120,7 +138,7 @@ data class RoutingSettings(
             items(rules).mapNotNull { item ->
                 val pattern = SitePattern.normalize(item["pattern"] as? String) ?: return@mapNotNull null
                 val action = RuleAction.entries.firstOrNull { it.name == item["action"] } ?: return@mapNotNull null
-                SiteRule(pattern, action)
+                SiteRule(pattern, action, item["exact"] as? Boolean ?: false)
             },
         )
 
@@ -181,8 +199,30 @@ object SitePattern {
     /** Шаблон — адрес или подсеть, а не имя: правило сравнивает IP соединения. */
     fun isAddress(pattern: String): Boolean = address(pattern) != null
 
-    /** Условие домена Xray: «example.com» и «*.example.com» — домен с поддоменами («domain:»). */
-    fun domainCondition(pattern: String): String = "domain:" + pattern.removePrefix("*.")
+    /**
+     * Условие домена Xray: «example.com» и «*.example.com» — домен с поддоменами («domain:»); [exact] («Только этот адрес»,
+     * решение 739) — только сам домен («full:»).
+     */
+    fun domainCondition(pattern: String, exact: Boolean = false): String =
+        if (exact && isPlainDomain(pattern)) "full:$pattern" else "domain:" + pattern.removePrefix("*.")
+
+    /** Обычный домен («example.com»): не зона «*.» и не адрес — у него есть «Только этот адрес». */
+    fun isPlainDomain(pattern: String): Boolean = !pattern.startsWith("*.") && !pattern.startsWith(GEOSITE) && !isAddress(pattern)
+
+    /**
+     * Место правила при проверке (меньше — раньше), как `SitePattern.Rank` десктопа: группа (0 — только этот адрес, 1 — домен
+     * или зона, 3 — адрес или подсеть) и порядок в ней (больше меток домена или длиннее префикс — раньше).
+     */
+    fun rank(rule: SiteRule): Pair<Int, Int> {
+        val pattern = rule.pattern
+        if (isAddress(pattern)) {
+            val slash = pattern.indexOf('/')
+            val prefix = if (slash < 0) (if (pattern.contains(':')) 128 else 32) else pattern.substring(slash + 1).toInt()
+            return 3 to -prefix
+        }
+
+        return (if (rule.isExact) 0 else 1) to -pattern.removePrefix("*.").split('.').size
+    }
 
     /**
      * Адрес или подсеть в каноническом виде; иначе null. IPv4 — только четыре числа через точку («1.2» адресом не считается).

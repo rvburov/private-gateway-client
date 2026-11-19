@@ -14,14 +14,22 @@ public enum RuleAction: String, CaseIterable, Sendable {
     case block = "Block"
 }
 
-/// Правило для сайта: домен, «*.домен», адрес или подсеть (`SitePattern`) — как `DomainRule` десктопа.
+/// Правило для сайта: домен, «*.домен», адрес или подсеть (`SitePattern`) — как `DomainRule` десктопа. `exact` — «Только этот
+/// адрес» (решение 739): домен без поддоменов; у зоны и адреса не действует.
 public struct SiteRule: Equatable, Hashable, Sendable {
     public var pattern: String
     public var action: RuleAction
+    public var exact: Bool
 
-    public init(pattern: String, action: RuleAction) {
+    public init(pattern: String, action: RuleAction, exact: Bool = false) {
         self.pattern = pattern
         self.action = action
+        self.exact = exact
+    }
+
+    /// Действует ли «Только этот адрес»: только у обычного домена.
+    public var isExact: Bool {
+        exact && SitePattern.isPlainDomain(pattern)
     }
 }
 
@@ -52,15 +60,23 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
         !isSplit && rules.contains { $0.action == .direct }
     }
 
-    /// Правила, которые получает ядро, по порядку списка: «Напрямую» — только в раздельном режиме.
+    /// Правила, которые получает ядро: «Напрямую» — только в раздельном режиме; точнее — раньше (решение 739, `Ordered`
+    /// десктопа): «только этот адрес», домены от длинного к короткому, адреса и подсети от узкой к широкой; равные — по списку.
     public var activeRules: [SiteRule] {
         rules.filter { isSplit || $0.action != .direct }
+            .enumerated()
+            .sorted { left, right in
+                let (a, b) = (SitePattern.rank(left.element), SitePattern.rank(right.element))
+                return (a.group, a.detail, left.offset) < (b.group, b.detail, right.offset)
+            }
+            .map(\.element)
     }
 
     /// Новое правило — в конец списка, измененное — на свое место. Правило для того же сайта заменяется: два правила на один
     /// сайт противоречили бы друг другу (SaveRule десктопа).
     public func saving(_ rule: SiteRule, replacing original: SiteRule? = nil) -> RoutingSettings {
-        var kept = rules.filter { $0 == original || $0.pattern != rule.pattern }
+        // «Только этот адрес» и сайт с поддоменами — разные правила (решение 739).
+        var kept = rules.filter { $0 == original || $0.pattern != rule.pattern || $0.isExact != rule.isExact }
         if let original, let index = kept.firstIndex(of: original) {
             kept[index] = rule
         } else {
@@ -80,11 +96,16 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
         var seen = Set<String>()
         var kept: [SiteRule] = []
         for rule in rules {
-            guard let pattern = SitePattern.normalize(rule.pattern), seen.insert(pattern).inserted else {
+            guard let pattern = SitePattern.normalize(rule.pattern) else {
                 continue
             }
 
-            kept.append(SiteRule(pattern: pattern, action: rule.action))
+            let exact = rule.exact && SitePattern.isPlainDomain(pattern)
+            guard seen.insert((exact ? "=" : "") + pattern).inserted else {
+                continue
+            }
+
+            kept.append(SiteRule(pattern: pattern, action: rule.action, exact: exact))
         }
 
         return RoutingSettings(mode: mode, rules: kept)
@@ -133,9 +154,29 @@ public enum SitePattern {
         address(pattern) != nil
     }
 
-    /// Шаблон имени — в условие Xray: «example.com» и «*.example.com» — домен с поддоменами.
-    public static func domainCondition(_ pattern: String) -> String {
-        "domain:" + (pattern.hasPrefix("*.") ? String(pattern.dropFirst(2)) : pattern)
+    /// Шаблон имени — в условие Xray: «example.com» и «*.example.com» — домен с поддоменами; `exact` («Только этот адрес»,
+    /// решение 739) — только сам домен («full:»).
+    public static func domainCondition(_ pattern: String, exact: Bool = false) -> String {
+        exact && isPlainDomain(pattern) ? "full:" + pattern : "domain:" + (pattern.hasPrefix("*.") ? String(pattern.dropFirst(2)) : pattern)
+    }
+
+    /// Обычный домен («example.com»): не зона «*.» и не адрес — у него есть «Только этот адрес».
+    public static func isPlainDomain(_ pattern: String) -> Bool {
+        !pattern.hasPrefix("*.") && !pattern.hasPrefix("geosite:") && !isAddress(pattern)
+    }
+
+    /// Место правила при проверке (меньше — раньше), как `SitePattern.Rank` десктопа: группа (0 — только этот адрес, 1 — домен
+    /// или зона, 3 — адрес или подсеть) и порядок в ней (больше меток домена или длиннее префикс — раньше).
+    public static func rank(_ rule: SiteRule) -> (group: Int, detail: Int) {
+        let pattern = rule.pattern
+        if isAddress(pattern) {
+            let parts = pattern.split(separator: "/")
+            let prefix = parts.count == 2 ? Int(parts[1]) ?? 0 : (pattern.contains(":") ? 128 : 32)
+            return (3, -prefix)
+        }
+
+        let name = pattern.hasPrefix("*.") ? String(pattern.dropFirst(2)) : pattern
+        return (rule.isExact ? 0 : 1, -name.split(separator: ".", omittingEmptySubsequences: false).count)
     }
 
     /// Метка имени: 1–63 латинские буквы, цифры и дефисы, дефис не по краям.
