@@ -120,6 +120,7 @@ class SettingsRepositoryTest {
                 RoutingMode.Split,
                 listOf(BypassApp("org.example.game", "Игра"), BypassApp("org.example.call", "Звонки", enabled = false)),
                 listOf(SiteRule("example.com", RuleAction.Direct), SiteRule("203.0.113.0/24", RuleAction.Block)),
+                blockOthers = true,
             ),
         )
         settings.setTunnel(chosen)

@@ -38,18 +38,24 @@
   /* Раздельный режим или «Весь трафик»: предупреждение, программы, подписи (IsSplit программы) */
   .pg-app:has([data-route="split"].on) [data-when="all"],
   .pg-app:not(:has([data-route="split"].on)) [data-when="split"] { display: none; }
-  /* «Напрямую» вне раздельного режима не действует — метка бледнее */
-  .pg-app:not(:has([data-route="split"].on)) .pill[data-direct] { opacity: .55; }
+  /* «Напрямую» вне раздельного режима не действует — метка бледнее; при «Остальные сайты: Блокировать» оно разрешает сайт */
+  .pg-app:not(:has([data-route="split"].on)):not(:has([data-others="block"].on)) .pill[data-direct] { opacity: .55; }
+  .pg-app:has([data-others="block"].on) [data-idle] { display: none; }
   /* В листе правила: «Напрямую» в режиме «Весь трафик» — подпись, что правило пока не действует (IsIdle) */
   [data-when="idle"] { display: none; }
-  .pg-app:not(:has([data-route="split"].on)) .sheet:has([data-action="direct"].on) [data-when="idle"] { display: block; }
+  .pg-app:not(:has([data-route="split"].on)):not(:has([data-others="block"].on)) .sheet:has([data-action="direct"].on) [data-when="idle"] { display: block; }
+  /* «Остальные сайты» (решение 740): при «Блокировать» — предупреждение и «Пропускается всегда» */
+  .pg-app:not(:has([data-others="block"].on)) [data-when="block-others"],
+  .pg-app:has([data-others="block"].on) [data-when="open-others"] { display: none; }
 </style>
 </head>
 <body>
 <p class="pg-board-note">Маршрутизация (RoutingPage программы) — подстраница настроек: «Назад» ведет в «Настройки». «Весь трафик» и
   «Раздельный режим» переключают экран: предупреждение и программы мимо VPN есть только в раздельном режиме, в режиме «Весь трафик»
   правила «Напрямую» бледнее и над списком — подпись, что они не действуют. Правило для сайта открывается листом; «Добавить правило» —
-  тот же лист. «Локальная сеть» ведет в «Защиту и утечки». Справа — тот же экран в режиме «Весь трафик».</p>
+  тот же лист. «Локальная сеть» ведет в «Защиту и утечки». «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740):
+  открываются только сайты с правилом «Через VPN» или «Напрямую», ниже — предупреждение и «Пропускается всегда»; обратно на
+  «Открывать» — сразу. Справа — тот же экран в режиме «Весь трафик».</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Раздельный режим">
@@ -114,7 +120,21 @@
         <!-- Правила для сайтов -->
         <div class="pg-stack pg-gap-8">
           <span class="t-overline" style="margin: 0 6px">Правила для сайтов</span>
-          <span class="t-caption t-wrap" data-when="all" style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          <!-- «Остальные сайты» (решение 740): «Блокировать» — после вопроса о последствиях, обратно — сразу -->
+          <div class="card pg-stack pg-gap-10" style="padding: 14px 16px">
+            <span class="t-strong">Остальные сайты</span>
+            <div class="segments" role="radiogroup" aria-label="Остальные сайты">
+              <button class="segment on" data-others="open" role="radio" aria-checked="true">Открывать</button>
+              <button class="segment" data-others="block" data-confirm="dlg-block-others-split" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="open-others">Открывается все, кроме сайтов с правилом «Блокировать».</span>
+            <span class="t-caption t-wrap" data-when="block-others">Открываются только сайты с правилом «Через VPN» или «Напрямую».</span>
+          </div>
+          <div class="banner warning" data-when="block-others" style="align-items: flex-start; padding: 12px 14px; border-radius: 16px; font-size: var(--pg-type-small-size)">
+            <i data-icon="Warning" data-stroke="2" data-size="18" style="margin-top: 1px"></i>
+            <span class="t-wrap">Не откроется все, что не разрешено, — и в программах тоже: мессенджеры, почта, игры, облака. Что пропускается всегда — ниже.</span>
+          </div>
+          <span class="t-caption t-wrap" data-when="all" data-idle style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
           <div class="card" style="padding: 2px 16px">
           <button class="btn-plain" data-row data-open="sheet-rule-0" aria-label="example.com: Напрямую">
             <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.com</span>
@@ -134,6 +154,18 @@
           </button>
           </div>
           <button class="btn-plain dashed" data-open="sheet-rule-new"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
+        </div>
+
+        <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->
+        <div class="pg-stack pg-gap-8" data-when="block-others">
+          <span class="t-overline" style="margin: 0 6px">Пропускается всегда</span>
+          <div class="card pg-stack pg-gap-8" style="padding: 12px 16px">
+            <span class="t-small t-wrap">Обновления системы и защиты</span>
+            <span class="t-small t-wrap">Точное время, проверка сети и сертификатов</span>
+            <span class="t-small t-wrap">Уведомления приложений</span>
+            <span class="t-small t-wrap">Сервер VPN и сайт Private Gateway</span>
+            <span class="t-small t-wrap">Локальная сеть — если разрешена</span>
+          </div>
         </div>
 
         <!-- Всегда напрямую -->
@@ -322,6 +354,16 @@
       </div>
     </div>
 
+    <!-- «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740); обратно — без вопроса -->
+    <div class="dialog" id="dlg-block-others-split" role="dialog" aria-modal="true" aria-label="Блокировать все, кроме разрешенного?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.blockOthers.title">Блокировать все, кроме разрешенного?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.blockOthers.text">Перестанет работать, пока вы это не разрешите: сайты не из списка (и то, что разрешенные грузят с других адресов), мессенджеры, почта, игры, видеозвонки, облака. Программа сама пропускает обновления системы и защиты, точное время, уведомления и проверку сети.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.blockOthers.keep">Отмена</button>
+        <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.blockOthers.block">Блокировать остальное</button>
+      </div>
+    </div>
     <div class="pg-island" data-active="settings"></div>
   </section>
 
@@ -387,7 +429,21 @@
         <!-- Правила для сайтов -->
         <div class="pg-stack pg-gap-8">
           <span class="t-overline" style="margin: 0 6px">Правила для сайтов</span>
-          <span class="t-caption t-wrap" data-when="all" style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          <!-- «Остальные сайты» (решение 740): «Блокировать» — после вопроса о последствиях, обратно — сразу -->
+          <div class="card pg-stack pg-gap-10" style="padding: 14px 16px">
+            <span class="t-strong">Остальные сайты</span>
+            <div class="segments" role="radiogroup" aria-label="Остальные сайты">
+              <button class="segment on" data-others="open" role="radio" aria-checked="true">Открывать</button>
+              <button class="segment" data-others="block" data-confirm="dlg-block-others" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="open-others">Открывается все, кроме сайтов с правилом «Блокировать».</span>
+            <span class="t-caption t-wrap" data-when="block-others">Открываются только сайты с правилом «Через VPN» или «Напрямую».</span>
+          </div>
+          <div class="banner warning" data-when="block-others" style="align-items: flex-start; padding: 12px 14px; border-radius: 16px; font-size: var(--pg-type-small-size)">
+            <i data-icon="Warning" data-stroke="2" data-size="18" style="margin-top: 1px"></i>
+            <span class="t-wrap">Не откроется все, что не разрешено, — и в программах тоже: мессенджеры, почта, игры, облака. Что пропускается всегда — ниже.</span>
+          </div>
+          <span class="t-caption t-wrap" data-when="all" data-idle style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
           <div class="card" style="padding: 2px 16px">
           <button class="btn-plain" data-row data-open="sheet-rule-0-all" aria-label="example.com: Напрямую">
             <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.com</span>
@@ -407,6 +463,18 @@
           </button>
           </div>
           <button class="btn-plain dashed" data-open="sheet-rule-new-all"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
+        </div>
+
+        <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->
+        <div class="pg-stack pg-gap-8" data-when="block-others">
+          <span class="t-overline" style="margin: 0 6px">Пропускается всегда</span>
+          <div class="card pg-stack pg-gap-8" style="padding: 12px 16px">
+            <span class="t-small t-wrap">Обновления системы и защиты</span>
+            <span class="t-small t-wrap">Точное время, проверка сети и сертификатов</span>
+            <span class="t-small t-wrap">Уведомления приложений</span>
+            <span class="t-small t-wrap">Сервер VPN и сайт Private Gateway</span>
+            <span class="t-small t-wrap">Локальная сеть — если разрешена</span>
+          </div>
         </div>
 
         <!-- Всегда напрямую -->
@@ -605,6 +673,16 @@
       <div class="dialog-actions stack">
         <button class="btn-primary" data-close data-ui-text="dialog.splitMode.keep">Оставить весь трафик</button>
         <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.splitMode.switch">Перейти</button>
+      </div>
+    </div>
+    <!-- «Остальные сайты: Блокировать» — только после вопроса о последствиях (решение 740); обратно — без вопроса -->
+    <div class="dialog" id="dlg-block-others" role="dialog" aria-modal="true" aria-label="Блокировать все, кроме разрешенного?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.blockOthers.title">Блокировать все, кроме разрешенного?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.blockOthers.text">Перестанет работать, пока вы это не разрешите: сайты не из списка (и то, что разрешенные грузят с других адресов), мессенджеры, почта, игры, видеозвонки, облака. Программа сама пропускает обновления системы и защиты, точное время, уведомления и проверку сети.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.blockOthers.keep">Отмена</button>
+        <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.blockOthers.block">Блокировать остальное</button>
       </div>
     </div>
     <div class="pg-island" data-active="settings"></div>

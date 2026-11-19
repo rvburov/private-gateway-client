@@ -9,6 +9,8 @@ import SwiftUI
 /// лист) и «Всегда напрямую» (адрес сервера, «Локальная сеть» ведет в «Защиту и утечки»). Блока «Программы мимо VPN» у iOS
 /// нет: обычному приложению выбирать, какие программы идут мимо туннеля, iOS не дает (только профилям MDM). Правила идут в
 /// конфиг Xray расширения туннеля; под защитой изменения применяются сразу — ядро перезапускается в том же туннеле.
+/// «Остальные сайты» (решение 740): «Блокировать» — только после вопроса о последствиях, ниже — предупреждение и «Пропускается
+/// всегда»; обратно на «Открывать» — сразу.
 struct RoutingView: View {
     let texts: PgTexts
     let routing: RoutingSettings
@@ -50,6 +52,10 @@ struct RoutingView: View {
                     }
 
                     rulesSection
+                    if routing.blockOthers {
+                        allowedSection
+                    }
+
                     alwaysSection
                 }
                 .padding(.horizontal, PgSpace.windowSideMobile)
@@ -58,7 +64,7 @@ struct RoutingView: View {
         }
         .pgSheet(isPresented: $sheetOpen) {
             SiteRuleSheet(
-                texts: texts, original: editing, split: routing.isSplit,
+                texts: texts, original: editing, split: routing.isSplit, blockOthers: routing.blockOthers,
                 onSave: { rule in
                     sheetOpen = false
                     onRouting(routing.saving(rule, replacing: editing))
@@ -104,6 +110,11 @@ struct RoutingView: View {
             Overline(text: texts.routingRulesTitle)
                 .padding(.horizontal, PgSpace.xs)
                 .accessibilityAddTraits(.isHeader)
+            othersCard
+            if routing.blockOthers {
+                RoutingWarning(text: texts.routingOthersWarning, identifier: "routing.others.warning")
+            }
+
             if routing.hasIdleRules {
                 Text(texts.routingRulesIdle)
                     .pgText(PgType.caption)
@@ -128,7 +139,7 @@ struct RoutingView: View {
                             PgDivider()
                         }
 
-                        RuleRow(texts: texts, rule: rule, idle: RoutingLook.isIdle(rule.action, split: routing.isSplit)) {
+                        RuleRow(texts: texts, rule: rule, idle: RoutingLook.isIdle(rule.action, split: routing.isSplit, blockOthers: routing.blockOthers)) {
                             open(rule)
                         }
                     }
@@ -141,6 +152,53 @@ struct RoutingView: View {
             AddRuleButton(title: texts.routingRulesAdd) {
                 open(nil)
             }
+        }
+    }
+
+    /// «Остальные сайты» (решение 740): сегменты «Открывать / Блокировать» и подпись; «Блокировать» — через вопрос.
+    private var othersCard: some View {
+        VStack(alignment: .leading, spacing: PgSpace.m) {
+            Text(texts.routingOthersTitle).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+            PgSegments(
+                options: RoutingLook.othersOptions(texts), selection: routing.blockOthers ? .block : .open, identifier: "routing.others",
+                confirm: { RoutingLook.othersDialog($0, texts) },
+                onSelect: { choice in
+                    var next = routing
+                    next.blockOthers = choice == .block
+                    onRouting(next)
+                }
+            )
+            Text(RoutingLook.othersNote(routing.blockOthers, texts))
+                .pgText(PgType.caption)
+                .foregroundStyle(Color(PgColor.Text.muted))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("routing.others.note")
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, PgSpace.card)
+        .pgCard(padding: 0)
+    }
+
+    /// «Пропускается всегда» (решение 740) — только при «Остальные сайты: Блокировать»: что программа пропускает сама.
+    private var allowedSection: some View {
+        VStack(alignment: .leading, spacing: PgSpace.s) {
+            Overline(text: texts.routingAllowedTitle)
+                .padding(.horizontal, PgSpace.xs)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: PgSpace.s) {
+                ForEach(RoutingLook.allowedItems(texts), id: \.self) { item in
+                    Text(item)
+                        .pgText(PgType.small)
+                        .foregroundStyle(Color(PgColor.Text.secondary))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, PgSpace.l)
+            .padding(.horizontal, PgSpace.card)
+            .pgCard(padding: 0)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("routing.allowed")
         }
     }
 
@@ -199,6 +257,12 @@ struct RoutingView: View {
     }
 }
 
+/// «Остальные сайты» (решение 740): сегменты по порядку доски.
+enum OthersChoice: Hashable {
+    case open
+    case block
+}
+
 /// Правила «Маршрутизации» — как RoutingPageViewModel и SiteRuleEditViewModel десктопа.
 enum RoutingLook {
     /// Имя ОС в подписи «Весь трафик … идет через VPN» (data-os-word="name" макета, AppInfo.OsName десктопа).
@@ -216,6 +280,30 @@ enum RoutingLook {
             kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogSplitModeTitle, text: texts.dialogSplitModeText,
             primary: texts.dialogSplitModeKeep, secondary: texts.dialogSplitModeSwitch, secondaryDanger: true
         )
+    }
+
+    static func othersOptions(_ texts: PgTexts) -> [PgOption<OthersChoice>] {
+        [PgOption(value: OthersChoice.open, title: texts.routingOthersOpen), PgOption(value: OthersChoice.block, title: texts.routingOthersBlock)]
+    }
+
+    /// Вопрос перед «Остальные сайты: Блокировать» (решение 740, ConfirmBlockOthersAsync десктопа): что перестанет работать и
+    /// что программа пропускает сама. Основная кнопка — «Отмена»; на «Открывать» — без вопроса.
+    static func othersDialog(_ choice: OthersChoice, _ texts: PgTexts) -> PgDialog? {
+        guard choice == .block else { return nil }
+        return PgDialog(
+            kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogBlockOthersTitle, text: texts.dialogBlockOthersText,
+            primary: texts.dialogBlockOthersKeep, secondary: texts.dialogBlockOthersBlock, secondaryDanger: true
+        )
+    }
+
+    /// Подпись под «Остальными сайтами»: что открывается.
+    static func othersNote(_ block: Bool, _ texts: PgTexts) -> String {
+        block ? texts.routingOthersBlockNote : texts.routingOthersOpenNote
+    }
+
+    /// Строки «Пропускается всегда» по порядку доски.
+    static func allowedItems(_ texts: PgTexts) -> [String] {
+        [texts.routingAllowedUpdates, texts.routingAllowedTime, texts.routingAllowedNotifications, texts.routingAllowedService, texts.routingAllowedLan]
     }
 
     /// Подпись под сегментами: «Весь трафик iOS идет через VPN…» или «VPN для всего, кроме…».
@@ -247,14 +335,15 @@ enum RoutingLook {
     }
 
     /// Новое правило в раздельном режиме — «Напрямую» (ради этого его и заводят), в режиме «Весь трафик» — «Блокировать»:
-    /// «Напрямую» там не действует.
-    static func newAction(split: Bool) -> RuleAction {
-        split ? .direct : .block
+    /// «Напрямую» там не действует; при «Остальные сайты: Блокировать» — «Через VPN»: правило разрешает сайт (решение 740).
+    static func newAction(split: Bool, blockOthers: Bool = false) -> RuleAction {
+        split ? .direct : blockOthers ? .proxy : .block
     }
 
-    /// «Напрямую» вне раздельного режима не действует: метка бледнее, в листе — подпись об этом.
-    static func isIdle(_ action: RuleAction, split: Bool) -> Bool {
-        action == .direct && !split
+    /// «Напрямую» вне раздельного режима не действует: метка бледнее, в листе — подпись об этом. При «Остальные сайты:
+    /// Блокировать» оно разрешает сайт и действует.
+    static func isIdle(_ action: RuleAction, split: Bool, blockOthers: Bool = false) -> Bool {
+        action == .direct && !split && !blockOthers
     }
 
     /// Подпись «Локальной сети»: «Сейчас запрещена · …» или «Сейчас разрешена · …».
@@ -283,6 +372,7 @@ enum RoutingLook {
 /// цветом status.warning.badge на status.warning.tint, рамка status.warning.line, скругление 16, поля 14 × 12.
 private struct RoutingWarning: View {
     let text: String
+    var identifier = "routing.warning"
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -300,7 +390,7 @@ private struct RoutingWarning: View {
         .background(shape.fill(Color(PgColor.Status.Warning.tint)))
         .overlay(shape.strokeBorder(Color(PgColor.Status.Warning.line), lineWidth: 1))
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("routing.warning")
+        .accessibilityIdentifier(identifier)
     }
 }
 
@@ -393,6 +483,8 @@ struct SiteRuleSheet: View {
     /// Правило, которое правят; nil — новое.
     let original: SiteRule?
     let split: Bool
+    /// «Остальные сайты: Блокировать» (решение 740): «Напрямую» разрешает сайт, новое правило — «Через VPN».
+    let blockOthers: Bool
     let onSave: (SiteRule) -> Void
     let onDelete: (SiteRule) -> Void
     let onClose: () -> Void
@@ -403,17 +495,18 @@ struct SiteRuleSheet: View {
     @State private var exact: Bool
 
     init(
-        texts: PgTexts, original: SiteRule?, split: Bool, tried: Bool = false, onSave: @escaping (SiteRule) -> Void,
+        texts: PgTexts, original: SiteRule?, split: Bool, blockOthers: Bool = false, tried: Bool = false, onSave: @escaping (SiteRule) -> Void,
         onDelete: @escaping (SiteRule) -> Void, onClose: @escaping () -> Void
     ) {
         self.texts = texts
         self.original = original
         self.split = split
+        self.blockOthers = blockOthers
         self.onSave = onSave
         self.onDelete = onDelete
         self.onClose = onClose
         _pattern = State(initialValue: original?.pattern ?? "")
-        _choice = State(initialValue: original?.action ?? RoutingLook.newAction(split: split))
+        _choice = State(initialValue: original?.action ?? RoutingLook.newAction(split: split, blockOthers: blockOthers))
         _tried = State(initialValue: tried)
         _exact = State(initialValue: original?.isExact ?? false)
     }
@@ -467,7 +560,7 @@ struct SiteRuleSheet: View {
                     VStack(alignment: .leading, spacing: PgSpace.xs) {
                         label(texts.routingRuleAction)
                         PgSegments(options: RoutingLook.actionOptions(texts), selection: choice, identifier: "rule.action", onSelect: { choice = $0 })
-                        if RoutingLook.isIdle(choice, split: split) {
+                        if RoutingLook.isIdle(choice, split: split, blockOthers: blockOthers) {
                             Text(texts.routingRulesIdle)
                                 .pgText(PgType.caption)
                                 .foregroundStyle(Color(PgColor.Text.muted))

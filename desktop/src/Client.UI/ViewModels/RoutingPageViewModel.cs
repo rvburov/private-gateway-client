@@ -73,8 +73,43 @@ public sealed partial class RoutingPageViewModel : ObservableObject
 
     public bool HasRules => Rules.Count > 0;
 
-    /// <summary>В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком.</summary>
-    public bool HasIdleRules => !IsSplit && R.Rules.Any(r => r.Action == RuleAction.Direct);
+    /// <summary>
+    /// В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком. При «Остальные сайты: Блокировать» они
+    /// разрешают сайт через VPN (решение 740) и не молчат.
+    /// </summary>
+    public bool HasIdleRules => DirectIdle && R.Rules.Any(r => r.Action == RuleAction.Direct);
+
+    /// <summary>«Напрямую» не действует: не раздельный режим и остальное не блокируется.</summary>
+    private bool DirectIdle => !IsSplit && !R.BlockOthers;
+
+    // ── Остальные сайты (решение 740) ────────────────────────────────────────
+
+    /// <summary>«Остальные сайты: Открывать» — сразу, без вопроса.</summary>
+    public bool OthersOpen
+    {
+        get => !R.BlockOthers;
+        set
+        {
+            if (value)
+            {
+                Set(r => r with { BlockOthers = false });
+            }
+        }
+    }
+
+    /// <summary>«Блокировать» — только через «Блокировать остальное» в диалоге: сегмент сам не отмечается.</summary>
+    public bool BlockOthers => R.BlockOthers;
+
+    [RelayCommand]
+    private async Task ChooseBlockOthersAsync()
+    {
+        if (!R.BlockOthers && await SafetyDialogs.ConfirmBlockOthersAsync(_overlay).ConfigureAwait(true))
+        {
+            Set(r => r with { BlockOthers = true });
+        }
+    }
+
+    public string OthersNote => Loc.Instance[R.BlockOthers ? "routing.others.block.note" : "routing.others.open.note"];
 
     // ── Всегда напрямую ──────────────────────────────────────────────────────
 
@@ -110,7 +145,7 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void AddRule() => _overlay.ShowSheet(new SiteRuleEditViewModel(null, IsSplit, this, _overlay));
+    private void AddRule() => _overlay.ShowSheet(new SiteRuleEditViewModel(null, IsSplit, R.BlockOthers, this, _overlay));
 
     /// <summary>Заменить программу в списке; null — убрать.</summary>
     internal void SetApp(BypassApp app, BypassApp? replacement) => Set(r => r with
@@ -118,7 +153,7 @@ public sealed partial class RoutingPageViewModel : ObservableObject
         Apps = [.. r.Apps.Select(a => a == app ? replacement : a).OfType<BypassApp>()],
     });
 
-    internal void EditRule(DomainRule rule) => _overlay.ShowSheet(new SiteRuleEditViewModel(rule, IsSplit, this, _overlay));
+    internal void EditRule(DomainRule rule) => _overlay.ShowSheet(new SiteRuleEditViewModel(rule, IsSplit, R.BlockOthers, this, _overlay));
 
     /// <summary>
     /// Новое правило — в конец списка, измененное — на свое место. Правило для того же сайта
@@ -157,7 +192,7 @@ public sealed partial class RoutingPageViewModel : ObservableObject
         Rules.Clear();
         foreach (var rule in R.Rules)
         {
-            Rules.Add(new SiteRuleViewModel(rule, IsSplit, this));
+            Rules.Add(new SiteRuleViewModel(rule, DirectIdle, this));
         }
 
         OnPropertyChanged(string.Empty);
@@ -218,7 +253,7 @@ public sealed partial class BypassAppViewModel(BypassApp app, int index, Routing
 }
 
 /// <summary>Строка «Правила для сайтов»: шаблон и метка действия; нажатие — лист правки.</summary>
-public sealed partial class SiteRuleViewModel(DomainRule rule, bool isSplit, RoutingPageViewModel page) : ObservableObject
+public sealed partial class SiteRuleViewModel(DomainRule rule, bool directIdle, RoutingPageViewModel page) : ObservableObject
 {
     public string Pattern => rule.Pattern;
 
@@ -233,8 +268,8 @@ public sealed partial class SiteRuleViewModel(DomainRule rule, bool isSplit, Rou
 
     public bool IsBlock => rule.Action == RuleAction.Block;
 
-    /// <summary>«Напрямую» вне раздельного режима не действует — метка бледнее.</summary>
-    public bool IsIdle => IsDirect && !isSplit;
+    /// <summary>«Напрямую» вне раздельного режима не действует — метка бледнее (кроме «Остальные сайты: Блокировать»).</summary>
+    public bool IsIdle => IsDirect && directIdle;
 
     public string EditLabel => Loc.Instance.Format("routing.rule.editLabel", rule.Pattern, ActionText);
 
@@ -244,23 +279,24 @@ public sealed partial class SiteRuleViewModel(DomainRule rule, bool isSplit, Rou
 
 /// <summary>
 /// Лист правила для сайта: шаблон и действие. Новое правило в раздельном режиме — «Напрямую»
-/// (ради этого его и заводят), в режиме «Весь трафик» — «Блокировать»: «Напрямую» там не действует.
+/// (ради этого его и заводят), в режиме «Весь трафик» — «Блокировать»: «Напрямую» там не действует;
+/// при «Остальные сайты: Блокировать» — «Через VPN»: правило разрешает сайт (решение 740).
 /// </summary>
 public sealed partial class SiteRuleEditViewModel : ObservableObject
 {
     private readonly DomainRule? _original;
-    private readonly bool _isSplit;
+    private readonly bool _directIdle;
     private readonly RoutingPageViewModel _page;
     private readonly OverlayViewModel _overlay;
 
-    public SiteRuleEditViewModel(DomainRule? original, bool isSplit, RoutingPageViewModel page, OverlayViewModel overlay)
+    public SiteRuleEditViewModel(DomainRule? original, bool isSplit, bool blockOthers, RoutingPageViewModel page, OverlayViewModel overlay)
     {
         _original = original;
-        _isSplit = isSplit;
+        _directIdle = !isSplit && !blockOthers;
         _page = page;
         _overlay = overlay;
         Pattern = original?.Pattern ?? string.Empty;
-        Action = original?.Action ?? (isSplit ? RuleAction.Direct : RuleAction.Block);
+        Action = original?.Action ?? (isSplit ? RuleAction.Direct : blockOthers ? RuleAction.Proxy : RuleAction.Block);
         Exact = original?.IsExact ?? false;
     }
 
@@ -303,7 +339,7 @@ public sealed partial class SiteRuleEditViewModel : ObservableObject
     }
 
     /// <summary>«Напрямую» вне раздельного режима — подпись, что правило пока не действует.</summary>
-    public bool IsIdle => IsDirect && !_isSplit;
+    public bool IsIdle => IsDirect && _directIdle;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]

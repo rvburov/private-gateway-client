@@ -37,9 +37,10 @@ public sealed record DomainRule(string Pattern, RuleAction Action, bool Exact = 
 /// <summary>
 /// «Маршрутизация» (доска 13). По умолчанию весь трафик через VPN: раздельный режим — только
 /// осознанным выбором (ROADMAP). Программы мимо VPN действуют только в раздельном режиме, правила
-/// для сайтов — всегда.
+/// для сайтов — всегда. <paramref name="BlockOthers"/> — «Остальные сайты: Блокировать» (решение 740): открываются только
+/// сайты с правилом «Через VPN» или «Напрямую» и «Пропускается всегда» (<see cref="AlwaysAllowed"/>).
 /// </summary>
-public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> Apps, IReadOnlyList<DomainRule> Rules)
+public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> Apps, IReadOnlyList<DomainRule> Rules, bool BlockOthers = false)
 {
     public static RoutingSettings Default { get; } = new(RoutingMode.AllTraffic, [], []);
 
@@ -63,9 +64,9 @@ public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> 
 
     /// <summary>Списки сравниваются по содержимому — иначе сохраненные настройки не равны прочитанным.</summary>
     public bool Equals(RoutingSettings? other) =>
-        other is not null && Mode == other.Mode && Apps.SequenceEqual(other.Apps) && Rules.SequenceEqual(other.Rules);
+        other is not null && Mode == other.Mode && Apps.SequenceEqual(other.Apps) && Rules.SequenceEqual(other.Rules) && BlockOthers == other.BlockOthers;
 
-    public override int GetHashCode() => HashCode.Combine(Mode, Apps.Count, Rules.Count);
+    public override int GetHashCode() => HashCode.Combine(Mode, Apps.Count, Rules.Count, BlockOthers);
 }
 
 /// <summary>Шаблон сайта для правила: проверка и приведение к виду для службы.</summary>

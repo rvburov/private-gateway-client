@@ -1,10 +1,12 @@
 package com.privategateway.client.core.xray
 
+import com.privategateway.client.core.account.AccountApi
 import com.privategateway.client.core.links.JsonText
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.settings.AlwaysAllowed
 import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.IpAddress
 import com.privategateway.client.core.settings.RuleAction
@@ -50,6 +52,7 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  * @property lanDns свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
  * @property fragment фрагментация TLS ClientHello против DPI: выход сервера дозванивается через выход фрагментации.
  * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`): точнее — раньше (решение 739).
+ * @property blockOthers «Остальные сайты: Блокировать» (решение 740): после правил — «Пропускается всегда», остальное — блок.
  */
 data class CoreSettings(
     val dns: String = XrayConfig.DEFAULT_DNS,
@@ -63,6 +66,7 @@ data class CoreSettings(
     val lanDns: String? = null,
     val fragment: Boolean = false,
     val rules: List<SiteRule> = emptyList(),
+    val blockOthers: Boolean = false,
 )
 
 /**
@@ -199,6 +203,16 @@ object XrayConfig {
                     },
                 ),
             )
+        }
+
+        if (settings.blockOthers) {
+            // «Остальные сайты: Блокировать» (решение 740): «Пропускается всегда» (обновления, время, проверка сети,
+            // уведомления, сертификаты и сайт Private Gateway) — через сервер, время (NTP) — по UDP-порту, остальное из
+            // туннеля — в блок. Подписка и DNS сюда не доходят: их правила стоят раньше.
+            val allowed = (AlwaysAllowed.domains + AccountApi.SITE.host).map { "domain:$it" }
+            rules.add(linkedMapOf("type" to "field", "domain" to allowed, "outboundTag" to PROXY_TAG))
+            rules.add(linkedMapOf("type" to "field", "network" to "udp", "port" to AlwaysAllowed.udpPorts.joinToString(","), "outboundTag" to PROXY_TAG))
+            rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "network" to "tcp,udp", "outboundTag" to BLOCK_TAG))
         }
 
         return rules

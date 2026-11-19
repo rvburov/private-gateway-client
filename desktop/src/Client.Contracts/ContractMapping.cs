@@ -460,15 +460,22 @@ public static partial class ContractMapping
         ArgumentNullException.ThrowIfNull(settings);
         var r = settings.Routing;
         var split = r.Mode == CoreRouting.Split;
-        var routing = new V1.RoutingSettings { Mode = r.Mode.ToContract() };
+        var routing = new V1.RoutingSettings { Mode = r.Mode.ToContract(), BlockOthers = r.BlockOthers };
         if (split)
         {
             routing.BypassApps.AddRange(r.Apps.Where(a => a.IsEnabled).Select(a => a.Path));
         }
 
+        // «Напрямую» вне раздельного режима службе не уходит; при «Остальные сайты: Блокировать» (решение 740) это разрешение —
+        // через VPN, иначе сайт попал бы под блок.
         routing.Rules.AddRange(r.Rules
-            .Where(rule => split || rule.Action != CoreRuleAction.Direct)
-            .Select(rule => new V1.DomainRule { Pattern = rule.Pattern, Action = rule.Action.ToContract(), Exact = rule.Exact }));
+            .Where(rule => split || r.BlockOthers || rule.Action != CoreRuleAction.Direct)
+            .Select(rule => new V1.DomainRule
+            {
+                Pattern = rule.Pattern,
+                Action = (!split && rule.Action == CoreRuleAction.Direct ? CoreRuleAction.Proxy : rule.Action).ToContract(),
+                Exact = rule.Exact,
+            }));
         return routing;
     }
 }

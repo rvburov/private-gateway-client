@@ -373,6 +373,49 @@ class AdvancedSettingsTest {
         compose.onNodeWithTag("routing.rule.example.com.exact", useUnmergedTree = true).assertTextEquals(text(R.string.routing_rule_exact_row))
     }
 
+    /**
+     * Решение 740: «Остальные сайты: Блокировать» — только через вопрос о последствиях, обратно — сразу; предупреждение,
+     * «Пропускается всегда», «Напрямую» разрешает сайт, новое правило — «Через VPN».
+     */
+    @Test
+    fun `blocking other sites asks first and lists what stays allowed`() {
+        var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(rules = listOf(SiteRule("example.com", RuleAction.Direct)))))
+        compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }) } }
+
+        compose.onNodeWithTag("routing.others.Open").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("routing.others.note").assertTextEquals(text(R.string.routing_others_open_note))
+        compose.onNodeWithTag("routing.others.warning").assertDoesNotExist()
+        compose.onNodeWithTag("routing.allowed").assertDoesNotExist()
+        compose.onNodeWithTag("routing.rules.idle").assertExists()
+
+        compose.onNodeWithTag("routing.others.Block").performClick()
+        compose.onNodeWithTag("dialog.blockOthers").assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.dialog_blockOthers_title)).assertIsDisplayed()
+        compose.onNodeWithTag("dialog.blockOthers.primary").assertTextEquals(text(R.string.dialog_blockOthers_keep)).performClick()
+        assertFalse(tunnel.routing.blockOthers, "отказ — остальное открывается")
+
+        compose.onNodeWithTag("routing.others.Block").performClick()
+        compose.onNodeWithTag("dialog.blockOthers.secondary").assertTextEquals(text(R.string.dialog_blockOthers_block)).performClick()
+        assertTrue(tunnel.routing.blockOthers)
+        assertTrue(tunnel.core().blockOthers)
+        assertEquals(listOf(SiteRule("example.com", RuleAction.Proxy)), tunnel.core().rules, "«Напрямую» — разрешение через VPN")
+        compose.onNodeWithTag("routing.others.Block").assertIsSelected()
+        compose.onNodeWithTag("routing.others.note").assertTextEquals(text(R.string.routing_others_block_note))
+        compose.onNodeWithTag("routing.others.warning").assertIsDisplayed()
+        compose.onNodeWithTag("routing.rules.idle").assertDoesNotExist()
+        compose.onNodeWithTag("routing.allowed").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.routing_allowed_updates)).assertIsDisplayed()
+
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.action.Proxy").assertIsSelected()
+        compose.onNodeWithTag("routing.rule.close").performClick()
+
+        compose.onNodeWithTag("routing.others.Open").performScrollTo().performClick()
+        compose.onNodeWithTag("dialog.blockOthers").assertDoesNotExist()
+        assertFalse(tunnel.routing.blockOthers, "обратно — без вопроса")
+        compose.onNodeWithTag("routing.allowed").assertDoesNotExist()
+    }
+
     @Test
     fun `new rule in the split mode is direct and goes to the core`() {
         var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(RoutingMode.Split)))

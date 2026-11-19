@@ -3,6 +3,7 @@ package com.privategateway.client.core.xray
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.SecurityOptions
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.settings.AlwaysAllowed
 import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.DnsChoice
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -351,6 +353,51 @@ class XrayConfigTest {
 
         val split = rules(build(reality, TunnelSettings(routing = RoutingSettings(RoutingMode.Split, rules = rules)).core(), 1))
         assertEquals("direct", split.single { it["domain"] == JsonArray(listOf(JsonPrimitive("domain:example.com"))) }["outboundTag"]!!.jsonPrimitive.content)
+    }
+
+    /**
+     * Решение 740: «Остальные сайты: Блокировать» — разрешенные сайты, затем «Пропускается всегда» через сервер (и сайт
+     * Private Gateway), время по UDP-порту, остальное из туннеля — в блок. «Напрямую» в режиме «Весь трафик» — разрешение
+     * через VPN, в раздельном — напрямую. Список совпадает с общим shared/specifications/routing/always-allowed.json.
+     */
+    @Test
+    fun `block others lets through allowed sites and system services and blocks the rest`() {
+        val list = listOf(SiteRule("youtube.com", RuleAction.Proxy), SiteRule("example.com", RuleAction.Direct), SiteRule("ads.youtube.com", RuleAction.Block))
+        val all = rules(build(reality, TunnelSettings(routing = RoutingSettings(rules = list, blockOthers = true)).core(), 1))
+        val tail = all.takeLast(6)
+        assertEquals(
+            listOf("domain:ads.youtube.com" to "block", "domain:youtube.com" to "proxy", "domain:example.com" to "proxy"),
+            tail.take(3).map { it["domain"]!!.jsonArray.single().jsonPrimitive.content to it["outboundTag"]!!.jsonPrimitive.content },
+        )
+        assertEquals(
+            (AlwaysAllowed.domains + "private-gateway.duckdns.org").map { "domain:$it" },
+            tail[3]["domain"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals("proxy", tail[3]["outboundTag"]!!.jsonPrimitive.content)
+        assertEquals(listOf("udp", "123", "proxy"), listOf("network", "port", "outboundTag").map { tail[4][it]!!.jsonPrimitive.content }, "точное время (NTP)")
+        assertEquals(JsonArray(listOf(JsonPrimitive(XrayConfig.TUN_TAG))), tail[5]["inboundTag"])
+        assertEquals(listOf("tcp,udp", "block"), listOf("network", "outboundTag").map { tail[5][it]!!.jsonPrimitive.content })
+
+        val split = rules(build(reality, TunnelSettings(routing = RoutingSettings(RoutingMode.Split, rules = list, blockOthers = true)).core(), 1))
+        assertEquals("direct", split.single { it["domain"] == JsonArray(listOf(JsonPrimitive("domain:example.com"))) }["outboundTag"]!!.jsonPrimitive.content)
+        assertEquals("block", split.last()["outboundTag"]!!.jsonPrimitive.content)
+        val open = rules(build(reality, TunnelSettings(routing = RoutingSettings(rules = list)).core(), 1))
+        assertTrue(open.none { it["network"] != null }, "по умолчанию остальное открывается")
+    }
+
+    @Test
+    fun `always allowed matches the shared list`() {
+        val file = File(System.getProperty("testdata") ?: error("Нет пути к shared/testdata")).resolve("../specifications/routing/always-allowed.json")
+        val shared = Json.parseToJsonElement(file.readText()).jsonObject
+        val groups = shared["domains"]!!.jsonObject
+        fun group(name: String) = groups[name]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(listOf("updates", "time", "network", "notifications", "certificates"), groups.keys.toList())
+        assertEquals(group("updates"), AlwaysAllowed.updates)
+        assertEquals(group("time"), AlwaysAllowed.time)
+        assertEquals(group("network"), AlwaysAllowed.network)
+        assertEquals(group("notifications"), AlwaysAllowed.notifications)
+        assertEquals(group("certificates"), AlwaysAllowed.certificates)
+        assertEquals(shared["udpPorts"]!!.jsonArray.map { it.jsonPrimitive.int }, AlwaysAllowed.udpPorts)
     }
 
     private fun server(link: String) = LinkParser.parse(link).server ?: error("ссылка не разобралась: ${LinkParser.parse(link).error}")

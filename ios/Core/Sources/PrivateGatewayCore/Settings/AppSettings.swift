@@ -96,6 +96,8 @@ extension AppSettings: Codable {
         case routingMode = "routing_mode"
         /// Правила — текстом JSON `[{"pattern": …, "action": …}]`, как у Android: словарь остается плоским.
         case routingRules = "routing_rules"
+        /// «Остальные сайты: Блокировать» (решение 740).
+        case routingBlockOthers = "routing_block_others"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -134,7 +136,9 @@ extension AppSettings: Codable {
             mux: mux ?? defaults.connection.mux, tlsFragment: tlsFragment ?? defaults.connection.tlsFragment,
             connectTimeout: timeout.flatMap { ConnectionSettings.timeoutRange.contains($0) ? $0 : nil } ?? defaults.connection.connectTimeout
         )
-        let routing = RoutingSettings(mode: mode.flatMap(RoutingMode.init(rawValue:)) ?? defaults.routing.mode, rules: rules).normalized
+        let routing = RoutingSettings(
+            mode: mode.flatMap(RoutingMode.init(rawValue:)) ?? defaults.routing.mode, rules: rules, blockOthers: read(.routingBlockOthers) ?? defaults.routing.blockOthers
+        ).normalized
         self.init(
             selectedServerId: read(.selectedServer),
             tunnel: TunnelSettings(
@@ -181,6 +185,7 @@ extension AppSettings: Codable {
             JsonText.Value.object([("pattern", .string(rule.pattern)), ("action", .string(rule.action.rawValue))] + (rule.isExact ? [("exact", .bool(true))] : []))
         }
         try values.encode(JsonText.write(.array(records)), forKey: .routingRules)
+        try values.encode(routing.blockOthers, forKey: .routingBlockOthers)
     }
 }
 

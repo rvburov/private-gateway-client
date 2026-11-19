@@ -127,10 +127,13 @@ final class AppSettingsTests: XCTestCase {
 
     func testConnectionAndRoutingAreKeptUnderTheirKeys() async throws {
         try await store.setConnection(ConnectionSettings(mtu: 1420))
-        try await store.setRouting(RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.com", action: .direct)]))
+        try await store.setRouting(RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.com", action: .direct)], blockOthers: true))
         let text = String(decoding: try XCTUnwrap(file.read()), as: UTF8.self)
         // Имена ключей и значения — как в DataStore Android (SettingsRepository): правила — текстом JSON.
-        for key in ["core_log", "tunnel_mtu", "tunnel_sniffing", "conn_fingerprint", "conn_mux", "conn_tls_fragment", "conn_timeout", "routing_mode", "routing_rules"] {
+        for key in [
+            "core_log", "tunnel_mtu", "tunnel_sniffing", "conn_fingerprint", "conn_mux", "conn_tls_fragment", "conn_timeout", "routing_mode", "routing_rules",
+            "routing_block_others",
+        ] {
             XCTAssertTrue(text.contains("\"\(key)\""), key)
         }
 
@@ -138,6 +141,9 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(object["routing_mode"] as? String, "Split")
         XCTAssertEqual(object["tunnel_mtu"] as? Int, 1420)
         XCTAssertEqual(object["routing_rules"] as? String, #"[{"pattern":"example.com","action":"Direct"}]"#)
+        XCTAssertEqual(object["routing_block_others"] as? Bool, true)
+        let loaded = try await store.load().routing
+        XCTAssertTrue(loaded.blockOthers, "«Остальные сайты: Блокировать» сохраняется")
 
         // «Авто» — ключа MTU нет вовсе.
         try await store.setConnection(ConnectionSettings())

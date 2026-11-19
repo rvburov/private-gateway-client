@@ -77,7 +77,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
                 preferences[TLS_FRAGMENT],
                 preferences[CONNECT_TIMEOUT],
             ),
-            routing = RoutingSettings.read(preferences[ROUTING_MODE], preferences[ROUTING_APPS], preferences[ROUTING_RULES]),
+            routing = RoutingSettings.read(preferences[ROUTING_MODE], preferences[ROUTING_APPS], preferences[ROUTING_RULES], preferences[ROUTING_BLOCK_OTHERS]),
         )
     }
 
@@ -115,6 +115,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
             preferences[ROUTING_MODE] = settings.routing.mode.name
             preferences[ROUTING_APPS] = settings.routing.appsJson()
             preferences[ROUTING_RULES] = settings.routing.rulesJson()
+            preferences[ROUTING_BLOCK_OTHERS] = settings.routing.blockOthers
         }
     }
 
@@ -345,6 +346,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val ROUTING_MODE = stringPreferencesKey("routing_mode")
         val ROUTING_APPS = stringPreferencesKey("routing_apps")
         val ROUTING_RULES = stringPreferencesKey("routing_rules")
+        val ROUTING_BLOCK_OTHERS = booleanPreferencesKey("routing_block_others")
         val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
         val RECONNECT = stringPreferencesKey("reconnect_policy")
         val CONNECT_ON_LAUNCH = booleanPreferencesKey("connect_on_launch")

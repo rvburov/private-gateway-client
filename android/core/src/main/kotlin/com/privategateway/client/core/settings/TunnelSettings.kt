@@ -56,6 +56,7 @@ data class TunnelSettings(
         lanDns = lanDns,
         fragment = connection.tlsFragment,
         rules = routing.coreRules,
+        blockOthers = routing.blockOthers,
     )
 
     /** Что получает VpnService.Builder: карта туннеля, программы мимо нее (раздельный режим) и строгие маршруты. */

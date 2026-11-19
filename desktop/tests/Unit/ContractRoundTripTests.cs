@@ -68,7 +68,8 @@ public sealed class ContractRoundTripTests
                 true, true, 25, ReconnectPolicy.Never, 20808, true),
             Routing = new RoutingSettings(RoutingMode.Split, [new BypassApp("/usr/bin/game", "/usr/bin/game")],
                 [new DomainRule("*.example.org", RuleAction.Direct), new DomainRule("geosite:ads", RuleAction.Block),
-                    new DomainRule("example.net", RuleAction.Block, Exact: true)]),
+                    new DomainRule("example.net", RuleAction.Block, Exact: true)],
+                BlockOthers: true),
         };
 
         var (protection, killSwitch) = settings.ToContract().ToCore();
@@ -76,6 +77,13 @@ public sealed class ContractRoundTripTests
         (settings with { KillSwitch = false }).ToContract().ToCore().Protection.StrictMode.ShouldBeFalse("строгий режим — только с блоком при обрыве");
         settings.ToConnection().ToCore().ShouldBe(settings.Connection);
         settings.ToRouting().ToCore().ShouldBe(settings.Routing);
+        // «Остальные сайты: Блокировать» в режиме «Весь трафик»: «Напрямую» — разрешение через VPN (решение 740).
+        var allTraffic = settings with { Routing = settings.Routing with { Mode = RoutingMode.AllTraffic } };
+        allTraffic.ToRouting().ToCore().Rules.ShouldBe(
+            [new DomainRule("*.example.org", RuleAction.Proxy), new DomainRule("geosite:ads", RuleAction.Block),
+                new DomainRule("example.net", RuleAction.Block, Exact: true)]);
+        (allTraffic with { Routing = allTraffic.Routing with { BlockOthers = false } }).ToRouting().ToCore().Rules
+            .ShouldNotContain(r => r.Pattern == "*.example.org", "без блока остального «Напрямую» вне раздельного режима службе не нужно");
         foreach (var dns in new[] { DnsChoice.Profile, DnsChoice.CloudflareDoh, DnsChoice.Quad9Doh })
         {
             var choice = AppSettings.Default with { Protection = ProtectionSettings.Default with { Dns = dns } };

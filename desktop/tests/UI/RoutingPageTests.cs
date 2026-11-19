@@ -263,6 +263,59 @@ public sealed class RoutingPageTests : WindowHarness
         page.Rules.ShouldAllBe(r => !r.IsIdle);
     }
 
+    /// <summary>
+    /// Решение 740: «Остальные сайты: Блокировать» — только через диалог с последствиями, обратно — сразу; предупреждение,
+    /// «Пропускается всегда», «Напрямую» разрешает сайт, новое правило — «Через VPN».
+    /// </summary>
+    [AvaloniaFact]
+    public void Blocking_other_sites_asks_first_and_lists_what_stays_allowed()
+    {
+        var (window, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [new DomainRule("example.com", RuleAction.Direct)] });
+        var block = Find<RadioButton>(window, "OthersBlock");
+        (Find<RadioButton>(window, "OthersOpen").IsChecked, block.IsChecked).ShouldBe((true, false), "по умолчанию остальное открывается");
+        Find<Border>(window, "OthersWarning").IsVisible.ShouldBeFalse();
+        Find<StackPanel>(window, "AllowedSection").IsVisible.ShouldBeFalse();
+        Find<TextBlock>(window, "IdleNote").IsVisible.ShouldBeTrue();
+
+        block.Command!.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var dialog = shell.Overlay.Dialog.ShouldNotBeNull();
+        (dialog.Title, dialog.PrimaryText, dialog.SecondaryText).ShouldBe(("Блокировать все, кроме разрешенного?", "Отмена", "Блокировать остальное"));
+        dialog.IsSecondaryDanger.ShouldBeTrue();
+        dialog.Text.ShouldContain("мессенджеры");
+        dialog.Text.ShouldContain("обновления системы");
+        shell.Overlay.DismissCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.BlockOthers.ShouldBeFalse("отказ — остальное открывается");
+        block.IsChecked.ShouldBe(false);
+
+        block.Command.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Service<SettingsService>().Current.Routing.BlockOthers.ShouldBeTrue();
+        block.IsChecked.ShouldBe(true);
+        Find<Border>(window, "OthersWarning").IsVisible.ShouldBeTrue();
+        Find<StackPanel>(window, "AllowedSection").IsVisible.ShouldBeTrue();
+        Text(window, "AllowedUpdates").ShouldBe("Обновления системы и защиты");
+        Text(window, "OthersNote").ShouldNotBeNull().ShouldContain("Открываются только сайты");
+        Find<TextBlock>(window, "IdleNote").IsVisible.ShouldBeFalse("«Напрямую» разрешает сайт");
+        page.Rules.Single().IsIdle.ShouldBeFalse();
+        Find<Border>(window, "OthersWarning").BringIntoView();
+        Dispatcher.UIThread.RunJobs();
+        Snapshot(window, "routing-block-others");
+        page.AddRuleCommand.Execute(null);
+        shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().IsProxy.ShouldBeTrue("новое правило — разрешение");
+        shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>().CancelCommand.Execute(null);
+
+        Find<RadioButton>(window, "OthersOpen").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.BlockOthers.ShouldBeFalse();
+        shell.Overlay.Dialog.ShouldBeNull("обратно на «Открывать» — без вопроса");
+        Find<StackPanel>(window, "AllowedSection").IsVisible.ShouldBeFalse();
+    }
+
     [AvaloniaFact]
     public void Local_network_is_described_and_opens_protection()
     {

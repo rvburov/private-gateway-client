@@ -36,14 +36,18 @@ public struct SiteRule: Equatable, Hashable, Sendable {
 /// «Маршрутизация» телефона — `RoutingSettings` десктопа без программ мимо VPN: обычному приложению iOS выбирать, какие
 /// программы идут мимо туннеля, не дано (только профилям MDM). По умолчанию весь трафик через VPN; раздельный режим — только
 /// осознанным выбором. «Напрямую» действует только в раздельном режиме, «Через VPN» и «Блокировать» — всегда. Правила идут
-/// в конфиг Xray по порядку списка: «Напрямую» — прямым выходом ядра из расширения туннеля, мимо сервера.
+/// в конфиг Xray по порядку списка: «Напрямую» — прямым выходом ядра из расширения туннеля, мимо сервера. `blockOthers` —
+/// «Остальные сайты: Блокировать» (решение 740): открываются только сайты с правилом «Через VPN» или «Напрямую» и
+/// «Пропускается всегда» (`AlwaysAllowed`).
 public struct RoutingSettings: Equatable, Hashable, Sendable {
     public var mode: RoutingMode
     public var rules: [SiteRule]
+    public var blockOthers: Bool
 
-    public init(mode: RoutingMode = .allTraffic, rules: [SiteRule] = []) {
+    public init(mode: RoutingMode = .allTraffic, rules: [SiteRule] = [], blockOthers: Bool = false) {
         self.mode = mode
         self.rules = rules
+        self.blockOthers = blockOthers
     }
 
     public var isSplit: Bool {
@@ -55,15 +59,27 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
         isSplit && rules.contains { $0.action == .direct }
     }
 
+    /// «Напрямую» не действует: не раздельный режим и остальное не блокируется (тогда оно разрешает сайт).
+    public var directIdle: Bool {
+        !isSplit && !blockOthers
+    }
+
     /// В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком.
     public var hasIdleRules: Bool {
-        !isSplit && rules.contains { $0.action == .direct }
+        directIdle && rules.contains { $0.action == .direct }
     }
 
     /// Правила, которые получает ядро: «Напрямую» — только в раздельном режиме; точнее — раньше (решение 739, `Ordered`
     /// десктопа): «только этот адрес», домены от длинного к короткому, адреса и подсети от узкой к широкой; равные — по списку.
+    /// При «Остальные сайты: Блокировать» «Напрямую» вне раздельного режима — разрешение через VPN: иначе сайт попал бы под блок.
     public var activeRules: [SiteRule] {
-        rules.filter { isSplit || $0.action != .direct }
+        rules.compactMap { rule -> SiteRule? in
+            if isSplit || rule.action != .direct {
+                return rule
+            }
+
+            return blockOthers ? SiteRule(pattern: rule.pattern, action: .proxy, exact: rule.exact) : nil
+        }
             .enumerated()
             .sorted { left, right in
                 let (a, b) = (SitePattern.rank(left.element), SitePattern.rank(right.element))
@@ -83,11 +99,11 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
             kept.append(rule)
         }
 
-        return RoutingSettings(mode: mode, rules: kept)
+        return RoutingSettings(mode: mode, rules: kept, blockOthers: blockOthers)
     }
 
     public func removing(_ rule: SiteRule) -> RoutingSettings {
-        RoutingSettings(mode: mode, rules: rules.filter { $0 != rule })
+        RoutingSettings(mode: mode, rules: rules.filter { $0 != rule }, blockOthers: blockOthers)
     }
 
     /// Только шаблоны, которые примет ядро телефона, в обычном виде (`SitePattern.normalize`); правило для того же сайта —
@@ -108,7 +124,7 @@ public struct RoutingSettings: Equatable, Hashable, Sendable {
             kept.append(SiteRule(pattern: pattern, action: rule.action, exact: exact))
         }
 
-        return RoutingSettings(mode: mode, rules: kept)
+        return RoutingSettings(mode: mode, rules: kept, blockOthers: blockOthers)
     }
 }
 

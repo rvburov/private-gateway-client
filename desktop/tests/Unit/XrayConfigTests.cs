@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.Xray;
@@ -396,6 +397,62 @@ public sealed class XrayConfigTests
         new DomainRule("203.0.113.9", RuleAction.Block, Exact: true).IsExact.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Решение 740: «Остальные сайты: Блокировать» — разрешенные сайты, затем «Пропускается всегда» через VPN, остальное с
+    /// входов программ — в блок. «Напрямую» в режиме «Весь трафик» — разрешение через VPN, в раздельном — напрямую.
+    /// </summary>
+    [Fact]
+    public void Block_others_lets_through_allowed_sites_and_system_services_and_blocks_the_rest()
+    {
+        var rules = new[]
+        {
+            new DomainRule("youtube.com", RuleAction.Proxy),
+            new DomainRule("example.com", RuleAction.Direct),
+            new DomainRule("ads.youtube.com", RuleAction.Block),
+        };
+
+        var config = Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules, BlockOthers: true));
+        Rules(config).ShouldBe(
+        [
+            (Local, "block"),
+            ("domain:domain:ads.youtube.com", "block"),
+            ("domain:domain:youtube.com", "proxy"),
+            ("domain:domain:example.com", "proxy"),
+            ("domain:domain:" + AlwaysAllowed.Domains[0], "proxy"),
+            ("port:123", "proxy"),
+            ("inbound:" + XrayConfigBuilder.InboundTag, "block"),
+        ]);
+        var json = config["routing"]!["rules"]!.AsArray();
+        json[^3]!["domain"]!.AsArray().Select(d => d!.GetValue<string>()).ShouldBe(
+            [.. AlwaysAllowed.Domains.Append(AccountSite.Address.Host).Select(d => "domain:" + d)], "и сайт Private Gateway: вход и обновления");
+        json[^2]!["network"]!.GetValue<string>().ShouldBe("udp", "точное время (NTP)");
+        json[^1]!["network"]!.GetValue<string>().ShouldBe("tcp,udp");
+
+        var split = Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.Split, [], rules, BlockOthers: true)));
+        split.ShouldContain(("domain:domain:example.com", "direct"));
+        split[^1].ShouldBe(("inbound:" + XrayConfigBuilder.InboundTag, "block"));
+        Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules)))
+            .ShouldNotContain(r => r.Condition.StartsWith("inbound:", StringComparison.Ordinal), "по умолчанию остальное открывается");
+    }
+
+    /// <summary>«Пропускается всегда» одно на все платформы: shared/specifications/routing/always-allowed.json.</summary>
+    [Fact]
+    public void Always_allowed_matches_the_shared_list()
+    {
+        using var file = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(FindRoot(), "shared", "specifications", "routing", "always-allowed.json")));
+        var groups = file.RootElement.GetProperty("domains");
+        string[] Group(string name) => [.. groups.GetProperty(name).EnumerateArray().Select(e => e.GetString()!)];
+
+        AlwaysAllowed.Updates.ShouldBe(Group("updates"));
+        AlwaysAllowed.Time.ShouldBe(Group("time"));
+        AlwaysAllowed.Network.ShouldBe(Group("network"));
+        AlwaysAllowed.Notifications.ShouldBe(Group("notifications"));
+        AlwaysAllowed.Certificates.ShouldBe(Group("certificates"));
+        groups.EnumerateObject().Select(g => g.Name).ShouldBe(["updates", "time", "network", "notifications", "certificates"]);
+        AlwaysAllowed.UdpPorts.ShouldBe([.. file.RootElement.GetProperty("udpPorts").EnumerateArray().Select(e => e.GetInt32())]);
+        AlwaysAllowed.Domains.ShouldAllBe(d => SitePattern.IsPlainDomain(d));
+    }
+
     [Fact]
     public void Probe_inbound_goes_straight_to_the_server_past_every_rule()
     {
@@ -725,7 +782,10 @@ public sealed class XrayConfigTests
     private static List<(string Condition, string Outbound)> Rules(JsonObject config) =>
     [
         .. config["routing"]!["rules"]!.AsArray().Select(r => (
-            r!["ip"] is JsonArray ip ? "ip:" + ip[0]!.GetValue<string>() : "domain:" + r["domain"]![0]!.GetValue<string>(),
+            r!["ip"] is JsonArray ip ? "ip:" + ip[0]!.GetValue<string>()
+                : r["domain"] is JsonArray domain ? "domain:" + domain[0]!.GetValue<string>()
+                : r["port"] is { } port ? "port:" + port.GetValue<string>()
+                : "inbound:" + string.Join(',', r["inboundTag"]!.AsArray().Select(t => t!.GetValue<string>())),
             r["outboundTag"]!.GetValue<string>())),
     ];
 

@@ -155,6 +155,29 @@
         <!-- Правила для сайтов -->
         <StackPanel Spacing="8">
           <TextBlock Classes="overline" Text="{l:L routing.rules.title, Upper=True}" Margin="6,0" />
+          <!-- «Остальные сайты» (решение 740): «Блокировать» — после диалога, обратно — сразу -->
+          <Border Classes="card" Padding="16,14">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="strong" Text="{l:L routing.others.title}" />
+              <Border Classes="segments">
+                <UniformGrid Columns="2">
+                  <RadioButton x:Name="OthersOpen" Classes="segment" GroupName="others" IsChecked="{Binding OthersOpen}"
+                               Content="{l:L routing.others.open}" />
+                  <c:ConfirmRadioButton x:Name="OthersBlock" Classes="segment" GroupName="others" IsChecked="{Binding BlockOthers, Mode=OneWay}"
+                                       Command="{Binding ChooseBlockOthersCommand}" Content="{l:L routing.others.block}" />
+                </UniformGrid>
+              </Border>
+              <TextBlock x:Name="OthersNote" Classes="caption" Text="{Binding OthersNote}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+          <Border x:Name="OthersWarning" Classes="notice" IsVisible="{Binding BlockOthers}">
+            <Grid ColumnDefinitions="Auto,*">
+              <c:Icon Data="{StaticResource Icon.Warning}" Width="18" Height="18" StrokeThickness="2" VerticalAlignment="Top"
+                      Margin="0,1,10,0" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+              <TextBlock Grid.Column="1" Text="{l:L routing.others.warning}" TextWrapping="Wrap" FontSize="{StaticResource PgFontSize.Small}"
+                         Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+            </Grid>
+          </Border>
           <TextBlock x:Name="IdleNote" Classes="caption" Text="{l:L routing.rules.idle}" TextWrapping="Wrap" Margin="6,0"
                      IsVisible="{Binding HasIdleRules}" />
           <Border Classes="card" Padding="16,2" IsVisible="{Binding HasRules}">
@@ -195,6 +218,20 @@
               </StackPanel>
             </Button>
           </Grid>
+        </StackPanel>
+
+        <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->
+        <StackPanel x:Name="AllowedSection" Spacing="8" IsVisible="{Binding BlockOthers}">
+          <TextBlock Classes="overline" Text="{l:L routing.allowed.title, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,12">
+            <StackPanel Spacing="8">
+              <TextBlock x:Name="AllowedUpdates" Classes="small" Text="{l:L routing.allowed.updates}" TextWrapping="Wrap" />
+              <TextBlock Classes="small" Text="{l:L routing.allowed.time}" TextWrapping="Wrap" />
+              <TextBlock Classes="small" Text="{l:L routing.allowed.notifications}" TextWrapping="Wrap" />
+              <TextBlock Classes="small" Text="{l:L routing.allowed.service}" TextWrapping="Wrap" />
+              <TextBlock Classes="small" Text="{l:L routing.allowed.lan}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
         </StackPanel>
 
         <!-- Всегда напрямую -->

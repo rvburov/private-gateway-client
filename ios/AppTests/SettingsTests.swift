@@ -203,6 +203,25 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(RoutingLook.pillColors(.direct).tint, PgColor.Status.Warning.tint)
         XCTAssertEqual(RoutingLook.pillColors(.proxy).tint, PgColor.Status.Success.tint)
         XCTAssertEqual(RoutingLook.pillColors(.block).tint, PgColor.Status.Danger.tint)
+
+        // «Остальные сайты» (решение 740): «Блокировать» — через вопрос, «Открывать» — без него; «Напрямую» тогда разрешает сайт.
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            XCTAssertEqual(RoutingLook.othersOptions(texts).map(\.value), [.open, .block])
+            XCTAssertEqual(RoutingLook.othersOptions(texts).map(\.title), [texts.routingOthersOpen, texts.routingOthersBlock])
+            XCTAssertNil(RoutingLook.othersDialog(.open, texts))
+            let block = RoutingLook.othersDialog(.block, texts)
+            XCTAssertEqual(block?.title, texts.dialogBlockOthersTitle)
+            XCTAssertEqual(block?.primary, texts.dialogBlockOthersKeep)
+            XCTAssertEqual(block?.secondary, texts.dialogBlockOthersBlock)
+            XCTAssertEqual(block?.secondaryDanger, true)
+            XCTAssertEqual(RoutingLook.othersNote(false, texts), texts.routingOthersOpenNote)
+            XCTAssertEqual(RoutingLook.othersNote(true, texts), texts.routingOthersBlockNote)
+            XCTAssertEqual(RoutingLook.allowedItems(texts).count, 5)
+        }
+        XCTAssertEqual(RoutingLook.newAction(split: false, blockOthers: true), .proxy, "новое правило — разрешение")
+        XCTAssertEqual(RoutingLook.newAction(split: true, blockOthers: true), .direct)
+        XCTAssertFalse(RoutingLook.isIdle(.direct, split: false, blockOthers: true))
     }
 
     /// «Подключение и ядро» и «Маршрутизация» через модель окна — в общую папку, их читает расширение туннеля.

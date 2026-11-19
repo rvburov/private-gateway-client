@@ -91,6 +91,12 @@ class RoutingSettingsTest {
         assertFalse(split.copy(apps = apps.map { it.copy(enabled = false) }).hasBypassApps, "выключенные программы идут через VPN")
         assertFalse(split.copy(rules = rules.drop(1)).hasBypassSites, "блок и «Через VPN» мимо VPN не ведут")
         assertEquals(RoutingSettings(), RoutingSettings(RoutingMode.AllTraffic, emptyList(), emptyList()), "по умолчанию весь трафик через VPN")
+
+        // «Остальные сайты: Блокировать» (решение 740): «Напрямую» в режиме «Весь трафик» — разрешение через VPN.
+        val blocking = all.copy(blockOthers = true)
+        assertEquals(listOf(rules[1], rules[0].copy(action = RuleAction.Proxy), rules[2]), blocking.coreRules)
+        assertFalse(blocking.hasIdleRules || blocking.directIdle)
+        assertEquals(split.coreRules, split.copy(blockOthers = true).coreRules, "в раздельном режиме «Напрямую» — напрямую")
     }
 
     @Test
@@ -144,6 +150,8 @@ class RoutingSettingsTest {
             ),
         )
         assertEquals(routing, RoutingSettings.read(routing.mode.name, routing.appsJson(), routing.rulesJson()))
+        val blocking = routing.copy(blockOthers = true)
+        assertEquals(blocking, RoutingSettings.read(blocking.mode.name, blocking.appsJson(), blocking.rulesJson(), blocking.blockOthers))
         assertFalse(RoutingSettings(rules = listOf(SiteRule("example.com", RuleAction.Block))).rulesJson().contains("exact"), "прежний вид записи без флажка")
         assertEquals(RoutingSettings(), RoutingSettings.read(null, null, null))
     }

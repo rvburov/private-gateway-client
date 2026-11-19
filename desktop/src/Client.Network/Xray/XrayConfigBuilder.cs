@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 
@@ -712,8 +713,13 @@ public static class XrayConfigBuilder
 
         // «Напрямую» — только в раздельном режиме: в режиме «Весь трафик» мимо VPN ничего не идет.
         var split = request.Routing.Mode == RoutingMode.Split;
-        // Точнее — раньше (решение 739): правило для части сайта не теряется за правилом для всего сайта.
-        foreach (var rule in RoutingSettings.Ordered(request.Routing.Rules.Where(r => split || r.Action != RuleAction.Direct)))
+        // Точнее — раньше (решение 739): правило для части сайта не теряется за правилом для всего сайта. При «Остальные сайты:
+        // Блокировать» (решение 740) «Напрямую» вне раздельного режима — разрешение через VPN: иначе сайт попал бы под блок.
+        var blockOthers = request.Routing.BlockOthers;
+        var siteRules = blockOthers && !split
+            ? request.Routing.Rules.Select(r => r.Action == RuleAction.Direct ? r with { Action = RuleAction.Proxy } : r)
+            : request.Routing.Rules.Where(r => split || r.Action != RuleAction.Direct);
+        foreach (var rule in RoutingSettings.Ordered(siteRules))
         {
             // Адрес и подсеть — условием IP: с ним сравнивается адрес соединения, а у имени — его адреса.
             var address = SitePattern.IsAddress(rule.Pattern);
@@ -730,7 +736,33 @@ public static class XrayConfigBuilder
             });
         }
 
+        if (blockOthers)
+        {
+            AddBlockOthers(rules, request, tunDns);
+        }
+
         return new JsonObject { ["domainStrategy"] = NeedsAddressOfName(request) || !fakeDns ? "IPIfNonMatch" : "AsIs", ["rules"] = rules };
+    }
+
+    /// <summary>
+    /// «Остальные сайты: Блокировать» (решение 740) — после правил пользователя: «Пропускается всегда» (обновления, время,
+    /// проверка сети, уведомления, сертификаты и сайт Private Gateway) — через VPN, время (NTP) — по UDP-порту, остальное с
+    /// входов программ — в блок. Свои входы ядра (проба, DNS, подписка) сюда не доходят: их правила стоят раньше.
+    /// </summary>
+    private static void AddBlockOthers(JsonArray rules, CoreRequest request, bool tunDns)
+    {
+        var allowed = new JsonArray([.. AlwaysAllowed.Domains.Append(AccountSite.Address.Host).Select(d => JsonValue.Create("domain:" + d))]);
+        rules.Add(new JsonObject { ["type"] = "field", ["domain"] = allowed, ["outboundTag"] = ProxyTag });
+        rules.Add(new JsonObject
+        {
+            ["type"] = "field",
+            ["network"] = "udp",
+            ["port"] = string.Join(',', AlwaysAllowed.UdpPorts),
+            ["outboundTag"] = ProxyTag,
+        });
+        // Входы программ — как у закрытия IPv6: TUN (или прокси в режиме прокси) и дополнительный прокси режима VPN.
+        var inbounds = tunDns && request.Connection.VpnSystemProxy ? new JsonArray(InboundTag, LocalProxyTag) : new JsonArray(InboundTag);
+        rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = inbounds, ["network"] = "tcp,udp", ["outboundTag"] = BlockTag });
     }
 
     /// <summary>

@@ -294,6 +294,48 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(own, ["full:example.com block", "domain:music.youtube.com proxy", "domain:youtube.com block", "domain:example.com proxy"])
     }
 
+    /// Решение 740: «Остальные сайты: Блокировать» — разрешенные сайты, затем «Пропускается всегда» через сервер (и сайт
+    /// Private Gateway), время по UDP-порту, остальное из туннеля — в блок. «Напрямую» в режиме «Весь трафик» — разрешение через
+    /// VPN, в раздельном — напрямую.
+    func testBlockOthersLetsThroughAllowedSitesAndSystemServicesAndBlocksTheRest() throws {
+        let list = [
+            SiteRule(pattern: "youtube.com", action: .proxy), SiteRule(pattern: "example.com", action: .direct),
+            SiteRule(pattern: "ads.youtube.com", action: .block),
+        ]
+        let all = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(rules: list, blockOthers: true))))
+        let tail = Array(all.suffix(6))
+        XCTAssertEqual(
+            tail.prefix(3).map { ($0["domain"] as? [String])?.first ?? "" },
+            ["domain:ads.youtube.com", "domain:youtube.com", "domain:example.com"]
+        )
+        XCTAssertEqual(tail.prefix(3).map { $0["outboundTag"] as? String }, ["block", "proxy", "proxy"])
+        XCTAssertEqual(tail[3]["domain"] as? [String], (AlwaysAllowed.domains + ["private-gateway.duckdns.org"]).map { "domain:" + $0 })
+        XCTAssertEqual(tail[3]["outboundTag"] as? String, "proxy")
+        XCTAssertEqual([tail[4]["network"], tail[4]["port"], tail[4]["outboundTag"]].map { $0 as? String }, ["udp", "123", "proxy"], "точное время (NTP)")
+        XCTAssertEqual(tail[5]["inboundTag"] as? [String], [XrayConfig.tunTag])
+        XCTAssertEqual([tail[5]["network"], tail[5]["outboundTag"]].map { $0 as? String }, ["tcp,udp", "block"])
+
+        let split = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .split, rules: list, blockOthers: true))))
+        XCTAssertEqual(split.first { ($0["domain"] as? [String]) == ["domain:example.com"] }?["outboundTag"] as? String, "direct")
+        XCTAssertEqual(split.last?["outboundTag"] as? String, "block")
+        let open = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(rules: list))))
+        XCTAssertFalse(open.contains { $0["network"] != nil }, "по умолчанию остальное открывается")
+    }
+
+    /// «Пропускается всегда» одно на все платформы: shared/specifications/routing/always-allowed.json.
+    func testAlwaysAllowedMatchesTheSharedList() throws {
+        let file = LinkParserTests.testData.deletingLastPathComponent().appendingPathComponent("specifications/routing/always-allowed.json")
+        let shared = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let groups = try XCTUnwrap(shared["domains"] as? [String: [String]])
+        XCTAssertEqual(groups["updates"], AlwaysAllowed.updates)
+        XCTAssertEqual(groups["time"], AlwaysAllowed.time)
+        XCTAssertEqual(groups["network"], AlwaysAllowed.network)
+        XCTAssertEqual(groups["notifications"], AlwaysAllowed.notifications)
+        XCTAssertEqual(groups["certificates"], AlwaysAllowed.certificates)
+        XCTAssertEqual(Set(groups.keys), ["updates", "time", "network", "notifications", "certificates"])
+        XCTAssertEqual(shared["udpPorts"] as? [Int], AlwaysAllowed.udpPorts)
+    }
+
     func testGeositeAndBadPatternsNeverReachTheCore() throws {
         let rules = [
             SiteRule(pattern: "geosite:category-ads", action: .block), SiteRule(pattern: "not a site", action: .direct),

@@ -110,6 +110,8 @@ fun RoutingScreen(
     var picking by rememberSaveable { mutableStateOf(false) }
     // «Раздельный режим» — через вопрос, как у десктопа (просьба пользователя 2026-11-05); обратно — без вопроса.
     var askingSplit by rememberSaveable { mutableStateOf(false) }
+    // «Остальные сайты: Блокировать» — через вопрос о последствиях (решение 740); обратно — без вопроса.
+    var askingBlock by rememberSaveable { mutableStateOf(false) }
     val routing = tunnel.routing
     val change: (RoutingSettings) -> Unit = { onTunnel(tunnel.copy(routing = it)) }
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("routing")) {
@@ -146,6 +148,13 @@ fun RoutingScreen(
             }
 
             Section(stringResource(R.string.routing_rules_title)) {
+                OthersCard(routing.blockOthers) { block ->
+                    if (block) askingBlock = true else change(routing.copy(blockOthers = false))
+                }
+                if (routing.blockOthers) {
+                    Notice(stringResource(R.string.routing_others_warning), "routing.others.warning")
+                }
+
                 if (routing.hasIdleRules) {
                     Text(
                         stringResource(R.string.routing_rules_idle),
@@ -160,12 +169,16 @@ fun RoutingScreen(
                 } else {
                     PgCard(Modifier.fillMaxWidth(), contentPadding = ListCard) {
                         routing.rules.forEachIndexed { index, rule ->
-                            RuleRow(rule, routing.split, divider = index > 0) { editing = index }
+                            RuleRow(rule, routing.directIdle, divider = index > 0) { editing = index }
                         }
                     }
                 }
 
                 DashedButton(stringResource(R.string.routing_rules_add), "routing.rules.add") { editing = NEW_RULE }
+            }
+
+            if (routing.blockOthers) {
+                AllowedSection()
             }
 
             Section(stringResource(R.string.routing_always_title)) {
@@ -186,6 +199,7 @@ fun RoutingScreen(
         RuleSheet(
             original = original,
             split = routing.split,
+            blockOthers = routing.blockOthers,
             onSave = { rule ->
                 editing = null
                 change(routing.saveRule(original, rule))
@@ -236,6 +250,26 @@ fun RoutingScreen(
             secondaryDanger = true,
         )
     }
+
+    if (askingBlock) {
+        PgDialog(
+            stringResource(R.string.dialog_blockOthers_title),
+            stringResource(R.string.dialog_blockOthers_text),
+            PgIcons.Shield,
+            PgTone.Caution,
+            stringResource(R.string.dialog_blockOthers_keep),
+            { askingBlock = false },
+            stringResource(R.string.dialog_blockOthers_block),
+            {
+                askingBlock = false
+                change(routing.copy(blockOthers = true))
+            },
+            { askingBlock = false },
+            "dialog.blockOthers",
+            detail = PgIcons.MarkAlert,
+            secondaryDanger = true,
+        )
+    }
 }
 
 /** Номер «нового правила» в [RoutingScreen]: правил с таким номером не бывает. */
@@ -277,12 +311,66 @@ private fun ModeCard(mode: RoutingMode, onMode: (RoutingMode) -> Unit) {
 /** Имя ОС в подписи режима: название системы, не перевод. */
 private const val OS_NAME = "Android"
 
+/** «Остальные сайты»: сегменты в порядке доски. */
+private enum class Others { Open, Block }
+
 /**
- * Предупреждение раздельного режима (Border.notice): status.warning.tint, рамка status.warning.line, скругление 16, значок
- * Warning и текст цветом status.warning.badge.
+ * «Остальные сайты» (решение 740): сегменты «Открывать · Блокировать» и подпись. «Блокировать» — через вопрос: [onBlock] true —
+ * спросить, false — открыть сразу. Теги: сегменты — «routing.others.Open» и «routing.others.Block», подпись — «routing.others.note».
  */
 @Composable
-private fun SplitWarning() {
+private fun OthersCard(block: Boolean, onBlock: (Boolean) -> Unit) {
+    PgCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = PgSpace.Card, vertical = 14.dp)) {
+        Text(stringResource(R.string.routing_others_title), color = PgColor.Text.Primary, style = PgType.BodyStrong)
+        Spacer(Modifier.height(PgSpace.M))
+        PgSegments(
+            Others.entries,
+            if (block) Others.Block else Others.Open,
+            { stringResource(if (it == Others.Block) R.string.routing_others_block else R.string.routing_others_open) },
+            "routing.others",
+            { if ((it == Others.Block) != block) onBlock(it == Others.Block) },
+        )
+        Spacer(Modifier.height(PgSpace.M))
+        Text(
+            stringResource(if (block) R.string.routing_others_block_note else R.string.routing_others_open_note),
+            Modifier.testTag("routing.others.note"),
+            color = PgColor.Text.Muted,
+            style = PgType.Caption,
+        )
+    }
+}
+
+/**
+ * «Пропускается всегда» (решение 740) — только при «Остальные сайты: Блокировать»: что программа пропускает сама. Тег —
+ * «routing.allowed».
+ */
+@Composable
+private fun AllowedSection() {
+    Section(stringResource(R.string.routing_allowed_title)) {
+        PgCard(Modifier.fillMaxWidth().testTag("routing.allowed"), contentPadding = PaddingValues(horizontal = PgSpace.Card, vertical = PgSpace.L)) {
+            Column(verticalArrangement = Arrangement.spacedBy(PgSpace.S)) {
+                listOf(
+                    R.string.routing_allowed_updates,
+                    R.string.routing_allowed_time,
+                    R.string.routing_allowed_notifications,
+                    R.string.routing_allowed_service,
+                    R.string.routing_allowed_lan,
+                ).forEach { Text(stringResource(it), color = PgColor.Text.Secondary, style = PgType.Small) }
+            }
+        }
+    }
+}
+
+/** Предупреждение раздельного режима — [Notice] с текстом routing.warning. */
+@Composable
+private fun SplitWarning() = Notice(stringResource(R.string.routing_warning), "routing.warning")
+
+/**
+ * Предупреждение (Border.notice): status.warning.tint, рамка status.warning.line, скругление 16, значок Warning и текст цветом
+ * status.warning.badge.
+ */
+@Composable
+private fun Notice(text: String, tag: String) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         Modifier
@@ -291,11 +379,11 @@ private fun SplitWarning() {
             .background(PgColor.Status.Warning.Tint)
             .border(1.dp, PgColor.Status.Warning.Line, shape)
             .padding(horizontal = 14.dp, vertical = PgSpace.L)
-            .testTag("routing.warning"),
+            .testTag(tag),
         horizontalArrangement = Arrangement.spacedBy(PgSpace.M),
     ) {
         PgIcon(PgIcons.Warning, null, Modifier.padding(top = 1.dp), color = PgColor.Status.Warning.Badge, size = 18.dp, strokeWidth = 2f)
-        Text(stringResource(R.string.routing_warning), color = PgColor.Status.Warning.Badge, style = PgType.Small)
+        Text(text, color = PgColor.Status.Warning.Badge, style = PgType.Small)
     }
 }
 
@@ -380,7 +468,7 @@ private fun RemoveButton(label: String, tag: String, onClick: () -> Unit) {
  * раздельного режима не действует — метка бледнее. Тег — «routing.rule.<шаблон>», метки — «routing.rule.<шаблон>.action».
  */
 @Composable
-private fun RuleRow(rule: SiteRule, split: Boolean, divider: Boolean, onClick: () -> Unit) {
+private fun RuleRow(rule: SiteRule, directIdle: Boolean, divider: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     Row(
@@ -405,7 +493,7 @@ private fun RuleRow(rule: SiteRule, split: Boolean, divider: Boolean, onClick: (
                 Text(stringResource(R.string.routing_rule_exact_row), Modifier.testTag("routing.rule.${rule.pattern}.exact"), color = PgColor.Text.Muted, style = PgType.Caption)
             }
         }
-        ActionPill(rule.action, idle = rule.action == RuleAction.Direct && !split, tag = "routing.rule.${rule.pattern}.action")
+        ActionPill(rule.action, idle = rule.action == RuleAction.Direct && directIdle, tag = "routing.rule.${rule.pattern}.action")
     }
 }
 
@@ -519,9 +607,19 @@ private fun DashedButton(label: String, tag: String, onClick: () -> Unit) {
  * говорит, какой нужен; подсказка и ошибка под полем geosite не предлагают (как у iOS).
  */
 @Composable
-private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) -> Unit, onDelete: () -> Unit, onClose: () -> Unit) {
+private fun RuleSheet(
+    original: SiteRule?,
+    split: Boolean,
+    blockOthers: Boolean,
+    onSave: (SiteRule) -> Unit,
+    onDelete: () -> Unit,
+    onClose: () -> Unit,
+) {
     var text by rememberSaveable { mutableStateOf(original?.pattern.orEmpty()) }
-    var action by rememberSaveable { mutableStateOf(original?.action ?: if (split) RuleAction.Direct else RuleAction.Block) }
+    // Новое правило: в раздельном режиме — «Напрямую», при «Остальные сайты: Блокировать» — «Через VPN» (разрешение), иначе — блок.
+    var action by rememberSaveable {
+        mutableStateOf(original?.action ?: if (split) RuleAction.Direct else if (blockOthers) RuleAction.Proxy else RuleAction.Block)
+    }
     var bad by rememberSaveable { mutableStateOf(false) }
     var exact by rememberSaveable { mutableStateOf(original?.isExact ?: false) }
     // «Только этот адрес» (решение 739) — только у обычного домена: не у зоны «*.» и не у адреса.
@@ -583,7 +681,7 @@ private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) ->
             Column(verticalArrangement = Arrangement.spacedBy(PgSpace.Xs)) {
                 FieldLabel(stringResource(R.string.routing_rule_action))
                 PgSegments(RuleAction.entries, action, { stringResource(actionLabel(it)) }, "routing.rule.action", { action = it })
-                if (action == RuleAction.Direct && !split) {
+                if (action == RuleAction.Direct && !split && !blockOthers) {
                     Text(stringResource(R.string.routing_rules_idle), Modifier.testTag("routing.rule.idle"), color = PgColor.Text.Muted, style = PgType.Caption)
                 }
                 Text(stringResource(R.string.routing_rule_priority), Modifier.testTag("routing.rule.priority"), color = PgColor.Text.Muted, style = PgType.Caption)

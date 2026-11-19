@@ -114,7 +114,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Enum("routing.mode", d.Routing.Mode),
             Json<BypassApp>("routing.apps").Where(a => !string.IsNullOrWhiteSpace(a.Path)).ToList(),
             [.. Json<DomainRule>("routing.rules").Select(r => SitePattern.Normalize(r.Pattern) is { } pattern ? r with { Pattern = pattern } : null)
-                .OfType<DomainRule>()]);
+                .OfType<DomainRule>()],
+            Bool("routing.block_others", d.Routing.BlockOthers));
         var proxyDefaults = d.ExternalProxy;
         var externalProxy = new ExternalProxySettings(
             Enum("external_proxy.protocol", proxyDefaults.Protocol),
@@ -246,6 +247,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["routing.mode"] = settings.Routing.Mode.ToString(),
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
+            ["routing.block_others"] = Text(settings.Routing.BlockOthers),
             ["update_channel"] = settings.UpdateChannel.ToString(),
             ["check_updates"] = Text(settings.CheckUpdates),
             ["onboarding_done"] = Text(settings.OnboardingDone),

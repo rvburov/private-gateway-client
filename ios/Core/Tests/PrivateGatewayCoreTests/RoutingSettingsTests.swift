@@ -68,6 +68,14 @@ final class RoutingSettingsTests: XCTestCase {
 
         XCTAssertFalse(RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.org", action: .block)]).hasBypassSites)
         XCTAssertEqual(RoutingSettings(), RoutingSettings(mode: .allTraffic, rules: []), "по умолчанию весь трафик через VPN")
+
+        // «Остальные сайты: Блокировать» (решение 740): «Напрямую» в режиме «Весь трафик» — разрешение через VPN.
+        let blocking = RoutingSettings(mode: .allTraffic, rules: rules, blockOthers: true)
+        XCTAssertEqual(blocking.activeRules, [rules[1], SiteRule(pattern: "example.com", action: .proxy), rules[2]])
+        XCTAssertFalse(blocking.hasIdleRules || blocking.directIdle)
+        XCTAssertEqual(RoutingSettings(mode: .split, rules: rules, blockOthers: true).activeRules, split.activeRules, "в раздельном режиме «Напрямую» — напрямую")
+        XCTAssertTrue(blocking.saving(SiteRule(pattern: "example.net", action: .proxy)).blockOthers)
+        XCTAssertTrue(blocking.normalized.blockOthers)
     }
 
     func testSavingAddsReplacesTheSameSiteAndKeepsTheOrder() {

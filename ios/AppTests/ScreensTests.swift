@@ -244,6 +244,13 @@ final class ScreensTests: XCTestCase {
                 onLan: {}, onBack: {}
             )
             XCTAssertNotNil(try render(routing, height: 1600))
+            // «Остальные сайты: Блокировать» (решение 740): предупреждение, «Пропускается всегда», лист нового правила.
+            let blocking = RoutingView(
+                texts: texts, routing: RoutingSettings(rules: rules, blockOthers: true), allowLan: false, onRouting: { _ in }, onLan: {}, onBack: {}
+            )
+            XCTAssertNotNil(try render(blocking, height: 2000))
+            let allowSheet = SiteRuleSheet(texts: texts, original: nil, split: false, blockOthers: true, onSave: { _ in }, onDelete: { _ in }, onClose: {})
+            XCTAssertNotNil(try render(allowSheet))
             // «Работает другой VPN» (DECISIONS.md, п. 4) — страница вместо главной на обоих языках.
             XCTAssertEqual(try render(OtherVpnView(texts: texts, onRetry: {}, onDetails: {})).size.width, 393, accuracy: 1)
             // «Лицензии» — лист поверх «О программе»: страница с открытым листом, список и каждый компонент.

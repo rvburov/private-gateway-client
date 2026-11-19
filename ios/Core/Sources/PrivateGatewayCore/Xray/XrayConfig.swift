@@ -47,11 +47,13 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
     /// Правила для сайтов, которые получает ядро, по порядку списка (`RoutingSettings.activeRules`): «Напрямую» — только из
     /// раздельного режима.
     public var siteRules: [SiteRule]
+    /// «Остальные сайты: Блокировать» (решение 740): после правил — «Пропускается всегда», остальное из туннеля — блок.
+    public var blockOthers: Bool
 
     public init(
         dns: String = XrayConfig.defaultDns, allowLan: Bool = false, ipv6: Bool = false, mux: Bool = false, fingerprint: String? = nil,
         sniffing: Bool = true, mtu: Int = ConnectionSettings.autoMtu, logLevel: CoreLogLevel = .warning, lanDns: String? = nil, tlsFragment: Bool = false,
-        siteRules: [SiteRule] = []
+        siteRules: [SiteRule] = [], blockOthers: Bool = false
     ) {
         self.dns = dns
         self.allowLan = allowLan
@@ -64,6 +66,7 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
         self.lanDns = lanDns
         self.tlsFragment = tlsFragment
         self.siteRules = siteRules
+        self.blockOthers = blockOthers
     }
 }
 
@@ -214,6 +217,21 @@ public enum XrayConfig {
             let key = address ? "ip" : "domain"
             let condition = address ? pattern : SitePattern.domainCondition(pattern, exact: rule.exact)
             rules.append(.object([("type", .string("field")), (key, .array([.string(condition)])), ("outboundTag", .string(outboundTag(rule.action)))]))
+        }
+
+        if settings.blockOthers {
+            // «Остальные сайты: Блокировать» (решение 740): «Пропускается всегда» (обновления, время, проверка сети,
+            // уведомления, сертификаты и сайт Private Gateway) — через сервер, время (NTP) — по UDP-порту, остальное из
+            // туннеля — в блок. Подписка и DNS сюда не доходят: их правила стоят раньше.
+            let allowed = (AlwaysAllowed.domains + [AlwaysAllowed.site]).map { Json.string("domain:" + $0) }
+            rules.append(.object([("type", .string("field")), ("domain", .array(allowed)), ("outboundTag", .string(proxyTag))]))
+            rules.append(.object([
+                ("type", .string("field")), ("network", .string("udp")), ("port", .string(AlwaysAllowed.udpPorts.map(String.init).joined(separator: ","))),
+                ("outboundTag", .string(proxyTag)),
+            ]))
+            rules.append(.object([
+                ("type", .string("field")), ("inboundTag", .array([.string(tunTag)])), ("network", .string("tcp,udp")), ("outboundTag", .string(blockTag)),
+            ]))
         }
 
         return rules

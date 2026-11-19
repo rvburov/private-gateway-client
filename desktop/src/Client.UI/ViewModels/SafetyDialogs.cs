@@ -34,6 +34,22 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.proxyMode.switch"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
+    /// <summary>
+    /// «Остальные сайты: Блокировать» (решение 740): что перестанет работать и что программа пропускает сама. Безопасный
+    /// ответ — основная кнопка «Отмена».
+    /// </summary>
+    /// <returns>true — пользователь выбрал «Блокировать остальное».</returns>
+    public static async Task<bool> ConfirmBlockOthersAsync(OverlayViewModel overlay) =>
+        await overlay.AskAsync(new DialogViewModel(
+            DialogKind.Warning,
+            "Icon.Shield",
+            "Icon.Mark.Alert",
+            Loc.Instance["dialog.blockOthers.title"],
+            Loc.Instance["dialog.blockOthers.text"],
+            Loc.Instance["dialog.blockOthers.keep"],
+            Loc.Instance["dialog.blockOthers.block"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+
     /// <summary>Вернуться к сохраненному VPN-профилю после подтверждения смены подключения.</summary>
     public static async Task<bool> ConfirmVpnModeAsync(OverlayViewModel overlay) =>
         await overlay.AskAsync(new DialogViewModel(

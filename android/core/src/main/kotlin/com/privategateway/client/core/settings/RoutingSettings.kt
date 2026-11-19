@@ -43,12 +43,15 @@ data class SiteRule(val pattern: String, val action: RuleAction, val exact: Bool
 /**
  * «Маршрутизация» телефона (доска 13) — как `RoutingSettings` десктопа. По умолчанию весь трафик через VPN: раздельный режим —
  * только осознанным выбором. Программы мимо VPN — `VpnService.Builder.addDisallowedApplication`, только в раздельном
- * режиме; правила для сайтов — правила ядра Xray, «Напрямую» — тоже только в раздельном режиме (решение 110).
+ * режиме; правила для сайтов — правила ядра Xray, «Напрямую» — тоже только в раздельном режиме (решение 110). [blockOthers] —
+ * «Остальные сайты: Блокировать» (решение 740): открываются только сайты с правилом «Через VPN» или «Напрямую» и
+ * «Пропускается всегда» ([AlwaysAllowed]).
  */
 data class RoutingSettings(
     val mode: RoutingMode = RoutingMode.AllTraffic,
     val apps: List<BypassApp> = emptyList(),
     val rules: List<SiteRule> = emptyList(),
+    val blockOthers: Boolean = false,
 ) {
     val split: Boolean get() = mode == RoutingMode.Split
 
@@ -58,9 +61,17 @@ data class RoutingSettings(
     /**
      * Правила, которые получает ядро: «Напрямую» — только в раздельном режиме; точнее — раньше (решение 739, `Ordered`
      * десктопа): «только этот адрес», домены от длинного к короткому, адреса и подсети от узкой к широкой; равные — по списку.
+     * При «Остальные сайты: Блокировать» «Напрямую» вне раздельного режима — разрешение через VPN: иначе сайт попал бы под блок.
      */
     val coreRules: List<SiteRule>
-        get() = rules.filter { split || it.action != RuleAction.Direct }
+        get() = rules
+            .mapNotNull {
+                when {
+                    split || it.action != RuleAction.Direct -> it
+                    blockOthers -> it.copy(action = RuleAction.Proxy)
+                    else -> null
+                }
+            }
             .withIndex()
             .sortedWith(compareBy({ SitePattern.rank(it.value).first }, { SitePattern.rank(it.value).second }, { it.index }))
             .map { it.value }
@@ -71,8 +82,11 @@ data class RoutingSettings(
     /** Идут ли сайты мимо VPN: правила «Напрямую» действуют только в раздельном режиме (HasBypassSites десктопа). */
     val hasBypassSites: Boolean get() = split && rules.any { it.action == RuleAction.Direct }
 
+    /** «Напрямую» не действует: не раздельный режим и остальное не блокируется (тогда оно разрешает сайт). */
+    val directIdle: Boolean get() = !split && !blockOthers
+
     /** В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком. */
-    val hasIdleRules: Boolean get() = !split && rules.any { it.action == RuleAction.Direct }
+    val hasIdleRules: Boolean get() = directIdle && rules.any { it.action == RuleAction.Direct }
 
     /**
      * Новое правило ([original] — null) — в конец списка, измененное — на свое место. Правило для того же сайта заменяется:
@@ -121,11 +135,11 @@ data class RoutingSettings(
         private val packageName = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
         /**
-         * Из хранилища: режим, программы и правила текстом JSON. Не JSON, запись без нужных полей, неверное имя пакета,
-         * неизвестное действие или шаблон, который телефон не берет, — пропускаются: ни аварии, ни правила, которое ядро
-         * не примет.
+         * Из хранилища: режим, программы и правила текстом JSON, «Остальные сайты: Блокировать». Не JSON, запись без нужных
+         * полей, неверное имя пакета, неизвестное действие или шаблон, который телефон не берет, — пропускаются: ни аварии, ни
+         * правила, которое ядро не примет.
          */
-        fun read(mode: String?, apps: String?, rules: String?): RoutingSettings = RoutingSettings(
+        fun read(mode: String?, apps: String?, rules: String?, blockOthers: Boolean? = null): RoutingSettings = RoutingSettings(
             RoutingMode.read(mode),
             items(apps).mapNotNull { item ->
                 val name = item["package"] as? String ?: return@mapNotNull null
@@ -140,6 +154,7 @@ data class RoutingSettings(
                 val action = RuleAction.entries.firstOrNull { it.name == item["action"] } ?: return@mapNotNull null
                 SiteRule(pattern, action, item["exact"] as? Boolean ?: false)
             },
+            blockOthers ?: false,
         )
 
         private fun items(text: String?): List<Map<*, *>> {
