@@ -15,13 +15,14 @@ public sealed record KillSwitchEndpoint(IPAddress Address, int Port);
 public sealed record DirectExit(string Program, uint Mark);
 
 /// <summary>
-/// Поиск адреса сервера самой службой под блоком без туннеля: DoH к закрепленному адресу (TCP). Пропускается только
-/// программа службы (WFP) или ее сокет с меткой (nftables, ставит только root) и только к этим адресам и портам — на время
-/// поиска.
+/// Сетевые проверки службы под блоком без туннеля: DoH либо TCP-мост к закрепленным адресам профилей. Пропускается
+/// программа службы (WFP), сокет с меткой (nftables, ставит только root) или UID root (pf); только к этим адресам и портам
+/// и только на время проверки. На macOS pf не различает программы root: учетные данные моста и точные адреса остаются
+/// обязательными, обычные программы исключением не пользуются.
 /// </summary>
-/// <param name="Program">Полный путь к программе службы.</param>
+/// <param name="Program">Полный путь к программе службы (WFP).</param>
 /// <param name="Mark">Метка сокета поиска (SO_MARK, Linux).</param>
-/// <param name="Endpoints">Адреса и порты DoH.</param>
+/// <param name="Endpoints">Закрепленные адреса и порты TCP проверок.</param>
 public sealed record ServiceLookup(string Program, uint Mark, IReadOnlyList<KillSwitchEndpoint> Endpoints);
 
 /// <summary>
@@ -53,6 +54,10 @@ public sealed record ServiceLookup(string Program, uint Mark, IReadOnlyList<Kill
 /// туннеля» выключено, у сервера IPv6 нет) — правила «только туннель» его не закрывают, и это видно на главной. С блоком при
 /// обрыве IPv6 мимо туннеля закрыт всегда.
 /// </param>
+/// <param name="LocalSiteFilterRootExit">
+/// Только местный фильтр сайтов без VPN: macOS pf пропускает наружу TCP/UDP доверенных процессов root (службы и ядер),
+/// но обычные программы по-прежнему направляет через TUN. Не применяется к обычному VPN, раздельному режиму или загрузке.
+/// </param>
 public sealed record KillSwitchPolicy(
     string? TunnelInterface,
     IReadOnlyList<KillSwitchEndpoint> Servers,
@@ -64,7 +69,8 @@ public sealed record KillSwitchPolicy(
     IPAddress? TunnelDns = null,
     bool Ipv6Outside = false,
     IPAddress? LanDns = null,
-    ServiceLookup? Lookup = null)
+    ServiceLookup? Lookup = null,
+    bool LocalSiteFilterRootExit = false)
 {
     /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
     public const int MaxServers = 16;

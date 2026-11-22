@@ -77,7 +77,7 @@ public sealed partial class PfKillSwitch(
     {
         ArgumentNullException.ThrowIfNull(policy);
         Check(["-a", anchor, "-f", "-"], Ruleset(policy));
-        Warning = policy.Direct is null ? null : "раздельный режим: на macOS обход туннеля закрыт блоком при обрыве";
+        Warning = policy.Direct is null || policy.LocalSiteFilterRootExit ? null : "раздельный режим: на macOS обход туннеля закрыт блоком при обрыве";
         var previousToken = File.Exists(tokenFile) ? File.ReadAllText(tokenFile).Trim() : null;
         if (previousToken is not null && PfIsEnabled())
         {
@@ -152,6 +152,19 @@ public sealed partial class PfKillSwitch(
             {
                 rules.Add($"pass out quick {Family(endpoint.Address)} proto tcp from any to {endpoint.Address} port {endpoint.Port.ToString(CultureInfo.InvariantCulture)} user root");
             }
+        }
+
+        if (policy.LocalSiteFilterRootExit)
+        {
+            if (policy.Persistent || policy.TunnelInterface is null || policy.Direct is null)
+            {
+                throw new ArgumentException("Местному фильтру нужен работающий TUN и непостоянный прямой выход", nameof(policy));
+            }
+            // У pf нет условия по пути программы. Только явный местный фильтр доверяет root-процессам службы/Xray/sing-box;
+            // обычный VPN не получает этого разрешения. Root и без того может менять pf. Обычный пользовательский сокет,
+            // привязанный к физической карте, остается под финальным блоком, включая DNS: его пропускает только TUN.
+            rules.Add("pass out quick inet proto { tcp, udp } from any to any user root");
+            rules.Add("pass out quick inet6 proto { tcp, udp } from any to any user root");
         }
 
         // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — раньше закрытия DNS.

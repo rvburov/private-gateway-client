@@ -124,11 +124,14 @@ public sealed record ConnectionStatus(
     /// </summary>
     public bool NetworkUnavailable { get; init; }
 
+    /// <summary>Работает локальный TUN-фильтр правил сайтов без удаленного сервера: IP не скрывается.</summary>
+    public bool LocalSiteFilter { get; init; }
+
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
 
     /// <summary>Замер службы нашел реальный IPv4 вне туннеля; вычисляется и в окне из того же снимка IPC.</summary>
-    public bool HasExitIpLeak => Mode == ConnectionMode.Vpn && State == ConnectionState.Connected && !IsPaused
+    public bool HasExitIpLeak => !LocalSiteFilter && Mode == ConnectionMode.Vpn && State == ConnectionState.Connected && !IsPaused
         && Protection.AllTraffic == CheckState.Warning && Exit.Ip is not null && Exit.Ip == Exit.DirectIp;
 
     /// <summary>Подключено в режиме «Только прокси»: защищен не весь трафик (доска 17).</summary>
@@ -153,5 +156,6 @@ public sealed record ConnectionStatus(
         OtherClients = state == ConnectionState.Error ? OtherClients : null,
         CaptivePauseUntil = null,
         StrictBlock = false,
+        LocalSiteFilter = state != ConnectionState.Off && LocalSiteFilter,
     };
 }

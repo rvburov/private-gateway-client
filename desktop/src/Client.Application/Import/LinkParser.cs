@@ -141,7 +141,8 @@ public static class LinkParser
             return Fail(error);
         }
 
-        if (Query(parts.Query, "encryption") is { } encryption && encryption != "none")
+        var encryption = Query(parts.Query, "encryption");
+        if (!TransportParameterRules.ValidEncryption(encryption))
         {
             return Fail(ImportErrors.UnsupportedParameter);
         }
@@ -150,7 +151,7 @@ public static class LinkParser
         return uuid.Length == 0
             ? Fail(ImportErrors.NoCredentials)
             : Ok(parts.Name, ProxyProtocol.Vless, host, port, transport, security,
-                ProtocolOptions.Empty with { Flow = Query(parts.Query, "flow") },
+                ProtocolOptions.Empty with { Flow = Query(parts.Query, "flow"), Encryption = encryption is "none" ? null : encryption },
                 new ServerCredentials(Uuid: uuid));
     }
 
@@ -189,6 +190,8 @@ public static class LinkParser
             ["alpn"] = Field(root, "alpn") ?? string.Empty,
             ["pcs"] = Field(root, "pcs") ?? string.Empty,
             ["vcn"] = Field(root, "vcn") ?? string.Empty,
+            ["mode"] = Field(root, "mode") ?? string.Empty,
+            ["extra"] = root.TryGetProperty("extra", out var extra) ? extra.ValueKind == JsonValueKind.String ? extra.GetString() ?? "null" : extra.GetRawText() : string.Empty,
         };
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"];
@@ -473,6 +476,13 @@ public static class LinkParser
             return ImportErrors.UnsupportedTransport;
         }
 
+        var extra = Query(query, "extra");
+        if (extra is not null && known != TransportKind.Xhttp || !TransportParameterRules.TryXhttpExtra(extra, out var normalizedExtra))
+        {
+            transport = TransportOptions.Tcp;
+            return ImportErrors.UnsupportedParameter;
+        }
+
         transport = known == TransportKind.Tcp
             ? TransportOptions.Tcp
             : new TransportOptions(
@@ -481,7 +491,7 @@ public static class LinkParser
                 known == TransportKind.Grpc ? null : Query(query, "host"),
                 known == TransportKind.Grpc ? Query(query, "serviceName") : null,
                 // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
-                known == TransportKind.Xhttp && Query(query, "mode")?.ToLowerInvariant() is { } mode && TransportOptions.XhttpModes.Contains(mode) ? mode : null);
+                known == TransportKind.Xhttp && Query(query, "mode")?.ToLowerInvariant() is { } mode && TransportOptions.XhttpModes.Contains(mode) ? mode : null, normalizedExtra);
         return null;
     }
 

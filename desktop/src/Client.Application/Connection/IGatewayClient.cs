@@ -25,10 +25,20 @@ public interface IGatewayClient
     /// <summary>Получен хотя бы один настоящий статус службы; начальный Off окна еще ничего не подтверждает.</summary>
     bool HasReceivedStatus => false;
 
+    /// <summary>Служба уже отвечает и действующий аккаунт разрешает фоновые замеры; само VPN это не включает.</summary>
+    bool CanAutomaticallyMeasureLatency => HasReceivedStatus;
+
     /// <summary>Последний подтвержденный вход, на который окно направило пользовательский прокси; сохраняется при переподключении.</summary>
     int? ManagedUserProxyPort => Status.UserProxyManagedByWindow ? Status.LocalProxyPort : null;
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
+
+    /// <summary>Явно включить локальный фильтр сайтов без удаленного сервера; старая служба — false.</summary>
+    Task<bool> StartSiteFilterAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+    /// <summary>Реально заблокированные адреса за сегодня; старая служба или обрыв — null, не пустой успех.</summary>
+    Task<IReadOnlyList<BlockedSite>?> GetBlockedSitesAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<BlockedSite>?>(null);
 
     /// <summary>Диагностика импорта без адреса, имени профиля и текста исключения.</summary>
     void ReportSubscriptionAttempt(DownloadFailure? failure, int? statusCode, int attempt, TimeSpan elapsed, bool throughCore) { }
@@ -153,6 +163,16 @@ public interface IGatewayClient
     /// нет (имитация, обрыв) — пусто, и прежние значения остаются.
     /// </summary>
     Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default);
+
+    /// <summary>Готовые результаты по одному; старые реализации отдают свой общий ответ в конце.</summary>
+    async IAsyncEnumerable<KeyValuePair<string, LatencyResult>> MeasureLatencyProgressAsync(IReadOnlyList<string> serverIds,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var result in await MeasureLatencyAsync(serverIds, cancellationToken).ConfigureAwait(false))
+        {
+            yield return result;
+        }
+    }
 
     /// <summary>Последние записи журнала службы, от старых к новым; секреты уже скрыты.</summary>
     IReadOnlyList<JournalEntry> Journal { get; }

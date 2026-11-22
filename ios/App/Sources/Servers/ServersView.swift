@@ -11,21 +11,26 @@ struct ServersView: View {
     let texts: PgTexts
     let home: HomeState
     @Binding var query: ServerListQuery
+    var latencyUpdated: [String: Date]
+    var latencyViaVpn: Bool
     var onSelect: (String) -> Void
     var onOpen: (String) -> Void
     var onAdd: () -> Void
-    /// «Обновить серверы»: список заново и задержка серверов через ядро (только без защиты, решение 430). Пока идет замер,
+    /// «Обновить серверы»: список заново и задержка серверов через отдельное ядро приложения. Пока идет замер,
     /// крутится только стрелка, кнопка не гаснет — повтор отсекает модель.
     var onRefresh: () -> Void
 
     @State private var filterOpen: Bool
 
     init(
-        texts: PgTexts, home: HomeState, query: Binding<ServerListQuery>, filterOpen: Bool = false, onSelect: @escaping (String) -> Void = { _ in },
+        texts: PgTexts, home: HomeState, query: Binding<ServerListQuery>, filterOpen: Bool = false, latencyUpdated: [String: Date] = [:],
+        latencyViaVpn: Bool = false, onSelect: @escaping (String) -> Void = { _ in },
         onOpen: @escaping (String) -> Void = { _ in }, onAdd: @escaping () -> Void = {}, onRefresh: @escaping () -> Void = {}
     ) {
         self.texts = texts
         self.home = home
+        self.latencyUpdated = latencyUpdated
+        self.latencyViaVpn = latencyViaVpn
         _query = query
         self.onSelect = onSelect
         self.onOpen = onOpen
@@ -42,6 +47,11 @@ struct ServersView: View {
             VStack(spacing: PgSpace.m) {
                 searchRow
                 tabs
+                Text(measurementNote)
+                    .pgText(PgType.caption)
+                    .foregroundStyle(Color(PgColor.Text.muted))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("servers.measure.path")
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
 
@@ -64,6 +74,7 @@ struct ServersView: View {
                             ForEach(group.servers, id: \.id) { server in
                                 ServerRow(
                                     texts: texts, server: server, tag: ServersLook.tag(server, home: home, texts),
+                                    measuredAt: latencyUpdated[server.id], trackFreshness: true,
                                     onSelect: { onSelect(server.id) }, onMore: { onOpen(server.id) }
                                 )
                             }
@@ -89,6 +100,13 @@ struct ServersView: View {
             }
         }
         .accessibilityIdentifier("servers")
+    }
+
+    private var measurementNote: String {
+        let path = texts.text(key: latencyViaVpn ? "ios.latency.viaVpn" : "ios.latency.direct") ?? ""
+        guard home.measuring else { return path }
+        let progress = texts.text(key: "latency.progress", [String(latencyUpdated.count), String(home.servers.count)]) ?? ""
+        return progress + " · " + path
     }
 
     private func emptyText(_ empty: ServerListEmpty) -> String {
@@ -361,6 +379,8 @@ struct ServerRow: View {
     let server: ServerItem
     /// Метка «активен» или «выбран» (`ServersLook.tag`); есть — строка выделена.
     let tag: String?
+    var measuredAt: Date? = nil
+    var trackFreshness = false
     let onSelect: () -> Void
     let onMore: () -> Void
 
@@ -368,6 +388,7 @@ struct ServerRow: View {
         let on = tag != nil
         let supported = ServersLook.supported(server)
         let latency = LatencyLook.of(server.latency, texts)
+        let fresh = !trackFreshness || LatencyFreshness.isFresh(measuredAt)
         let shape = RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous)
         ZStack(alignment: .trailing) {
             Button(action: onSelect) {
@@ -385,22 +406,24 @@ struct ServerRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let tag {
-                        Text(tag)
-                            .pgText(PgTextStyle(size: PgType.overline.size, weight: 700))
-                            .foregroundStyle(Color(PgColor.Status.Success.badge))
-                            .lineLimit(1)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(RoundedRectangle(cornerRadius: PgRadius.chip, style: .continuous).fill(Color(PgColor.Status.Success.tint)))
+                        PgBadge(text: tag, ink: PgColor.Status.Success.badge, tint: PgColor.Status.Success.tint, kind: .pill)
                             .padding(.trailing, PgSpace.m)
                     }
 
-                    Text(latency.text)
-                        .pgText(PgTextStyle(size: PgType.caption.size, weight: 600, mono: true))
-                        .foregroundStyle(Color(latency.color))
-                        .lineLimit(1)
-                        .frame(minWidth: 52, alignment: .trailing)
-                        .accessibilityLabel(latency.hint)
+                    VStack(alignment: .trailing, spacing: PgSpace.xxs) {
+                        Text(latency.text)
+                            .pgText(PgTextStyle(size: PgType.caption.size, weight: 600, mono: true))
+                            .foregroundStyle(Color(fresh ? latency.color : PgColor.Text.muted))
+                            .lineLimit(1)
+                            .accessibilityLabel(latency.hint)
+                        if trackFreshness, server.latency != nil {
+                            Text(latencyStamp(fresh: fresh))
+                                .pgText(PgType.caption)
+                                .foregroundStyle(Color(PgColor.Text.muted))
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(minWidth: 52, alignment: .trailing)
                 }
                 .opacity(supported ? 1 : 0.6)
                 .padding(.leading, PgSpace.l)
@@ -428,6 +451,12 @@ struct ServerRow: View {
             .accessibilityLabel(texts.serversMoreName(server.title))
             .accessibilityIdentifier("more.\(server.id)")
         }
+    }
+
+    private func latencyStamp(fresh: Bool) -> String {
+        let stale = texts.text(key: "latency.stale.short") ?? ""
+        guard let measuredAt else { return stale }
+        return GroupHeader.clock(measuredAt) + (fresh ? "" : " · " + stale)
     }
 }
 

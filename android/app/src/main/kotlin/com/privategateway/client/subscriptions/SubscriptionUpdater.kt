@@ -95,7 +95,7 @@ class SubscriptionUpdater @Inject constructor(
         }
 
         started = true
-        val connected = monitor.status.map { it.state == TunnelState.Connected }.distinctUntilChanged()
+        val connected = monitor.status.map { it.state == TunnelState.Connected && !it.localOnly }.distinctUntilChanged()
         scope.launch {
             combine(connected, settings.subscriptions) { on, subs -> on to subs }.collectLatest {
                 while (true) {
@@ -196,7 +196,7 @@ class SubscriptionUpdater @Inject constructor(
         return UpdateOutcome.Failed(reason)
     }
 
-    private fun connected() = monitor.status.value.state == TunnelState.Connected
+    private fun connected() = monitor.status.value.let { it.state == TunnelState.Connected && !it.localOnly }
 
     private companion object {
         const val TAG = "PrivateGateway"

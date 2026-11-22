@@ -39,6 +39,7 @@ public struct HomeState: Equatable, Sendable {
     }
 
     public var inUse: ServerItem? {
+        if status.localSiteFilter { return nil }
         if status.state != .off, let id = status.serverId, let server = servers.first(where: { $0.id == id }) {
             return server
         }

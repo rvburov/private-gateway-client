@@ -61,9 +61,10 @@ class GatewayTileService : TileService() {
         super.onStartListening()
         listening?.cancel()
         listening = scope.launch {
-            monitor.status.combine(settings.selectedServerId) { status, selected -> status.state to (selected != null) }.collect { (state, server) ->
+            monitor.status.combine(settings.selectedServerId) { status, selected -> status to (selected != null) }.collect { (status, server) ->
                 hasServer = server
-                show(TileLook.of(state, server))
+                val look = TileLook.of(status.state, server)
+                show(if (status.localOnly) look.copy(subtitle = R.string.block_local_title) else look)
             }
         }
     }
@@ -89,6 +90,10 @@ class GatewayTileService : TileService() {
     }
 
     private fun toggle() {
+        if (monitor.status.value.localOnly) {
+            openApp()
+            return
+        }
         when (monitor.status.value.state) {
             TunnelState.Connected, TunnelState.Connecting, TunnelState.Reconnecting -> GatewayVpnService.disconnect(this)
             TunnelState.Stopping -> Unit

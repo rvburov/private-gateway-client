@@ -10,6 +10,7 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.core.xray.XrayConfig
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -30,10 +32,12 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 @RunWith(AndroidJUnit4::class)
 class LatencyMeterTest {
@@ -98,6 +102,71 @@ class LatencyMeterTest {
     }
 
     @Test
+    fun `a physical network change discards the result even if vpn session stays connected`() {
+        val (supported, _) = fill()
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "active", since = 1))
+        var current = "192.0.2.53"
+        val meter = LatencyMeter(engine, servers, settings, monitor, NetworkDns { listOf(current) })
+        engine.during = { current = "198.51.100.53" }
+        assertEquals(MeasureResult.Busy, wait { meter.measure() })
+        val items = wait { servers.servers.first() }.associateBy { it.id }
+        assertTrue(supported.all { items.getValue(it).latency == null })
+    }
+
+    @Test
+    fun `cancellation reaches the isolated worker and no cancelled results are saved`() {
+        val (supported, _) = fill()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val worker = object : LatencyWorker {
+            override fun ping(request: String, dns: String): String? {
+                started.complete(Unit)
+                runBlocking { withTimeout(15_000) { release.await() } }
+                return engine.ping(request, dns)
+            }
+            override fun cancel() { cancelled.complete(Unit) }
+        }
+        val measuring = LatencyMeter(worker, servers, settings, monitor, NetworkDns { emptyList() })
+        val job = scope.async { measuring.measure() }
+        wait { started.await() }
+        try {
+            wait { job.cancelAndJoin(); cancelled.await() }
+        } finally {
+            release.complete(Unit)
+        }
+        val items = wait { servers.servers.first() }.associateBy { it.id }
+        assertTrue(supported.all { items.getValue(it).latency == null })
+        assertEquals(false, measuring.measuring.value)
+    }
+
+    @Test
+    fun `a cancelled native request is discarded instead of marking candidates unavailable`() {
+        val (supported, _) = fill()
+        val worker = LatencyWorker { _, _ -> throw kotlinx.coroutines.CancellationException("cancelled") }
+        val measuring = LatencyMeter(worker, servers, settings, monitor, NetworkDns { emptyList() })
+        kotlin.test.assertFailsWith<kotlinx.coroutines.CancellationException> { wait { measuring.measure() } }
+        val items = wait { servers.servers.first() }.associateBy { it.id }
+        assertTrue(supported.all { items.getValue(it).latency == null })
+    }
+
+    @Test
+    fun `native errors cannot expose a short custom xhttp header to android logs`() {
+        val secret = "p7!"
+        val original = Fixtures.servers().first { it.protocol == ProxyProtocol.Vless && !XrayConfig.unencrypted(it) }
+        val server = original.copy(transport = original.transport.copy(kind = TransportKind.Xhttp, path = "/audit",
+            extraJson = """{"headers":{"X-Test":"$secret"}}"""))
+        wait { servers.add(listOf(server)) }
+        val worker = LatencyWorker { _, _ -> """{"success":false,"error":"failed header $secret"}""" }
+        ShadowLog.clear()
+        val measuring = LatencyMeter(worker, servers, settings, monitor, NetworkDns { emptyList() })
+        assertEquals(MeasureResult.Done, wait { measuring.measure() })
+        val logged = ShadowLog.getLogsForTag("PrivateGateway").joinToString("\n") { it.msg }
+        assertTrue(logged.contains("pingBatch"))
+        assertFalse(logged.contains(secret), "секрет из extra попал в Android Logcat")
+    }
+
+    @Test
     fun `servers are measured five at a time through the core and hysteria2 is not sent`() {
         val (supported, hysteria) = fill()
         assertEquals(MeasureResult.Done, wait { meter.measure() })
@@ -107,15 +176,18 @@ class LatencyMeterTest {
         val items = wait { servers.servers.first() }.associateBy { it.id }
         assertEquals(listOf(10, 20, 30, 40, 50, 10, 20), supported.map { items.getValue(it).latency?.ms })
         assertEquals(Latency.failed(LatencyFailure.Unsupported), items.getValue(hysteria).latency)
+        assertEquals(LatencyProgress(8, 8), meter.progress.value)
+        assertTrue(servers.latencyChecks.value.values.all { !it.stale && it.at > 0 })
     }
 
     @Test
-    fun `nothing is measured under protection`() {
+    fun `isolated worker measures while protection remains active`() {
         fill()
         monitor.set(TunnelStatus(TunnelState.Connected, serverId = "x"))
-        assertEquals(MeasureResult.Busy, wait { meter.measure() })
-        assertTrue(engine.calls.isEmpty())
-        assertTrue(wait { servers.servers.first() }.all { it.latency == null })
+        assertEquals(MeasureResult.Done, wait { meter.measure() })
+        assertEquals(listOf(5, 2), engine.calls)
+        assertEquals(TunnelState.Connected, monitor.status.value.state)
+        assertTrue(wait { servers.servers.first() }.any { it.latency?.ms != null })
     }
 
     @Test

@@ -58,7 +58,7 @@ public static class LatencyProbe
         MeasureAsync(xray, singBox, servers, connection, target, timeout, time, null, cancellationToken);
 
     /// <summary>То же, с безопасными подробностями обеих проб после окончательного отказа профиля.</summary>
-    public static async Task<IReadOnlyList<LatencyResult>> MeasureAsync(
+    public static Task<IReadOnlyList<LatencyResult>> MeasureAsync(
         string xray,
         string? singBox,
         IReadOnlyList<ServerDefinition> servers,
@@ -67,6 +67,24 @@ public static class LatencyProbe
         TimeSpan timeout,
         TimeProvider time,
         Action<int, IReadOnlyList<ProbeReachability>>? reportFailure,
+        CancellationToken cancellationToken = default) =>
+        MeasureProgressAsync(xray, singBox, servers, connection, target, timeout, time, reportFailure,
+            cancellationToken: cancellationToken);
+
+    /// <summary>Расширенный замер: поток готовых профилей и явно заданный защищенный путь к кандидатам.</summary>
+    public static async Task<IReadOnlyList<LatencyResult>> MeasureProgressAsync(
+        string xray,
+        string? singBox,
+        IReadOnlyList<ServerDefinition> servers,
+        ConnectionSettings connection,
+        Uri target,
+        TimeSpan timeout,
+        TimeProvider time,
+        Action<int, IReadOnlyList<ProbeReachability>>? reportFailure = null,
+        Action<int, LatencyResult>? reportResult = null,
+        XrayProbeUpstream? upstream = null,
+        string? outside = null,
+        TimeSpan? retryTimeout = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -77,42 +95,70 @@ public static class LatencyProbe
         // Входы замера — с паролем на этот замер: служба работает от SYSTEM или root, и без пароля любая программа на машине,
         // пока идет замер, прошла бы через них к серверам в обход правил.
         var account = new SocksAccount(VpnTunnel.Secret(), VpnTunnel.Secret());
-        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays, account);
+        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays, account, outside, upstream);
         var results = probe.Rejections
-            .Select(r => r is null ? null : LatencyResult.Failed(LatencyFailure.Unsupported))
+            .Select((r, i) => r is null ? null : upstream is not null && TransportParameterRules.RequiresUdpProbe(servers[i])
+                ? new LatencyResult(null, LatencyFailure.CoreFailed, "ProtectedProbeUnavailable")
+                : LatencyResult.Failed(LatencyFailure.Unsupported))
             .ToArray();
+        for (var i = 0; i < results.Length; i++)
+        {
+            if (results[i] is { } result)
+            {
+                reportResult?.Invoke(i, result);
+            }
+        }
         if (probe.Config is not { } config)
         {
             return Done(results);
         }
 
         var checkedIndexes = Enumerable.Range(0, servers.Count).Where(i => results[i] is null).ToList();
-        using var core = CoreRelay.StartXray(xray, config, singBox,
-            [.. checkedIndexes.Where(i => relays[i] is not null).Select(i => new RelayRoute(servers[i], relays[i]!))], CoreLogLevel.Warning, out var relayReady);
+        CoreProcess core;
+        Func<bool> relayReady;
+        try
+        {
+            core = CoreRelay.StartXray(xray, config, singBox,
+                [.. checkedIndexes.Where(i => relays[i] is not null).Select(i => new RelayRoute(servers[i], relays[i]!))], CoreLogLevel.Warning, out relayReady);
+        }
+        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception)
+        {
+            return CoreUnavailable();
+        }
+        using var owned = core;
         try
         {
             if (!await WaitForPortsAsync(core, [.. checkedIndexes.Select(i => ports[i])], relayReady, time, cancellationToken).ConfigureAwait(false))
             {
-                foreach (var i in checkedIndexes)
-                {
-                    results[i] = LatencyResult.Failed(LatencyFailure.CoreFailed);
-                }
-
-                return Done(results);
+                return CoreUnavailable();
             }
 
             await Parallel.ForEachAsync(
                 checkedIndexes,
                 new ParallelOptions { MaxDegreeOfParallelism = MaxParallel, CancellationToken = cancellationToken },
-                async (i, token) => results[i] = await RequestAsync(ports[i], target, timeout, time, token, new NetworkCredential(account.User, account.Password),
-                    attempts => reportFailure?.Invoke(i, attempts))
-                    .ConfigureAwait(false))
+                async (i, token) =>
+                {
+                    var result = await RequestAsync(ports[i], target, timeout, time, token, new NetworkCredential(account.User, account.Password),
+                        attempts => reportFailure?.Invoke(i, attempts), retryTimeout).ConfigureAwait(false);
+                    results[i] = result;
+                    reportResult?.Invoke(i, result);
+                })
                 .ConfigureAwait(false);
             return Done(results);
         }
         finally
         {
             await core.StopAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        }
+
+        LatencyResult[] CoreUnavailable()
+        {
+            foreach (var i in checkedIndexes)
+            {
+                results[i] = LatencyResult.Failed(LatencyFailure.CoreFailed);
+                reportResult?.Invoke(i, results[i]!);
+            }
+            return Done(results);
         }
     }
 
@@ -213,6 +259,16 @@ public static class LatencyProbe
         return await QueryAsync(http, doh, name, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Тот же DoH самой службы с привязкой к физической карте, когда локальный фильтр держит свой TUN.</summary>
+    public static async Task<IReadOnlyList<IPAddress>> LookupBoundDirectAsync(Uri doh, string name, uint mark, string? adapter, TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(doh);
+        using var handler = Marked(mark, adapter);
+        using var http = new HttpClient(handler) { Timeout = timeout };
+        return await QueryAsync(http, doh, name, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Реальный IP напрямую, мимо туннеля, по ответу проверочного адреса <paramref name="trace"/> (строка «ip=…»): замер самой
     /// службы под блоком при обрыве. Сокет на Linux помечен <paramref name="mark"/>, как у <see cref="LookupDirectAsync"/>.
@@ -255,9 +311,10 @@ public static class LatencyProbe
         UseCookies = false,
         ConnectCallback = async (context, token) =>
         {
+            var family = IPAddress.TryParse(context.DnsEndPoint.Host.Trim('[', ']'), out var address) ? address.AddressFamily : AddressFamily.InterNetwork;
             var socket = adapter is null
                 ? new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true }
-                : new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                : new Socket(family, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try
             {
                 if (OperatingSystem.IsLinux() && mark != 0)
@@ -332,7 +389,7 @@ public static class LatencyProbe
     }
 
     public static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
-        NetworkCredential? credentials = null, Action<IReadOnlyList<ProbeReachability>>? reportFailure = null)
+        NetworkCredential? credentials = null, Action<IReadOnlyList<ProbeReachability>>? reportFailure = null, TimeSpan? retryTimeout = null)
     {
         var attempts = new List<ProbeReachability>(2);
         // Один повтор: другой контрольный адрес по IP исключает сбой DNS первого сайта. Оба запроса только через SOCKS.
@@ -340,7 +397,8 @@ public static class LatencyProbe
         {
             cancellationToken.ThrowIfCancellationRequested();
             var started = time.GetTimestamp();
-            var result = await CheckAsync(new ServerProbe(port, credentials, endpoint, timeout), cancellationToken).ConfigureAwait(false);
+            var budget = attempts.Count > 0 && attempts[^1].Failure == ProbeFailure.Timeout && retryTimeout is { } extended && extended > timeout ? extended : timeout;
+            var result = await CheckAsync(new ServerProbe(port, credentials, endpoint, budget), cancellationToken).ConfigureAwait(false);
             attempts.Add(result);
             if (result.Reached)
             {

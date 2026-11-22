@@ -2,6 +2,7 @@ package com.privategateway.client.data
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
@@ -18,6 +19,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,6 +39,37 @@ class ServerRepositoryTest {
 
     @After
     fun close() = database.close()
+
+    @Test
+    fun `network change during a pending database write cannot publish an old ping as fresh`() = runBlocking<Unit> {
+        repository.add(listOf(Fixtures.servers().first()))
+        val id = repository.servers.first().single().id
+        val started = CompletableDeferred<Unit>()
+        val holding = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val transaction = async(Dispatchers.IO) {
+            database.withTransaction {
+                holding.complete(Unit)
+                release.await()
+            }
+        }
+        holding.await()
+        val pending = async(Dispatchers.IO) {
+            started.complete(Unit)
+            repository.setLatency(mapOf(id to Latency.of(42)), networkId = "old-network", connectionId = "old-session")
+        }
+        try {
+            started.await()
+            assertFalse(pending.isCompleted)
+            repository.markLatencyStale(networkId = "new-network", connectionId = "new-session")
+        } finally {
+            release.complete(Unit)
+        }
+        withTimeout(10_000) { transaction.await() }
+        withTimeout(10_000) { pending.await() }
+        assertTrue(assertNotNull(repository.latencyChecks.value[id]).stale)
+        assertEquals(42, repository.servers.first().single().latency?.ms, "предыдущий результат можно хранить, но нельзя выдавать за актуальный")
+    }
 
     @Test
     fun `every fixture server comes back as it went in`() = runBlocking<Unit> {

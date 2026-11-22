@@ -15,6 +15,14 @@ struct StateLook: Equatable {
     let power: String
     let title: String
 
+    static func localFilter(_ texts: PgTexts) -> StateLook {
+        StateLook(
+            ring: PgState.Connecting.ring, icon: PgState.Connecting.icon, glow: PgState.Connecting.glow, fill: PgState.Connecting.fill,
+            tint: PgColor.Accent.tint, mark: PgIcons.markOk,
+            power: texts.text(key: "power.label.filter") ?? "", title: texts.text(key: "status.filter.title") ?? ""
+        )
+    }
+
     /// - Parameters:
     ///   - blocked: «Ошибка», а туннель оставлен и держит трафик закрытым — «Блокировка» (`AppModel.blocked`).
     ///   - leak: «Защищено», а замер через туннель увидел реальный IP — «Утечка IP» (`HomeFacts.leak`): тон «Ошибки», своя

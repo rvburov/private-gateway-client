@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -21,19 +24,45 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     private readonly IFileOpenService _files;
     private readonly INavigator _navigator;
     private readonly BlockPinGate _pin;
+    private readonly IGatewayClient? _gateway;
+    private long _historyVersion;
 
     public RoutingPageViewModel(
-        SettingsService settings, OverlayViewModel overlay, ToastViewModel toast, IFileOpenService files, INavigator navigator, BlockPinGate pin)
+        SettingsService settings, OverlayViewModel overlay, ToastViewModel toast, IFileOpenService files, INavigator navigator, BlockPinGate pin,
+        IGatewayClient? gateway = null)
     {
         _settings = settings;
         _pin = pin;
+        _gateway = gateway;
+        if (gateway is not null)
+        {
+            gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() =>
+            {
+                if (status.State == ConnectionState.Off)
+                {
+                    ClearBlockedHistory(markUnavailable: false);
+                }
+                Refresh();
+            });
+        }
         _overlay = overlay;
         _toast = toast;
         _files = files;
         _navigator = navigator;
-        settings.Changed += (_, _) => Refresh();
+        settings.Changed += (_, _) =>
+        {
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                Refresh();
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(Refresh);
+            }
+        };
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
         Refresh();
+        _ = RefreshBlockedAsync();
     }
 
     private RoutingSettings R => _settings.Current.Routing;
@@ -43,7 +72,13 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     public bool IsAllTraffic
     {
         get => R.Mode == RoutingMode.AllTraffic;
-        set => Set(r => r with { Mode = value ? RoutingMode.AllTraffic : RoutingMode.Split });
+        set
+        {
+            if (value)
+            {
+                Set(r => r with { Mode = RoutingMode.AllTraffic });
+            }
+        }
     }
 
     /// <summary>
@@ -55,7 +90,8 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     [RelayCommand]
     private async Task ChooseSplitAsync()
     {
-        if (R.Mode != RoutingMode.Split && await SafetyDialogs.ConfirmSplitModeAsync(_overlay).ConfigureAwait(true))
+        if (R.Mode != RoutingMode.Split && await SafetyDialogs.ConfirmSplitModeAsync(_overlay).ConfigureAwait(true)
+            && (!R.HasSiteBlocks || await AllowBypassAsync().ConfigureAwait(true)))
         {
             Set(r => r with { Mode = RoutingMode.Split });
         }
@@ -74,6 +110,63 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     public ObservableCollection<SiteRuleViewModel> Rules { get; } = [];
 
     public bool HasRules => Rules.Count > 0;
+
+    public ObservableCollection<BlockedSiteViewModel> BlockedToday { get; } = [];
+
+    public bool HasBlockedToday => BlockedToday.Count > 0;
+
+    public bool IsBlockedHistoryEmpty => BlockedHistoryAvailable && !HasBlockedToday;
+
+    [ObservableProperty]
+    public partial bool IsLoadingBlocked { get; private set; }
+
+    [ObservableProperty]
+    public partial bool BlockedHistoryAvailable { get; private set; }
+
+    public string BlockedHistoryNote => Loc.Instance[BlockedHistoryAvailable ? "block.history.note" : "block.history.unavailable"];
+
+    [RelayCommand]
+    private async Task RefreshBlockedAsync()
+    {
+        if (IsLoadingBlocked)
+        {
+            return;
+        }
+        IsLoadingBlocked = true;
+        var version = _historyVersion;
+        try
+        {
+            var sites = _gateway is null ? null : await _gateway.GetBlockedSitesAsync().ConfigureAwait(true);
+            if (version != _historyVersion || _settings.Current.AccountSignedOut || _settings.Current.AccountNetworkResetPending)
+            {
+                return;
+            }
+            BlockedHistoryAvailable = sites is not null;
+            BlockedToday.Clear();
+            foreach (var site in sites ?? [])
+            {
+                BlockedToday.Add(new BlockedSiteViewModel(site, this));
+            }
+            OnPropertyChanged(nameof(HasBlockedToday));
+            OnPropertyChanged(nameof(IsBlockedHistoryEmpty));
+            OnPropertyChanged(nameof(BlockedHistoryNote));
+        }
+        finally
+        {
+            IsLoadingBlocked = false;
+        }
+    }
+
+    internal async Task AllowBlockedAsync(string host)
+    {
+        if (SitePattern.Normalize(host) != host || !SitePattern.IsPlainDomain(host)
+            || !await _pin.AllowAsync(Loc.Instance.Format("block.guard.allow.title", host), Loc.Instance["block.guard.allow.text"]).ConfigureAwait(true))
+        {
+            return;
+        }
+        // Точное разрешение не открывает поддомены и соседние сайты общего CDN; перед правкой PIN уже подтвержден.
+        SaveRule(null, new DomainRule(host, RuleAction.Proxy, Exact: true));
+    }
 
     /// <summary>
     /// В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком. При «Остальные сайты: Блокировать» они
@@ -106,6 +199,37 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     public string PinText => Loc.Instance[HasPin ? "block.pin.on" : "block.pin.off"];
 
     public string PinButtonText => Loc.Instance[HasPin ? "block.pin.changeButton" : "block.pin.setButton"];
+
+    public bool IsSiteFilterRunning => _gateway?.Status is { LocalSiteFilter: true, State: not ConnectionState.Off };
+
+    public string SiteFilterButton => Loc.Instance[IsSiteFilterRunning ? "block.local.stop" : "block.local.start"];
+
+    public string SiteFilterNote => Loc.Instance[IsSiteFilterRunning ? "block.local.active" : "block.local.note"];
+
+    [RelayCommand]
+    private async Task ToggleSiteFilterAsync()
+    {
+        if (_gateway is null)
+        {
+            _toast.Show(Loc.Instance["block.local.unavailable"]);
+            return;
+        }
+        if (IsSiteFilterRunning)
+        {
+            if (await _pin.AllowAsync(Loc.Instance["block.local.stop"], Loc.Instance["block.local.stop.guard"]).ConfigureAwait(true))
+            {
+                await _gateway.DropProtectionAsync().ConfigureAwait(true);
+            }
+        }
+        else if (!R.HasSiteBlocks)
+        {
+            _toast.Show(Loc.Instance["block.local.noRules"]);
+        }
+        else if (!await _gateway.StartSiteFilterAsync().ConfigureAwait(true))
+        {
+            _toast.Show(Loc.Instance["block.local.unavailable"]);
+        }
+    }
 
     [RelayCommand]
     private Task ChangePinAsync() => _pin.ChangeAsync();
@@ -149,11 +273,17 @@ public sealed partial class RoutingPageViewModel : ObservableObject
         if (R.Apps.FirstOrDefault(a => string.Equals(a.Path, picked.Path, comparison)) is { } existing)
         {
             // Уже в списке — включить, а не заводить вторую строку.
-            SetApp(existing, existing with { IsEnabled = true });
-            _toast.Show(Loc.Instance.Format("routing.apps.exists", existing.Name));
+            if (await SetAppAsync(existing, existing with { IsEnabled = true }).ConfigureAwait(true))
+            {
+                _toast.Show(Loc.Instance.Format("routing.apps.exists", existing.Name));
+            }
             return;
         }
 
+        if (IsSplit && R.HasSiteBlocks && !await AllowBypassAsync().ConfigureAwait(true))
+        {
+            return;
+        }
         Set(r => r with { Apps = [.. r.Apps, new BypassApp(picked.Path, picked.Name)] });
     }
 
@@ -161,10 +291,21 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     private void AddRule() => _overlay.ShowSheet(new SiteRuleEditViewModel(null, IsSplit, R.BlockOthers, this, _overlay));
 
     /// <summary>Заменить программу в списке; null — убрать.</summary>
-    internal void SetApp(BypassApp app, BypassApp? replacement) => Set(r => r with
+    internal void SetApp(BypassApp app, BypassApp? replacement) => _ = SetAppAsync(app, replacement);
+
+    private async Task<bool> SetAppAsync(BypassApp app, BypassApp? replacement)
     {
-        Apps = [.. r.Apps.Select(a => a == app ? replacement : a).OfType<BypassApp>()],
-    });
+        if (IsSplit && R.HasSiteBlocks && replacement is { IsEnabled: true } && !app.IsEnabled
+            && !await AllowBypassAsync().ConfigureAwait(true))
+        {
+            Refresh();
+            return false;
+        }
+        Set(r => r with { Apps = [.. r.Apps.Select(a => a == app ? replacement : a).OfType<BypassApp>()] });
+        return true;
+    }
+
+    private Task<bool> AllowBypassAsync() => _pin.AllowAsync(Loc.Instance["block.bypass.title"], Loc.Instance["block.bypass.text"]);
 
     internal void EditRule(DomainRule rule) => _overlay.ShowSheet(new SiteRuleEditViewModel(rule, IsSplit, R.BlockOthers, this, _overlay));
 
@@ -179,11 +320,13 @@ public sealed partial class RoutingPageViewModel : ObservableObject
     /// </summary>
     internal async Task SaveRuleAsync(DomainRule? original, DomainRule rule)
     {
+        var effectiveOriginal = original ?? R.Rules.FirstOrDefault(existing => existing.Pattern == rule.Pattern && existing.IsExact == rule.IsExact);
         // Новое разрешение или разрешение для другого сайта, когда остальные заблокированы.
-        var allowsMore = R.BlockOthers && rule.Action != RuleAction.Block
-            && (original is null || original.Action == RuleAction.Block || original.Pattern != rule.Pattern || original.IsExact != rule.IsExact);
-        var (title, text) = original is { Action: RuleAction.Block } && original != rule
-            ? (Loc.Instance.Format("block.guard.rule.title", original.Pattern), Loc.Instance["block.guard.rule.text"])
+        // Новое более точное разрешение может обойти широкий блок даже при открытых остальных сайтах.
+        var allowsMore = R.HasSiteBlocks && rule.Action != RuleAction.Block
+            && (effectiveOriginal is null || effectiveOriginal.Action == RuleAction.Block || effectiveOriginal.Pattern != rule.Pattern || effectiveOriginal.IsExact != rule.IsExact);
+        var (title, text) = effectiveOriginal is { Action: RuleAction.Block } && effectiveOriginal != rule
+            ? (Loc.Instance.Format("block.guard.rule.title", effectiveOriginal.Pattern), Loc.Instance["block.guard.rule.text"])
             : allowsMore
                 ? (Loc.Instance.Format("block.guard.allow.title", rule.Pattern), Loc.Instance["block.guard.allow.text"])
                 : (null, null);
@@ -225,6 +368,10 @@ public sealed partial class RoutingPageViewModel : ObservableObject
 
     private void Refresh()
     {
+        if (_settings.Current.AccountSignedOut || _settings.Current.AccountNetworkResetPending)
+        {
+            ClearBlockedHistory(markUnavailable: true);
+        }
         Apps.Clear();
         foreach (var (app, index) in R.Apps.Select((a, i) => (a, i)))
         {
@@ -240,12 +387,39 @@ public sealed partial class RoutingPageViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
+    private void ClearBlockedHistory(bool markUnavailable)
+    {
+        _historyVersion++;
+        BlockedToday.Clear();
+        if (markUnavailable)
+        {
+            BlockedHistoryAvailable = false;
+        }
+        OnPropertyChanged(nameof(HasBlockedToday));
+        OnPropertyChanged(nameof(IsBlockedHistoryEmpty));
+        OnPropertyChanged(nameof(BlockedHistoryNote));
+    }
+
     internal static string ActionLabel(RuleAction action) => Loc.Instance[action switch
     {
         RuleAction.Direct => "routing.action.direct",
         RuleAction.Block => "routing.action.block",
         _ => "routing.action.proxy",
     }];
+}
+
+/// <summary>Факт отклоненного соединения. У IP нет автоматического «Разрешить»: адрес может принадлежать многим сайтам.</summary>
+public sealed partial class BlockedSiteViewModel(BlockedSite site, RoutingPageViewModel page) : ObservableObject
+{
+    public string Host => site.Host;
+
+    public string Summary => Loc.Instance.Format("block.history.row", site.Count,
+        site.LastSeen.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture));
+
+    public bool CanAllow => SitePattern.IsPlainDomain(site.Host);
+
+    [RelayCommand]
+    private Task AllowAsync() => page.AllowBlockedAsync(site.Host);
 }
 
 /// <summary>Строка «Программы мимо VPN»: плитка с буквой, имя, сокращенный путь, переключатель.</summary>

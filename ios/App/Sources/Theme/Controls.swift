@@ -160,10 +160,11 @@ struct PgSmallButton: View {
             .frame(minHeight: 36)
             .background(shape.fill(Color(soft ? PgColor.Accent.tint : PgColor.Surface.solid)))
             .overlay(shape.strokeBorder(Color(soft ? PgColor.Accent.line : PgColor.Line.strong), lineWidth: 1))
+            .frame(minHeight: PgLayout.touchTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(PgPressStyle())
-        .disabled(!enabled)
+        .disabled(!enabled || spinning)
         .allowsHitTesting(!spinning)
         .opacity(enabled ? 1 : 0.6)
         .accessibilityIdentifier(identifier)

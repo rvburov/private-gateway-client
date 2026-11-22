@@ -23,6 +23,11 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// <returns>false — подключаться не к чему (нет выбранного сервера).</returns>
     public async Task<bool> ToggleAsync(CancellationToken cancellationToken = default)
     {
+        if (gateway.Status.LocalSiteFilter)
+        {
+            await gateway.DropProtectionAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
         if (gateway.Status is { IsPaused: true, StrictBlock: false })
         {
             await gateway.ResumeProtectionAsync(cancellationToken).ConfigureAwait(false);
@@ -52,7 +57,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// </summary>
     public async Task SwitchServerAsync(string serverId, CancellationToken cancellationToken = default)
     {
-        if (catalog.Selected?.Id == serverId)
+        if (catalog.Selected?.Id == serverId && !gateway.Status.LocalSiteFilter)
         {
             return;
         }

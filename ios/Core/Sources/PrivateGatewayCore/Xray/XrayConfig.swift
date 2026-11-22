@@ -188,9 +188,40 @@ public enum XrayConfig {
         return XrayConfigResult(json: JsonText.write(.object(fields)), rejection: nil)
     }
 
+    /// Локальная фильтрация: тот же TUN и правила сайтов, но первым и единственным разрешающим выходом служит freedom.
+    /// Ни адрес, ни ключ удаленного VPN здесь не нужны. Локальная сеть и IPv6 сохраняют обычную работу компьютера.
+    public static func buildLocal(_ saved: CoreSettings, tunFd: Int32) -> String {
+        var settings = saved
+        settings.allowLan = true
+        settings.ipv6 = true
+        settings.fakeDns = false
+        settings.sniffing = true
+        let mapped = rules(settings, connectivityProbe: false).map { rule -> Json in
+            guard case let .object(fields) = rule else { return rule }
+            return .object(fields.map { key, value in
+                if key == "outboundTag", case let .string(tag) = value, tag == proxyTag { return (key, .string(directTag)) }
+                return (key, value)
+            })
+        }
+        return JsonText.write(.object([
+            ("log", .object([("loglevel", .string(settings.logLevel.xray)), ("access", .string("none")), ("dnsLog", .bool(false))])),
+            ("env", .object([("xray.tun.fd", .string(String(tunFd)))])),
+            ("dns", .object([("servers", .array([.string(settings.dns)])), ("queryStrategy", .string("UseIP"))])),
+            ("inbounds", .array([.object([
+                ("tag", .string(tunTag)), ("protocol", .string("tun")),
+                ("settings", .object([("name", .string("xray0")), ("mtu", .int(settings.mtu))])), ("sniffing", sniffing(settings)),
+            ])])),
+            ("outbounds", .array([
+                .object([("tag", .string(directTag)), ("protocol", .string("freedom")), ("settings", .object([("domainStrategy", .string("UseIPv4v6"))]))]),
+                .object([("tag", .string(blockTag)), ("protocol", .string("blackhole"))]),
+                .object([("tag", .string(dnsTag)), ("protocol", .string("dns")), ("settings", .object([("rules", dnsRules)]))]),
+            ])),
+            ("routing", .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(mapped))])),
+        ]))
+    }
+
     /// Распознавание в TUN: домен из HTTP, TLS и QUIC — только для правил, соединение идет туда, куда просили. С FakeDNS — еще
     /// имя по адресу из пула, и с ним соединение идет уже к имени; без распознавания HTTP и TLS имя берется только из адреса.
-    /// Как у десктопа и Android.
     private static func sniffing(_ settings: CoreSettings) -> Json {
         guard settings.fakeDns else {
             return .object([
@@ -232,7 +263,7 @@ public enum XrayConfig {
         return settings.fakeDns && !needsAddress ? "AsIs" : "IPIfNonMatch"
     }
 
-    private static func rules(_ settings: CoreSettings) -> [Json] {
+    private static func rules(_ settings: CoreSettings, connectivityProbe: Bool = true) -> [Json] {
         var rules: [Json] = [
             // DNS из туннеля — к любому адресу: отвечает выход DNS по настройкам этого конфига, через сервер.
             .object([("type", .string("field")), ("inboundTag", .array([.string(tunTag)])), ("port", .string("53")), ("outboundTag", .string(dnsTag))]),
@@ -283,6 +314,15 @@ public enum XrayConfig {
         }
 
         if settings.blockOthers {
+            if connectivityProbe {
+                // Своя проверка связи через TUN не должна попадать под «блокировать остальные». Только этот адрес/порт,
+                // всегда через VPN: исключения прямого трафика нет. Явные правила пользователя выше сохраняют приоритет.
+                rules.append(.object([
+                    ("type", .string("field")), ("inboundTag", .array([.string(tunTag)])), ("network", .string("tcp")),
+                    ("ip", .array([.string(TunnelProbe.host + "/32")])), ("port", .string(String(TunnelProbe.port))),
+                    ("outboundTag", .string(proxyTag)),
+                ]))
+            }
             // «Остальные сайты: Блокировать» (решение 740): «Пропускается всегда» (обновления, время, проверка сети,
             // уведомления, сертификаты и сайт Private Gateway) — через сервер, время (NTP) — по UDP-порту, остальное из
             // туннеля — в блок. Подписка и DNS сюда не доходят: их правила стоят раньше.
@@ -330,12 +370,16 @@ public enum XrayConfig {
 
     /// Выход сервера — те же поля, что собирает десктоп; метка — `proxyTag`.
     static func outbound(_ server: ServerDefinition, _ settings: CoreSettings) -> Result<Json, Refusal> {
+        guard TransportParameterRules.validEncryption(server.options.encryption),
+              server.transport.extraJson == nil || server.transport.kind == .xhttp && TransportParameterRules.extraValue(server.transport.extraJson) != nil else {
+            return .failure(Refusal(reason: .unsupportedTransport))
+        }
         let credentials = server.credentials
         let protocolSettings: Json
         let name: String
         switch server.protocol {
         case .vless where !(credentials.uuid ?? "").isEmpty:
-            var user: [(String, Json)] = [("id", .string(credentials.uuid ?? "")), ("encryption", .string("none"))]
+            var user: [(String, Json)] = [("id", .string(credentials.uuid ?? "")), ("encryption", .string(server.options.encryption ?? "none"))]
             if let flow = server.options.flow, !flow.isEmpty {
                 user.append(("flow", .string(flow)))
             }
@@ -392,6 +436,8 @@ public enum XrayConfig {
         guard server.protocol == .vless || server.protocol == .trojan, server.security.kind == .none else {
             return false
         }
+
+        if server.protocol == .vless, let encryption = server.options.encryption, encryption != "none" { return false }
 
         let address = server.host.hasPrefix("[") && server.host.hasSuffix("]") ? String(server.host.dropFirst().dropLast()) : server.host
         if var bytes = IpAddress.parse(address) {
@@ -484,6 +530,10 @@ public enum XrayConfig {
 
             if transport.kind == .xhttp, let mode = transport.mode, !mode.isEmpty {
                 path.append(("mode", .string(mode)))
+            }
+
+            if transport.kind == .xhttp, let extra = TransportParameterRules.extraForServer(server) {
+                path.append(("extra", extra))
             }
 
             stream.append((network + "Settings", .object(path)))

@@ -29,7 +29,7 @@ public sealed class RetiredEntryChainTests : IDisposable
         catalog.Subscriptions.ShouldHaveSingleItem().Name.ShouldBe("Обычная");
         catalog.Selected.ShouldBeNull("снятая цепочка не выбирается напрямую и не заменяется другим сервером");
         _secrets.Values.Keys.ShouldBe(["server:" + ordinary, "subscription:" + catalog.Subscriptions[0].Id], ignoreOrder: true);
-        Scalar("PRAGMA user_version").ShouldBe(10L);
+        Scalar("PRAGMA user_version").ShouldBe(11L);
         Scalar("SELECT COUNT(*) FROM retired_secret_keys").ShouldBe(0L);
         Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('entry_proxies', 'entry_proxy_bindings')").ShouldBe(0L);
         catalog.Definition(chain).ShouldBeNull();
@@ -108,6 +108,8 @@ public sealed class RetiredEntryChainTests : IDisposable
                 'entry-proxy:fake-credentials', 'entry-subscription:fake-url', $group);
             INSERT INTO entry_proxy_bindings VALUES ($server, 'fake-device');
             DROP TABLE retired_secret_keys;
+            ALTER TABLE servers DROP COLUMN last_success_latency_ms;
+            ALTER TABLE servers DROP COLUMN last_success_latency_at;
             PRAGMA user_version = 9;
             """;
         command.Parameters.AddWithValue("$group", chain.SubscriptionId!);

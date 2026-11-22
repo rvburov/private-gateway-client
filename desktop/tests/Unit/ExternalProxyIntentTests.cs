@@ -213,6 +213,41 @@ public sealed class ExternalProxyIntentTests
         client.Status.ErrorCode.ShouldBe(ErrorCodes.ExternalProxyUnsupported);
     }
 
+    [Theory]
+    [InlineData("vless/encryption-mlkem", false)]
+    [InlineData("vless/encryption-mlkem", true)]
+    [InlineData("vless/xhttp-extra", false)]
+    [InlineData("vless/xhttp-extra", true)]
+    public async Task Extended_transport_is_not_silently_downgraded_by_an_older_service(string fixture, bool supported)
+    {
+        var settings = AppSettings.Default with { Mode = ConnectionMode.Vpn };
+        var time = new FakeTimeProvider(Started);
+        var calls = new IntentCalls();
+        var info = Info(supported: false);
+        if (supported)
+        {
+            info.Capabilities.Add("extended-transports-v1");
+        }
+        calls.Info[0].TrySetResult(info);
+        var definition = XrayConfigTests.Link(fixture);
+        using var client = new ServiceGatewayClient(GrpcChannel.ForAddress("http://127.0.0.1"), ServiceKind.Installed,
+            id => id == Vpn.Id ? definition : null, () => settings, time, calls: calls, selectedTarget: () => Vpn);
+
+        await client.ConnectAsync(Vpn, Ct).WaitAsync(TimeSpan.FromSeconds(10), Ct);
+
+        if (supported)
+        {
+            calls.Connected.ShouldBe([Vpn.Id]);
+            client.Status.State.ShouldBe(ConnectionState.Connected);
+        }
+        else
+        {
+            calls.Connected.ShouldBeEmpty("старая служба не должна отбросить extra или заменить Encryption на none");
+            calls.Disconnects.ShouldBe(1);
+            client.Status.ErrorCode.ShouldBe(ErrorCodes.ExtendedTransportUnsupported);
+        }
+    }
+
     [Fact]
     public async Task Caller_cancellation_of_a_noncooperative_capability_read_remains_cancellation()
     {

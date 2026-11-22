@@ -53,6 +53,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Свое ядро замера, не меняющее DNS и контроллер сокетов работающего VPN. Только явная привязка своего UID. -->
+        <service
+            android:name=".vpn.LatencyProbeService"
+            android:exported="false"
+            android:process=":latency" />
+
         <!-- Туннель: системный VPN Android. Запускает только система (BIND_VPN_SERVICE); «Постоянная VPN» — тоже. -->
         <service
             android:name=".vpn.GatewayVpnService"

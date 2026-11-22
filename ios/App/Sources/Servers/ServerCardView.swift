@@ -329,16 +329,16 @@ struct ServerCardView: View {
             }
 
             HStack(spacing: PgSpace.s) {
-                CardTile(icon: PgIcons.edit, label: texts.cardRename, identifier: "card.rename") {
+                PgTileButton(icon: PgIcons.edit, label: texts.cardRename, identifier: "card.rename") {
                     startRename(server)
                 }
-                CardTile(
+                PgTileButton(
                     icon: PgIcons.qr, label: page == .share ? texts.cardShareHide : texts.cardShare, on: page == .share, enabled: !noKey,
                     hint: noKey ? texts.cardShareNoKey : nil, identifier: "card.share"
                 ) {
                     toggleShare(server)
                 }
-                CardTile(icon: PgIcons.trash, label: texts.cardDelete, danger: true, identifier: "card.delete") {
+                PgTileButton(icon: PgIcons.trash, label: texts.cardDelete, danger: true, identifier: "card.delete") {
                     layers?.confirm(CardLook.deleteDialog(server.displayName, inUse: inUse, texts)) {
                         actions.delete(server.id)
                     }
@@ -390,63 +390,6 @@ private struct CardInset: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(shape.fill(Color(PgColor.Surface.inset)))
             .overlay(shape.strokeBorder(Color(PgColor.Line.divider), lineWidth: 1))
-    }
-}
-
-/// Плитка действия (.btn-tile, .sc-tile): значок 18 над подписью caption, высота 58, скругление 14, белая с рамкой
-/// line.strong; нажатая (.on, «Скрыть QR») — accent.tint и рамка accent.base, опасная — красные подпись и рамка,
-/// недоступная — прозрачность 0,45. Почему недоступна — подсказка VoiceOver.
-struct CardTile: View {
-    let icon: String
-    let label: String
-    var on = false
-    var danger = false
-    var enabled = true
-    var hint: String?
-    var identifier = ""
-    let action: () -> Void
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        Button(action: action) {
-            VStack(spacing: PgSpace.xxs) {
-                PgIcon(data: icon, color: Color(ink), size: 18, lineWidth: 1.9)
-                Text(label)
-                    .pgText(PgType.caption)
-                    .foregroundStyle(Color(ink))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .padding(.horizontal, PgSpace.xxs)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(shape.fill(Color(on ? PgColor.Accent.tint : PgColor.Surface.solid)))
-            .overlay(shape.strokeBorder(Color(border), lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PgPressStyle())
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.45)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityHint(hint ?? "")
-        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private var ink: PgRGBA {
-        if danger {
-            return PgColor.Status.Danger.text
-        }
-
-        return on ? PgColor.Accent.text : PgColor.Text.primary
-    }
-
-    private var border: PgRGBA {
-        if danger {
-            return PgColor.Status.Danger.line
-        }
-
-        return on ? PgColor.Accent.base : PgColor.Line.strong
     }
 }
 

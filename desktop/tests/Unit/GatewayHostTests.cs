@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
@@ -29,6 +30,47 @@ public sealed class GatewayHostTests
     public GatewayHostTests() => _launcher = new FakeLauncher(() => _answering.Add(User));
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task The_window_host_forwards_ready_latency_results_instead_of_collecting_the_whole_batch()
+    {
+        _answering.Add(Installed);
+        using var host = Host();
+        var service = _services[Installed];
+        await using var stream = host.MeasureLatencyProgressAsync(["first", "second"], Ct).GetAsyncEnumerator(Ct);
+        service.LatencyResults.Writer.TryWrite(new("first", new LatencyResult(17, null)));
+
+        (await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), Ct)).ShouldBeTrue();
+        stream.Current.Key.ShouldBe("first");
+        service.LatencyStreams.ShouldBe(1);
+        service.LatencyUnaryCalls.ShouldBe(0);
+        var next = stream.MoveNextAsync().AsTask();
+        next.IsCompleted.ShouldBeFalse("неподготовленный второй результат не задерживает первый");
+        service.LatencyResults.Writer.TryWrite(new("second", new LatencyResult(29, null)));
+        service.LatencyResults.Writer.Complete();
+        (await next.WaitAsync(TimeSpan.FromSeconds(5), Ct)).ShouldBeTrue();
+        stream.Current.Key.ShouldBe("second");
+    }
+
+    [Fact]
+    public async Task Latency_without_account_access_does_not_start_a_service_or_prepare_server_secrets()
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time),
+            Attach, () => _settings, _time, mayConnect: () => false);
+
+        (await host.MeasureLatencyAsync(["profile"], Ct)).ShouldBeEmpty();
+        var count = 0;
+        await foreach (var _ in host.MeasureLatencyProgressAsync(["profile"], Ct))
+        {
+            count++;
+        }
+
+        count.ShouldBe(0);
+        _launcher.Started.ShouldBe(0);
+        _services.ShouldBeEmpty();
+        host.CanAutomaticallyMeasureLatency.ShouldBeFalse();
+    }
 
     [Fact]
     public async Task Without_a_service_connect_is_an_error_and_the_journal_says_why()
@@ -84,6 +126,40 @@ public sealed class GatewayHostTests
         _launcher.Started.ShouldBe(1);
         _services[User].Connected.ShouldBe(["srv-1"]);
         host.Journal.ShouldContain(e => e.Source == "app" && e.Message.StartsWith("Запущена служба пользователя", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Local_filter_finds_the_installed_tun_service_even_after_proxy_mode_used_a_user_service()
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        using var host = Host();
+        await host.ConnectAsync(Server, Ct);
+        var previous = _services[User];
+        _answering.Add(Installed);
+
+        (await host.StartSiteFilterAsync(Ct)).ShouldBeTrue();
+
+        (previous.FilterStarts, previous.Disconnects, previous.Disposed).ShouldBe((0, 1, true));
+        _services[Installed].FilterStarts.ShouldBe(1);
+        _launcher.Started.ShouldBe(1, "отдельный локальный фильтр не запускает новую непривилегированную службу");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Local_filter_never_falls_back_to_an_unprivileged_service(bool alreadyRunning)
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        if (alreadyRunning)
+        {
+            _answering.Add(User);
+        }
+        using var host = Host();
+
+        (await host.StartSiteFilterAsync(Ct)).ShouldBeFalse();
+
+        _launcher.Started.ShouldBe(0);
+        _services.Values.ShouldAllBe(service => service.FilterStarts == 0);
     }
 
     [Fact]
@@ -494,6 +570,14 @@ public sealed class GatewayHostTests
     {
         public List<string> Connected { get; } = [];
 
+        public int FilterStarts { get; private set; }
+
+        public Task<bool> StartSiteFilterAsync(CancellationToken cancellationToken = default)
+        {
+            FilterStarts++;
+            return Task.FromResult(true);
+        }
+
         public int Disconnects { get; private set; }
 
         public bool Disposed { get; private set; }
@@ -548,7 +632,27 @@ public sealed class GatewayHostTests
             Task.FromResult(new DiagnosticReport([], time.GetUtcNow()));
 
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(serverIds.ToDictionary(id => id, _ => new LatencyResult(42, null)));
+            Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(Measure(serverIds));
+
+        public Channel<KeyValuePair<string, LatencyResult>> LatencyResults { get; } = Channel.CreateUnbounded<KeyValuePair<string, LatencyResult>>();
+        public int LatencyStreams { get; private set; }
+        public int LatencyUnaryCalls { get; private set; }
+
+        private Dictionary<string, LatencyResult> Measure(IReadOnlyList<string> serverIds)
+        {
+            LatencyUnaryCalls++;
+            return serverIds.ToDictionary(id => id, _ => new LatencyResult(42, null));
+        }
+
+        public async IAsyncEnumerable<KeyValuePair<string, LatencyResult>> MeasureLatencyProgressAsync(IReadOnlyList<string> serverIds,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LatencyStreams++;
+            await foreach (var item in LatencyResults.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return item;
+            }
+        }
 
         public List<(UpdateChannel Channel, bool Force)> UpdateChecks { get; } = [];
 

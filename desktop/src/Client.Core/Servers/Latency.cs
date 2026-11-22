@@ -14,7 +14,8 @@ public enum LatencyFailure
 }
 
 /// <summary>Задержка через сервер в миллисекундах или причина, почему ее нет.</summary>
-public sealed record LatencyResult(int? Milliseconds, LatencyFailure? Failure, string? Diagnostic = null)
+public sealed record LatencyResult(int? Milliseconds, LatencyFailure? Failure, string? Diagnostic = null,
+    DateTimeOffset? CheckedAt = null, string? Route = null)
 {
     public static LatencyResult Of(TimeSpan elapsed) => new((int)Math.Max(1, Math.Round(elapsed.TotalMilliseconds)), null);
 

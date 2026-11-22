@@ -38,7 +38,10 @@ data class TransportOptions(
     val host: String? = null,
     val serviceName: String? = null,
     val mode: String? = null,
+    val extraJson: String? = null,
 ) {
+    override fun toString(): String = "TransportOptions { kind=$kind, extra=*** }"
+
     companion object {
         /** Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны. */
         val XHTTP_MODES = setOf("auto", "packet-up", "stream-up", "stream-one")
@@ -80,6 +83,7 @@ data class ProtocolOptions(
     val peerPublicKey: String? = null,
     val addresses: List<String>? = null,
     val mtu: Int? = null,
+    val encryption: String? = null,
 ) {
     companion object {
         val Empty = ProtocolOptions()

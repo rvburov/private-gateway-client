@@ -20,6 +20,37 @@ public sealed class GatewayPreflightTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     [Fact]
+    public async Task Header_credentials_are_hidden_before_preflight_and_never_reach_disk_or_report_tail()
+    {
+        using var file = new JournalFile(Path.Combine(_root, "journal"));
+        var journal = new ServiceJournal(TimeProvider.System, file);
+        journal.Hide(["previous-profile-secret"]);
+        var request = Request("198.51.100.20", "custom-header");
+        var definition = request.Server.ToCore() with
+        {
+            Transport = new TransportOptions(TransportKind.Xhttp,
+                ExtraJson: """{"headers":{"X-Private-Key":"demo/token\" space"},"downloadSettings":{"network":"xhttp","xhttpSettings":{"headers":{"X-Download-Key":"demo-download"}}}}"""),
+        };
+        request.Server = definition.ToContract("custom-header");
+        await using var gateway = Create(new FakeFirewall(), (_, _, _) =>
+        {
+            journal.Add(JournalLevel.Warning, "xray", "preflight custom=demo/token\" space; encoded=demo%2Ftoken%22%20space; download=demo-download; old=previous-profile-secret; ordinary-text");
+            return Task.FromResult(ProbeReachability.TimedOut());
+        }, journal: journal);
+
+        (await gateway.ConnectAsync(request, TestContext.Current.CancellationToken)).Accepted.ShouldBeFalse();
+        var exported = string.Join('\n', journal.Tail(ServiceJournal.Capacity).Select(e => e.Message));
+        exported.ShouldContain("ordinary-text");
+        exported.Contains("demo/", StringComparison.Ordinal).ShouldBeFalse();
+        exported.Contains("demo%2F", StringComparison.Ordinal).ShouldBeFalse();
+        exported.Contains("demo-download", StringComparison.Ordinal).ShouldBeFalse();
+        exported.Contains("previous-profile-secret", StringComparison.Ordinal).ShouldBeFalse("старое ядро еще может писать во время подготовки нового");
+        var disk = File.ReadAllText(file.Current);
+        disk.ShouldContain("ordinary-text");
+        disk.Contains("demo", StringComparison.Ordinal).ShouldBeFalse("на диск идет та же скрытая строка, что и в отчет");
+    }
+
+    [Fact]
     public async Task Retired_chain_ipc_is_rejected_before_any_direct_probe_or_firewall_change()
     {
         var firewall = new FakeFirewall();

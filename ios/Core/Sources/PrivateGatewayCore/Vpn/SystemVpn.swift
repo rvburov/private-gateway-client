@@ -18,26 +18,28 @@ public enum TunnelView {
         let serverId = report?.serverId
         // Расширение сдалось при блоке при обрыве: туннель оставлен без ядра — трафик заблокирован, на экране «Ошибка».
         if system == .connected || system == .reasserting, report?.state == .error, let error = report?.error {
-            return TunnelStatus(state: .error, serverId: serverId, error: error)
+            return TunnelStatus(state: .error, serverId: serverId, error: error, offline: report?.offline ?? false, localSiteFilter: report?.localSiteFilter ?? false)
         }
 
         switch system {
         case .connecting:
-            return TunnelStatus(state: .connecting, serverId: serverId)
+            return TunnelStatus(state: .connecting, serverId: serverId, offline: report?.offline ?? false, localSiteFilter: report?.localSiteFilter ?? false)
         case .connected:
             // Время — только из отчета о подключении: отчет прежнего состояния его не знает.
-            return TunnelStatus(state: .connected, serverId: serverId, since: report?.state == .connected ? report?.since : nil)
+            return TunnelStatus(state: .connected, serverId: serverId, since: report?.state == .connected ? report?.since : nil,
+                                offline: report?.offline ?? false, localSiteFilter: report?.localSiteFilter ?? false)
         case .reasserting:
-            return TunnelStatus(state: .reconnecting, serverId: serverId, attempt: report?.state == .reconnecting ? report?.attempt ?? 1 : 1)
+            return TunnelStatus(state: .reconnecting, serverId: serverId, attempt: report?.state == .reconnecting ? report?.attempt ?? 1 : 1,
+                                offline: report?.offline ?? false, localSiteFilter: report?.localSiteFilter ?? false)
         case .disconnecting:
-            return TunnelStatus(state: .stopping, serverId: serverId)
+            return TunnelStatus(state: .stopping, serverId: serverId, localSiteFilter: report?.localSiteFilter ?? false)
         case .disconnected, .invalid:
             if let appError {
                 return TunnelStatus(state: .error, error: appError)
             }
 
             if report?.state == .error, let error = report?.error {
-                return TunnelStatus(state: .error, error: error)
+                return TunnelStatus(state: .error, serverId: serverId, error: error)
             }
 
             return TunnelStatus()

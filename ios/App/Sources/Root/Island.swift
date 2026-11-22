@@ -26,11 +26,12 @@ struct Island: View {
     var leak = false
     /// Пауза для входа в Wi-Fi — подпись «Пауза» и янтарный щит.
     var paused = false
+    var localSiteFilter = false
     let onTab: (AppTab) -> Void
     let onPower: () -> Void
 
     var body: some View {
-        let look = StateLook.of(state, texts, blocked: blocked, leak: leak, paused: paused)
+        let look = localSiteFilter && state == .connected ? StateLook.localFilter(texts) : StateLook.of(state, texts, blocked: blocked, leak: leak, paused: paused)
         // Верх плашки — на уровне центра щита: выступ поднимается над плашкой ровно на свой радиус.
         let top = CGFloat(PgLayout.Island.bumpRadius)
         let shape = IslandShape(side: CGFloat(PgLayout.Island.sideMarginMobile), top: top)

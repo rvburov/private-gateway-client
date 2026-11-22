@@ -112,6 +112,76 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     public bool HasReceivedStatus => _receivedStatus;
 
+    private static Metadata StatusHeaders() => new() { { GatewayCapabilities.Header, GatewayCapabilities.LocalSiteFilter } };
+
+    public bool CanAutomaticallyMeasureLatency => HasReceivedStatus && !_settings().AccountSignedOut && !_settings().AccountNetworkResetPending;
+
+    public async Task<bool> StartSiteFilterAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = _settings();
+        var intent = Interlocked.Increment(ref _connectIntent);
+        if (!settings.Routing.HasSiteBlocks || settings.AccountSignedOut || settings.AccountNetworkResetPending)
+        {
+            return false;
+        }
+        var foreign = await ForeignProxyAsync(settings).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (intent != Volatile.Read(ref _connectIntent) || ProtectionSync.Affects(settings, _settings())
+            || _settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+        {
+            return false;
+        }
+        var accepted = false;
+        try
+        {
+            var reply = await _client.StartSiteFilterAsync(new V1.ConnectRequest
+            {
+                Mode = V1.Mode.Vpn,
+                Protection = settings.ToContract(),
+                Connection = settings.ToConnection(),
+                Routing = settings.ToRouting(),
+                AllowOtherVpn = settings.Protection.AllowOtherVpn,
+                ForeignProxy = foreign,
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var status = await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (intent == Volatile.Read(ref _connectIntent) && !_settings().AccountSignedOut && !_settings().AccountNetworkResetPending)
+            {
+                Apply(status.ToCore());
+            }
+            accepted = reply.Accepted;
+        }
+        catch (RpcException)
+        {
+            // Старой службе этот метод неизвестен: никакого запасного обычного Connect к выбранному серверу.
+        }
+        finally
+        {
+            if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+            {
+                // Ответ Start мог прийти после отключения при выходе: снимаем и эту позднюю защиту.
+                // Отмена окна не должна отменить подтвержденное восстановление сети аккаунта.
+                accepted = false;
+                await DropProtectionAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        return accepted;
+    }
+
+    public async Task<IReadOnlyList<BlockedSite>?> GetBlockedSitesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var reply = await _client.GetBlockedSitesAsync(new V1.GetBlockedSitesRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            return [.. reply.Sites.Where(site => site.LastSeen is not null && SitePattern.Normalize(site.Host) == site.Host
+                && !site.Host.Contains('/', StringComparison.Ordinal) && site.Count > 0)
+                .Take(250).Select(site => new BlockedSite(site.Host, (int)Math.Min(site.Count, int.MaxValue), site.LastSeen.ToDateTimeOffset()))];
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
     public int? ManagedUserProxyPort => Volatile.Read(ref _ownedProxyPort) is > 0 and var port ? port : null;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -140,7 +210,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             return;
         }
 
-        var details = _manageUserProxy || forward ? await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false) : null;
+        var definition = _definitions(server.Id);
+        var extendedTransport = definition is not null && (definition.Transport.ExtraJson is not null
+            || definition.Options.Encryption is not (null or "none"));
+        var details = _manageUserProxy || forward || extendedTransport ? await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false) : null;
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsCurrentIntent(server, settings, intent))
         {
@@ -159,7 +232,18 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             return;
         }
 
-        var definition = _definitions(server.Id);
+        if (extendedTransport && details is null)
+        {
+            Unreachable(server.Id, settings.Mode);
+            return;
+        }
+
+        if (extendedTransport && details?.Capabilities?.Contains("extended-transports-v1", StringComparer.Ordinal) != true)
+        {
+            await RejectUnsupportedAsync(server, settings, intent, cancellationToken, ErrorCodes.ExtendedTransportUnsupported).ConfigureAwait(false);
+            return;
+        }
+
         var foreignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsCurrentIntent(server, settings, intent))
@@ -186,7 +270,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             // Ответ Connect не содержит снимка. После принятой попытки WatchStatus тоже может еще хранить прежнюю
             // ошибку: окно принимает решение сразу после await, поэтому актуальный статус читается при любом ответе.
             await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var current = await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            var current = await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: cancellationToken).ConfigureAwait(false);
             if (IsCurrentIntent(server, settings, intent))
             {
                 Apply(current.ToCore());
@@ -229,7 +313,8 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    private async Task RejectUnsupportedAsync(ServerProfile server, AppSettings settings, long intent, CancellationToken cancellationToken)
+    private async Task RejectUnsupportedAsync(ServerProfile server, AppSettings settings, long intent, CancellationToken cancellationToken,
+        string errorCode = ErrorCodes.ExternalProxyUnsupported)
     {
         using var deadline = new CancellationTokenSource(ExternalProxyHandshakeTimeout, _time);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopping, deadline.Token);
@@ -238,12 +323,12 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             // Старую сессию нужно действительно остановить; оба RPC разделяют один предел ожидания.
             using var disconnect = _client.DisconnectAsync(Disconnect(settings), cancellationToken: stop.Token);
             await disconnect.ResponseAsync.WaitAsync(stop.Token).ConfigureAwait(false);
-            using var snapshot = _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: stop.Token);
+            using var snapshot = _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: stop.Token);
             var stopped = await snapshot.ResponseAsync.WaitAsync(stop.Token).ConfigureAwait(false);
             if (IsCurrentIntent(server, settings, intent))
             {
                 Apply(stopped.ToCore());
-                LocalFailure(server.Id, settings.Mode, ErrorCodes.ExternalProxyUnsupported);
+                LocalFailure(server.Id, settings.Mode, errorCode);
             }
         }
         catch (RpcException)
@@ -580,7 +665,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             {
                 throw new IOException("Служба не подтвердила восстановление сети; может требоваться обновление службы");
             }
-            var status = (await _client.GetStatusAsync(new V1.GetStatusRequest(), deadline: deadline,
+            var status = (await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), deadline: deadline,
                 cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
             Apply(status);
             if (status.State != ConnectionState.Off || status.StrictBlock)
@@ -601,7 +686,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         try
         {
             await _client.DisconnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
         {
@@ -624,7 +709,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             if (reply.Until is not null)
             {
-                Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+                Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
             }
 
             return reply.Until is not null;
@@ -641,7 +726,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             await _client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), headers: StatusHeaders(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
         {
@@ -711,29 +796,162 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serverIds);
-        var request = new V1.MeasureLatencyRequest { Connection = _settings().ToConnection() };
-        foreach (var id in serverIds)
+        cancellationToken.ThrowIfCancellationRequested();
+        var settings = _settings();
+        if (settings.AccountSignedOut || settings.AccountNetworkResetPending)
         {
+            return new Dictionary<string, LatencyResult>();
+        }
+        var request = new V1.MeasureLatencyRequest { Connection = settings.ToConnection() };
+        foreach (var id in serverIds.Distinct(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (_definitions(id) is { } definition)
             {
                 request.Targets.Add(new V1.LatencyTarget { Id = id, Host = definition.Host, Port = (uint)definition.Port, Server = definition.ToContract(id) });
             }
         }
 
-        if (request.Targets.Count == 0)
+        var unavailable = await RemoveUnsupportedLatencyTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+        if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
         {
             return new Dictionary<string, LatencyResult>();
+        }
+        if (request.Targets.Count == 0)
+        {
+            return unavailable;
         }
 
         try
         {
             var reply = await _client.MeasureLatencyAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            return reply.Results.Where(r => r.Reachable || r.Failure != V1.LatencyFailure.Unspecified).ToDictionary(r => r.Id, r => r.ToCore());
+            if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+            {
+                return new Dictionary<string, LatencyResult>();
+            }
+            var known = request.Targets.Select(target => target.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var result in reply.Results)
+            {
+                if (IsValidLatency(result) && known.Remove(result.Id))
+                {
+                    unavailable[result.Id] = result.ToCore();
+                }
+            }
+            return unavailable;
         }
         catch (RpcException)
         {
-            return new Dictionary<string, LatencyResult>();
+            return unavailable;
         }
+    }
+
+    public async IAsyncEnumerable<KeyValuePair<string, LatencyResult>> MeasureLatencyProgressAsync(IReadOnlyList<string> serverIds,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serverIds);
+        cancellationToken.ThrowIfCancellationRequested();
+        var settings = _settings();
+        if (settings.AccountSignedOut || settings.AccountNetworkResetPending)
+        {
+            yield break;
+        }
+        var request = new V1.MeasureLatencyRequest { Connection = settings.ToConnection() };
+        foreach (var id in serverIds.Distinct(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_definitions(id) is { } definition)
+            {
+                request.Targets.Add(new V1.LatencyTarget { Id = id, Host = definition.Host, Port = (uint)definition.Port, Server = definition.ToContract(id) });
+            }
+        }
+
+        var unavailable = await RemoveUnsupportedLatencyTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+        if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+        {
+            yield break;
+        }
+        foreach (var item in unavailable)
+        {
+            yield return item;
+        }
+        if (request.Targets.Count == 0)
+        {
+            yield break;
+        }
+
+        var known = request.Targets.Select(target => target.Id).ToHashSet(StringComparer.Ordinal);
+        var legacy = false;
+        using (var call = _client.MeasureLatencyProgress(request, cancellationToken: cancellationToken))
+        {
+            while (true)
+            {
+                if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+                {
+                    yield break;
+                }
+                V1.LatencyResult item;
+                try
+                {
+                    if (!await call.ResponseStream.MoveNext(cancellationToken).ConfigureAwait(false))
+                    {
+                        yield break;
+                    }
+                    item = call.ResponseStream.Current;
+                }
+                catch (RpcException error) when (error.StatusCode == StatusCode.Unimplemented)
+                {
+                    legacy = true;
+                    break;
+                }
+                catch (RpcException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    yield break;
+                }
+
+                if (_settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+                {
+                    yield break;
+                }
+                if (IsValidLatency(item) && known.Remove(item.Id))
+                {
+                    yield return new KeyValuePair<string, LatencyResult>(item.Id, item.ToCore());
+                }
+            }
+        }
+
+        if (legacy)
+        {
+            foreach (var item in await MeasureLatencyAsync([.. request.Targets.Select(target => target.Id)], cancellationToken).ConfigureAwait(false))
+            {
+                yield return item;
+            }
+        }
+    }
+
+    private static bool IsValidLatency(V1.LatencyResult result) => result.Reachable
+        || result.Failure is V1.LatencyFailure.Unsupported or V1.LatencyFailure.NoResponse or V1.LatencyFailure.CoreFailed;
+
+    private async Task<Dictionary<string, LatencyResult>> RemoveUnsupportedLatencyTargetsAsync(V1.MeasureLatencyRequest request, CancellationToken cancellationToken)
+    {
+        var extended = request.Targets.Where(target => target.Server?.Transport?.ExtraJson is { Length: > 0 }
+            || target.Server?.Vless?.Encryption is { Length: > 0 } encryption && encryption != "none").ToArray();
+        var unavailable = new Dictionary<string, LatencyResult>(StringComparer.Ordinal);
+        if (extended.Length == 0)
+        {
+            return unavailable;
+        }
+        var details = await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false);
+        if (details?.Capabilities?.Contains("extended-transports-v1", StringComparer.Ordinal) == true)
+        {
+            return unavailable;
+        }
+        foreach (var target in extended)
+        {
+            request.Targets.Remove(target);
+            unavailable[target.Id] = new LatencyResult(null, details is null ? LatencyFailure.CoreFailed : LatencyFailure.Unsupported,
+                CheckedAt: _time.GetUtcNow());
+        }
+        return unavailable;
     }
 
     public void Dispose()
@@ -791,7 +1009,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             try
             {
-                using var call = _client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: _stopping);
+                using var call = _client.WatchStatus(new V1.WatchStatusRequest(), headers: StatusHeaders(), cancellationToken: _stopping);
                 while (await call.ResponseStream.MoveNext(_stopping).ConfigureAwait(false))
                 {
                     Apply(call.ResponseStream.Current.ToCore());

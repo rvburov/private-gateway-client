@@ -23,6 +23,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly ConnectionTarget _target;
     private readonly ToastViewModel _toast;
+    private readonly BlockPinGate? _pin;
 
     public ProtectionViewModel(
         IGatewayClient gateway,
@@ -31,7 +32,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
         OverlayViewModel overlay,
         SettingsService settings,
         ConnectionTarget target,
-        ToastViewModel toast)
+        ToastViewModel toast, BlockPinGate? pin = null)
     {
         _gateway = gateway;
         _controller = controller;
@@ -39,6 +40,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
         _settings = settings;
         _target = target;
         _toast = toast;
+        _pin = pin;
         Status = gateway.Status;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => Status = status);
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
@@ -58,7 +60,8 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public bool HasNetworkProblem => NotificationPolicy.HasNetworkProblem(Status);
 
     /// <summary>Ключ текстов состояния: «paused», «proxy», «strict» или имя состояния — для главного экрана и трея.</summary>
-    public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.HasExitIpLeak ? "leak" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
+    public string StateKey => Status.IsPaused ? "paused" : Status.LocalSiteFilter && Status.State == ConnectionState.Connected ? "filter"
+        : Status.IsProxy ? "proxy" : Status.HasExitIpLeak ? "leak" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
 
     /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
     public string Title => HasNetworkProblem ? Loc.Instance["status.offline.title"]
@@ -72,6 +75,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
 
     /// <summary>Подпись под кнопкой.</summary>
     public string Label => HasNetworkProblem ? Loc.Instance["power.label.offline"]
+        : Status.LocalSiteFilter && Status.State == ConnectionState.Connected ? Loc.Instance["power.label.filter"]
         : Status.HasExitIpLeak ? Loc.Instance["power.label.leak"]
         : Status.IsPaused ? Loc.Instance["power.label.paused"]
         : Status.IsProxy ? Loc.Instance["power.label.proxy"]
@@ -79,7 +83,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
-    public string Mark => HasNetworkProblem || Status.IsPaused || Status.IsProxy || Status.HasExitIpLeak ? "Icon.Mark.Alert" : Status.State switch
+    public string Mark => HasNetworkProblem || Status.IsPaused || Status.IsProxy || Status.LocalSiteFilter || Status.HasExitIpLeak ? "Icon.Mark.Alert" : Status.State switch
     {
         ConnectionState.Connected => "Icon.Mark.Ok",
         ConnectionState.Connecting or ConnectionState.Reconnecting => "Icon.Mark.Wait",
@@ -103,6 +107,11 @@ public sealed partial class ProtectionViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task<bool> ToggleAsync()
     {
+        if (Status.LocalSiteFilter && _pin is not null
+            && !await _pin.AllowAsync(Loc.Instance["block.local.stop"], Loc.Instance["block.local.stop.guard"]).ConfigureAwait(true))
+        {
+            return true;
+        }
         if (Status is { State: ConnectionState.Blocked, IsPaused: false, StrictBlock: false } && !ConnectionController.KeepsBlock(_settings.Current))
         {
             var dialog = new DialogViewModel(

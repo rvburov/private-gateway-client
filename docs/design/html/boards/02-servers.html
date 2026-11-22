@@ -444,6 +444,23 @@
     </div>
     <div class="pg-island" data-active="servers"></div>
   </section>
+  <section class="pg-screen" data-state="connected" data-caption="Проверка по мере готовности: путь и актуальность">
+    <div class="pg-page sv-page">
+      <div class="pg-header"><span class="t-h1 pg-grow">Серверы</span><button class="btn-icon steady" data-spin aria-label="Обновить серверы"><i data-icon="Refresh" data-size="20"></i></button></div>
+      <div class="pg-stack pg-gap-12">
+        <span class="t-caption t-wrap">Проверено серверов: 1 из 3</span>
+        <span class="t-caption t-wrap">Проверено через текущий VPN; прямой путь может отличаться.</span>
+        <div class="sv-list segments">
+          <div class="sv-row"><button class="segment on"><span class="country-glyph"><img src="../assets/countries/NL.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag">активен</span><span class="latency good sv-ping" title="Измерено: 23.11.2026 00:40 · Через текущий VPN">42 мс</span></button></div>
+          <div class="sv-row"><button class="segment"><span class="country-glyph"><img src="../assets/countries/DE.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 01</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="latency sv-ping" title="Проверяем">…</span></button></div>
+          <div class="sv-row"><button class="segment"><span class="country-glyph"><img src="../assets/countries/FI.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · REALITY</span></span><span class="latency sv-ping" title="Предыдущий замер: сеть или подключение изменились. Обновите проверку.">устарел</span></button></div>
+        </div>
+        <span class="t-caption t-wrap">Время и путь относятся к конкретной проверке. Ошибка подключения меняет статус профиля; старое число не подтверждает текущую связь.</span>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
 </div>
 </body>
 </html>

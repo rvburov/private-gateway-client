@@ -36,13 +36,22 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var generation: UInt64 = 0
     private var stopping = false
     private var subscriptionProxy: SubscriptionProxy?
+    private let blockedSites = BlockedSiteHistory()
+    private var blockCapture: BlockLogCapture?
+    private var localSiteFilter = false
+    /// Не больше текущего и подготавливаемого профиля; значения не пишутся в статус, лог или отчет.
+    private var activeCoreSecrets: [String] = []
+    private var pendingCoreSecrets: [String] = []
 
     // В изоляции вызывающего, как метод суперкласса: словарь параметров (NSObject — не Sendable) никуда не пересылается.
     override nonisolated(nonsending) func startTunnel(options: [String: NSObject]?) async throws {
+        let local = (options?["localSiteFilter"] as? NSNumber)?.boolValue
+            ?? ((protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["localSiteFilter"] as? Bool ?? false)
         var session: UInt64?
         var failure: TunnelFailure?
         do {
             try await work.run({
+                self.locked { self.localSiteFilter = local }
                 let active = try self.beginSession(starting: true)
                 session = active
                 try await self.bringUp(reporting: true, session: active)
@@ -61,8 +70,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// «Ошибки». Туннель не опускается: новые маршруты ставятся поверх, прежнее ядро останавливается, новое запускается —
     /// трафик ждет в туннеле. Не вышло — туннель закрывается с ошибкой: держать его без ядра незачем.
     override func handleAppMessage(_ messageData: Data) async -> Data? {
+        if messageData == TunnelMessages.blockedSites {
+            return await work.run {
+                try? JSONEncoder().encode(BlockedSitesSnapshot(available: self.blockCapture != nil, events: self.blockedSites.snapshot()))
+            }
+        }
         if messageData == TunnelMessages.subscriptionProxy {
             return await work.run {
+                guard self.container.account.read().allowed(now: Date()),
+                      let settings = try? self.container.settings.loadNow(), !settings.manualActivationRequired else { return nil }
                 guard let proxy = self.locked({ self.subscriptionProxy }), self.locked({ !self.stopping }),
                       self.locked({ self.reported.state == .connected }) else { return nil }
                 return try? JSONEncoder().encode(proxy)
@@ -106,6 +122,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         await work.run {
             self.stopWatching()
             self.stopCore()
+            self.blockedSites.clear()
             // Другое приложение заняло VPN телефона (DECISIONS.md, п. 4): «Ошибка» PGC-NET-010 с уведомлением и страницей
             // «Работает другой VPN» в приложении, а не «Защита выключена вручную».
             self.report(reason == .superceded ? TunnelStatus(state: .error, error: TunnelErrors.otherVpn) : TunnelStatus())
@@ -116,7 +133,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// iOS в туннель не пускает) — медиана трех замеров, только время соединения, без поиска имени. Защиты нет, сервер по UDP
     /// или ни один замер не удался — пустой ответ. Очередь действий с ядром не занимает: замер только читает.
     private func serverDelay() async -> Data {
-        guard locked({ !stopping && reported.state == .connected }),
+        guard locked({ !stopping && !localSiteFilter && reported.state == .connected }),
               let launch = try? await TunnelLaunch.prepare(settings: container.settings, servers: container.servers),
               ServerDelay.measures(launch.server.protocol)
         else {
@@ -147,9 +164,18 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         guard container.account.read().allowed(now: Date()) else {
             throw TunnelFailure(TunnelErrors.noAccess, detail: "no account access")
         }
+        guard !(try container.settings.loadNow()).manualActivationRequired else {
+            throw TunnelFailure(TunnelErrors.noAccess, detail: "manual activation required")
+        }
+
+        if locked({ localSiteFilter }) {
+            try await bringUpLocal(session: session)
+            return
+        }
 
         let launch = try await TunnelLaunch.prepare(settings: container.settings, servers: container.servers)
         try requireCurrent(session)
+        locked { pendingCoreSecrets = TransportParameterRules.sensitiveExtraValues(launch.server) }
         let name = try? await container.servers.servers().first { $0.id == launch.serverId }?.displayName
         try requireCurrent(session)
         locked { serverName = name }
@@ -165,9 +191,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
         stopCore()
         let proxy = launch.protectedSubscriptionsAllowed ? try TunnelInterface.proxy() : nil
-        try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd, subscriptionProxy: proxy))))
+        let config = try configurationForHistory(
+            launch.config(tunFd: fd, subscriptionProxy: proxy), enabled: launch.core.blockOthers || launch.core.siteRules.contains { $0.action == .block }
+        )
+        try TunnelLaunch.started(NativeCorePrivacy.response(NativeCorePrivacy.invoke(XrayConfig.runRequest(config)) { LibXrayInvoke($0) }, knownSecrets: nativeSecrets))
         try requireCurrent(session)
-        locked { subscriptionProxy = proxy }
+        locked { subscriptionProxy = proxy; activeCoreSecrets = pendingCoreSecrets }
         if reporting {
             // Профиль должен ответить через туннель до «Защищено» (решение 556): иначе неверный ключ или неработающий сервер
             // подписки выглядели бы защитой, а потом бесконечным «Переподключением» за закрытым блоком при обрыве.
@@ -184,6 +213,30 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         reportCoreVersion()
     }
 
+    private nonisolated(nonsending) func bringUpLocal(session: UInt64) async throws {
+        let settings = try await container.settings.load()
+        locked { pendingCoreSecrets = [] }
+        var core = settings.core()
+        core.allowLan = true
+        core.ipv6 = true
+        locked { serverName = nil }
+        report(TunnelStatus(state: .connecting))
+        try await apply(TunPlan.of(core).networkSettings())
+        try requireCurrent(session)
+        guard let fd = TunnelInterface.descriptor() else {
+            throw TunnelFailure(TunnelErrors.coreFailed, detail: "utun descriptor not found")
+        }
+        stopCore()
+        let config = try configurationForHistory(
+            XrayConfig.buildLocal(core, tunFd: fd), enabled: core.blockOthers || core.siteRules.contains { $0.action == .block }
+        )
+        try TunnelLaunch.started(NativeCorePrivacy.response(NativeCorePrivacy.invoke(XrayConfig.runRequest(config)) { LibXrayInvoke($0) }, knownSecrets: nativeSecrets))
+        try requireCurrent(session)
+        locked { activeCoreSecrets = [] }
+        report(TunnelStatus(state: .connected, since: Date()))
+        reportCoreVersion()
+    }
+
     // MARK: Наблюдение
 
     /// Наблюдение за связью заново (после подъема или перезапуска) и подгон на смену сети.
@@ -197,7 +250,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             events: GuardReport(provider: self, session: session),
             online: { [weak self] in self?.isOnline() ?? true }
         )
-        let task = Task { await guarded.run() }
+        let local = locked { localSiteFilter }
+        let task = Task { if !local { await guarded.run() } }
         let access = Task { [weak self] in
             guard let self else { return }
             await self.watchAccess(session: session)
@@ -282,8 +336,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 return probeNote != reason
             }
             if first {
-                log.error("probe unavailable: \(reason, privacy: .public)")
-                container.log.add("probe unavailable: \(reason)", level: .warning)
+                let safeReason = maskNative(reason)
+                log.error("probe unavailable: \(safeReason, privacy: .public)")
+                container.log.add("probe unavailable: \(safeReason)", level: .warning)
             }
             return true
         }
@@ -299,7 +354,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             } catch {
                 self.stopCore()
                 guard self.current(session) else { return TunnelErrors.coreFailed }
-                let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
+                let failure = self.sanitizedFailure(error)
                 self.log.error("reconnect \(attempt, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
                 self.container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")", level: .warning)
                 return failure.code
@@ -379,23 +434,69 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
     /// Отказ: в журнал — код и подробность без секретов (SecretMasker), ядро — остановить, приложению — «Ошибка» с кодом.
     private func failed(_ error: any Error, _ step: String, session: UInt64) -> TunnelFailure {
-        let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
+        let failure = sanitizedFailure(error)
         stopCore()
         guard current(session) else { return failure }
         log.error("\(step, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
         container.log.add("\(step): \(failure.code) \(failure.detail ?? "")", level: .error)
         stopWatching()
-        report(TunnelStatus(state: .error, error: failure.code))
+        report(TunnelStatus(state: .error, serverId: currentServer, error: failure.code))
         return failure
+    }
+
+    private var nativeSecrets: [String] { locked { Array(Set(activeCoreSecrets + pendingCoreSecrets)) } }
+
+    private func maskNative(_ text: String?) -> String {
+        SecretMasker.mask(text ?? "", knownSecrets: nativeSecrets)
+    }
+
+    private func sanitizedFailure(_ error: any Error) -> TunnelFailure {
+        let failure = error as? TunnelFailure
+        return TunnelFailure(failure?.code ?? TunnelErrors.coreFailed, detail: maskNative(failure?.detail ?? "\(error)"))
     }
 
     private func stopCore() {
         locked { subscriptionProxy = nil }
-        let response = XrayResponse.parse(LibXrayInvoke(XrayConfig.invoke("stopXray")))
+        let response = XrayResponse.parse(NativeCorePrivacy.invoke(XrayConfig.invoke("stopXray")) { LibXrayInvoke($0) })
         if !response.success {
-            log.error("stop: \(SecretMasker.mask(response.error), privacy: .public)")
-            container.log.add("core stop: \(response.error ?? "")", level: .warning)
+            let safeError = maskNative(response.error)
+            log.error("stop: \(safeError, privacy: .public)")
+            container.log.add("core stop: \(safeError)", level: .warning)
         }
+        blockCapture?.stop()
+        blockCapture = nil
+    }
+
+    /// Конфиг создан и проверен нашим кодом. Только собственный error-поток принимает post-sniff detour при Info;
+    /// журнал access выключен, лишний внутренний Info не попадает в обычный журнал или отчет.
+    private func configurationForHistory(_ json: String, enabled: Bool) throws -> String {
+        let secrets = nativeSecrets
+        guard enabled || !secrets.isEmpty else { return json }
+        guard var value = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+              var options = value["log"] as? [String: Any] else { return json }
+        let requested = options["loglevel"] as? String ?? "warning"
+        let capture = BlockLogCapture(history: blockedSites, level: requested, knownSecrets: secrets) { [weak self] message, level in
+            self?.container.log.add("core: " + message, level: level)
+        }
+        let path: String
+        do {
+            path = try capture.start()
+        } catch {
+            container.log.add("private native log capture unavailable", level: .warning)
+            if secrets.isEmpty { return json }
+            // История — вспомогательная возможность. При недоступном private pipe отключаем нативный поток, а не
+            // разрешаем неизвестным заголовкам extra попасть в stdout/системный журнал.
+            options["error"] = "none"
+            options["loglevel"] = "none"
+            value["log"] = options
+            return String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
+        }
+        blockCapture = capture
+        options["access"] = "none"
+        options["error"] = path
+        options["loglevel"] = enabled && requested != "debug" ? "info" : requested
+        value["log"] = options
+        return String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
     }
 
     /// Состояние для приложения и уведомление о смене; не записалось — приложение покажет состояние системы, туннель от этого
@@ -422,16 +523,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private func report(_ status: TunnelStatus) {
         var status = status
         status.offline = !isOnline()
+        status.localSiteFilter = status.state != .off && locked { localSiteFilter }
         do {
             try container.status.write(status)
         } catch {
-            log.error("status: \(SecretMasker.mask("\(error)"), privacy: .public)")
+            log.error("status: \(maskNative("\(error)"), privacy: .public)")
         }
 
         let (before, name) = locked { () -> (TunnelStatus, String?) in
             defer { reported = status }
             return (reported, serverName)
         }
+        // Местный фильтр не сообщает «VPN подключен» или «IP скрыт».
+        guard !status.localSiteFilter else { return }
         let settings = try? container.settings.loadNow()
         guard let notice = NotificationPolicy.forChange(before, status, server: name, killSwitch: settings?.killSwitch ?? true) else {
             return
@@ -449,14 +553,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
     /// Версия ядра для «О программе»: в процессе приложения ядра нет. Не записалась — там будет «—».
     private func reportCoreVersion() {
-        guard let version = XrayResponse.version(LibXrayInvoke(XrayConfig.invoke("xrayVersion"))) else {
+        guard let version = XrayResponse.version(NativeCorePrivacy.invoke(XrayConfig.invoke("xrayVersion")) { LibXrayInvoke($0) }) else {
             return
         }
 
         do {
-            try container.coreVersion.write(version)
+            try container.coreVersion.write(maskNative(version))
         } catch {
-            log.error("core version: \(SecretMasker.mask("\(error)"), privacy: .public)")
+            log.error("core version: \(maskNative("\(error)"), privacy: .public)")
         }
     }
 

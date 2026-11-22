@@ -24,6 +24,15 @@ final class CheckModel: ObservableObject {
     private let fresh: Measure
     private let readProxy: @MainActor () -> ProxyFindings
     private var rerun = false
+    private var generation: UInt64 = 0
+    private var delayAgain = false
+    private var delayConnected = false
+    private var delayServer: Measure?
+
+    func invalidate() {
+        generation &+= 1
+        findings.delay = nil
+    }
 
     init(
         through: @escaping Measure = { await DelayProbe.throughServer() }, fresh: @escaping Measure = { await DelayProbe.newConnection() },
@@ -40,7 +49,7 @@ final class CheckModel: ObservableObject {
     ///   - connected: защита подключена — спрашивается, когда дело доходит до задержки.
     ///   - measureIp: замер внешнего IP, если сейчас есть что мерить (`RootView`).
     ///   - toServer: «До сервера» от расширения туннеля.
-    func run(connected: @MainActor () -> Bool, measureIp: @MainActor () async -> Void, toServer: Measure) async {
+    func run(connected: @MainActor () -> Bool, measureIp: @MainActor () async -> Void, toServer: @escaping Measure) async {
         guard !findings.running else {
             rerun = true
             return
@@ -58,22 +67,33 @@ final class CheckModel: ObservableObject {
     }
 
     /// «Обновить» у «Задержки»: три числа по три замера; без защиты мерить через сервер нечего — чисел нет. Замер уже идет —
-    /// второй не начинается.
-    func measureDelay(connected: Bool, toServer: Measure) async {
+    /// повтор ставится после текущего; старый сеанс не выдает свой результат за новый.
+    func measureDelay(connected: Bool, toServer: @escaping Measure) async {
+        delayConnected = connected
         guard connected else {
-            findings.delay = nil
+            invalidate()
             return
         }
+        delayServer = toServer
 
         guard !findings.measuringDelay else {
+            delayAgain = true
             return
         }
 
         findings.measuringDelay = true
-        let server = await toServer()
-        let warm = await through()
-        let cold = await fresh()
-        findings.delay = DelayBreakdown(toServer: server, through: warm, fresh: cold, measuredAt: Date())
+        defer { delayServer = nil }
+        repeat {
+            delayAgain = false
+            guard delayConnected, !Task.isCancelled else { break }
+            let current = generation
+            let server = await delayServer?()
+            let warm = await through()
+            let cold = await fresh()
+            if current == generation, !Task.isCancelled, delayConnected {
+                findings.delay = DelayBreakdown(toServer: server, through: warm, fresh: cold, measuredAt: Date())
+            }
+        } while delayAgain
         findings.measuringDelay = false
     }
 }

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.Xray;
@@ -30,7 +31,8 @@ public sealed record TunRequest(
     IReadOnlyList<string>? DirectPrograms = null,
     IReadOnlyList<string>? FakeIpPrograms = null,
     IReadOnlyList<string>? Routes = null,
-    TunSubnet? Subnet = null);
+    TunSubnet? Subnet = null,
+    IReadOnlyList<KillSwitchEndpoint>? TransportEndpoints = null);
 
 /// <summary>
 /// Сервер Hysteria2 или TUIC за ретранслятором (<see cref="SingBoxConfigBuilder.BuildRelay"/>): вход для Xray и адрес, к которому
@@ -143,6 +145,11 @@ public static class SingBoxConfigBuilder
         {
             throw new ArgumentOutOfRangeException(nameof(request), "Порт сервера должен быть от 1 до 65535");
         }
+        if (request.TransportEndpoints is { } endpoints
+            && (endpoints.Count > KillSwitchPolicy.MaxServers || endpoints.Any(endpoint => endpoint.Port is <= 0 or > 65535)))
+        {
+            throw new ArgumentException("Некорректные адреса транспорта", nameof(request));
+        }
 
         var connection = request.Connection;
         var protection = request.Protection;
@@ -224,7 +231,8 @@ public static class SingBoxConfigBuilder
         // (auto_detect_interface). Сайт на том же IP и другом порту остается в Xray, а не уходит мимо TUN.
         // Обычно сюда ничего не приходит: Xray и ретранслятор соединяются с сервером на внешнем интерфейсе сами (решение
         // 533). Правило — запас, если интерфейс не узнан: соединение не уйдет по кругу в Xray.
-        if (request.ServerAddresses.Count > 0)
+        var serverEndpoints = request.TransportEndpoints ?? [.. request.ServerAddresses.Select(address => new KillSwitchEndpoint(address, request.ServerPort))];
+        if (serverEndpoints.Count > 0)
         {
             var serverDirect = new JsonObject { ["type"] = "direct", ["tag"] = ServerDirectTag };
             if (OperatingSystem.IsLinux())
@@ -233,13 +241,16 @@ public static class SingBoxConfigBuilder
             }
 
             outbounds.Add(serverDirect);
-            rules.Add(new JsonObject
+            foreach (var group in serverEndpoints.Distinct().GroupBy(endpoint => endpoint.Port))
             {
-                ["ip_cidr"] = new JsonArray([.. request.ServerAddresses.Select(a =>
-                    (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32"))]),
-                ["port"] = request.ServerPort,
-                ["outbound"] = ServerDirectTag,
-            });
+                rules.Add(new JsonObject
+                {
+                    ["ip_cidr"] = new JsonArray([.. group.Select(endpoint => endpoint.Address).Select(address =>
+                        (JsonNode)(address.AddressFamily == AddressFamily.InterNetworkV6 ? $"{address}/128" : $"{address}/32"))]),
+                    ["port"] = group.Key,
+                    ["outbound"] = ServerDirectTag,
+                });
+            }
         }
 
         // Программа мимо туннеля пришла на адрес FakeDNS (DNS за нее спросила служба ОС через туннель):

@@ -207,7 +207,7 @@ public sealed class BackupPageTests : WindowHarness
         await page.ApplyAsync(BackupService.Read(file, Password));
 
         Loc.Instance.Language.ShouldBe("en");
-        shell.Toast.Text.ShouldBe("Restored: 0 servers, settings · 2 servers without keys skipped");
+        shell.Toast.Text.ShouldBe("Restored: 0 servers, settings · 2 servers skipped: matching keys could not be identified");
     }
 
     [AvaloniaFact]

@@ -244,3 +244,46 @@
   указан строкой `geosite.dat` в `components.json`.
 - Проверки: десктоп — коммит списка равен `geosite.version`, имена годятся в шаблон правила; Android и iOS — список в коде
   и ресурсах совпадает с общим файлом, ядро телефона получает домены сервиса.
+
+
+## 23.11.2026 — параметры XHTTP extra и VLESS Encryption
+
+- Задача: сохранять параметры подписки при разборе, хранении, передаче службе и сборке конфигурации трех платформ.
+- Проверен исходник закрепленного Xray-core `1b1647cd9ddf0abc34b981d4611fc03bcac1ca74` (26.10.21):
+  [infra/conf/vless.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/infra/conf/vless.go),
+  [infra/conf/transport_method.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/infra/conf/transport_method.go),
+  [transport/internet/memory_settings.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/transport/internet/memory_settings.go)
+  [main/commands/all/vlessenc.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/main/commands/all/vlessenc.go)
+  и [LICENSE](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/LICENSE), MPL-2.0. Прочитаны из кеша исходников закрепленного модуля.
+- Код не переносится: собственные ограниченные валидаторы воспроизводят формат параметров. Неизвестное шифрование не
+  подменяется `none`. XHTTP принимает известные поля с пределом размера и глубины; настройки файлов, сокетов и готового
+  конфига из extra не принимаются. Адреса отдельной загрузки проходят разрешение и точные правила защиты.
+- Общие синтетические примеры находятся в `shared/testdata/links/vless`; разбор и обратная запись проверяются на трех
+  платформах, структура конфигурации и защита хранилища — отдельными тестами. Содержимое extra с заголовками хранится
+  в защищенном конверте учетных данных, не в открытых метаданных SQLite и не в резервной копии без ключей.
+- Проверена граница журнала закрепленного libXray `756ef80f41903eaf7bbeeb38a0a1f802ec204464`:
+  [xray/ping_batch.go](https://github.com/XTLS/libXray/blob/756ef80f41903eaf7bbeeb38a0a1f802ec204464/xray/ping_batch.go)
+  и [LICENSE](https://github.com/XTLS/libXray/blob/756ef80f41903eaf7bbeeb38a0a1f802ec204464/LICENSE), MIT, прочитаны.
+  `pingBatch` берет только `outbounds` и создает отдельный Xray без пользовательского `log`: отключения журнала в
+  исходном конфиге недостаточно. Нативная консоль мобильного процесса закрывается до первого вызова с профилем, возвращенные
+  ошибки и закрытый канал журнала проходят собственную маскировку значений заголовков. Код libXray не переносится.
+  В `common/log/logger.go` закрепленного Xray консоль пишет через собственный `log.New` с `os.Stdout`/`os.Stderr`,
+  а не стандартный глобальный логгер Go; `invoke.go` и `ping_batch.go` возвращают ошибки без прямого `Print`.
+- Проверена инициализация закрепленного `golang.org/x/mobile@197770444867` (BSD-3-Clause):
+  [mobileinit_ios.go](https://github.com/golang/mobile/blob/197770444867/internal/mobileinit/mobileinit_ios.go)
+  и [mobileinit_android.go](https://github.com/golang/mobile/blob/197770444867/internal/mobileinit/mobileinit_android.go).
+  На Android инициализация переназначает дескрипторы и создает пересылку строк, поэтому изолированная проба повторно
+  закрывает консоль после безопасной инициализации. iOS не переназначает дескрипторы: постоянный приемник сохраняется.
+  Глобальный Go logger на iOS отдельно пишет в OSLog; защита здесь относится к самостоятельному logger Xray и
+  проверенному пути invoke/ping, а не обещает перехват любого возможного будущего `log.Print`. Код не переносится.
+
+## 23.11.2026 — имя фактически заблокированного соединения после FakeDNS/SNI
+
+- Проверены исходники и лицензия закрепленного Xray-core `1b1647cd9ddf0abc34b981d4611fc03bcac1ca74`, MPL-2.0:
+  `app/dispatcher/default.go`, `fakednssniffer.go`, `app/log/log.go`, `common/log/log.go`.
+  [Доказательство последовательности, ссылки на строки и границы приема](xray-block-events.md).
+- Пишем собственный обработчик существующего сообщения Info о выборе выхода `block`. Go-код не переносится,
+  ядро и его API не меняются, новые компоненты или лицензии не добавляются. Сырые посещения не попадают в общий журнал.
+- Проверки: `BlockedSiteNamedHistoryTests` — настоящий Xray, FakeDNS через HTTP/SOCKS и SNI в TLS ClientHello;
+  целевое имя восстанавливается самим ядром, а не угадывается по IP. Мобильные обработчики читают тот же формат
+  из закрытого pipe, с отдельными тестами распознавателя и жизненного цикла.

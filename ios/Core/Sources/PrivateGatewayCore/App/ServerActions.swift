@@ -4,7 +4,14 @@ public protocol TunnelControl: Sendable {
     /// Первое подключение спрашивает у пользователя разрешение на VPN; отказ — ошибка.
     func connect() async throws
 
+    /// Применить настройки, сохраняя текущий вид туннеля (удаленный VPN или местный фильтр).
+    func refresh() async throws
+
     func disconnect() async
+}
+
+extension TunnelControl {
+    public func refresh() async throws { try await connect() }
 }
 
 /// Действия окна над серверами — как `MainViewModel` Android: сервер выбирается только нажатием пользователя; работающая

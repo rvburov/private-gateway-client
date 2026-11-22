@@ -254,8 +254,7 @@ struct ImportView: View {
 
     /// Плашка предупреждения (.im-notice, Border.notice десктопа): warning.tint, рамка warning.line, текст small warning.badge.
     private func notice(_ lines: [String], identifier: String) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        return VStack(alignment: .leading, spacing: 2) {
+        PgBanner(compact: true, identifier: identifier) {
             ForEach(lines.indices, id: \.self) { index in
                 Text(lines[index])
                     .pgText(PgType.small)
@@ -263,13 +262,6 @@ struct ImportView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, PgSpace.m)
-        .padding(.horizontal, PgSpace.l)
-        .background(shape.fill(Color(PgColor.Status.Warning.tint)))
-        .overlay(shape.strokeBorder(Color(PgColor.Status.Warning.line), lineWidth: 1))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(identifier)
     }
 
     /// «Добавить N серверов» (.im-add): основная высотой 54 внизу экрана вне прокрутки; N — новых; новых нет — «Обновить защиту

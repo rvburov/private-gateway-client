@@ -135,7 +135,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         Protection: { AllTraffic: CheckState.Off, KillSwitch: CheckState.Off }
     };
 
-    public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
+    public string StatusSubtitle => Status.LocalSiteFilter && Status.State == ConnectionState.Connected ? Loc.Instance["status.filter.sub"]
+        : Status.IsPaused ? Loc.Instance["status.paused.sub"]
         : Protection.HasNetworkProblem ? Loc.Instance[Status.State switch
         {
             ConnectionState.Reconnecting => "status.offline.waiting",
@@ -309,7 +310,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     public bool HasChipInfo => SelectedChip is not null;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CheckedText), nameof(HasCheckAction))]
+    [NotifyPropertyChangedFor(nameof(CheckedText), nameof(HasCheckAction), nameof(WebIpMeta))]
     public partial bool IsChecking { get; private set; }
 
     public string CheckedText
@@ -404,6 +405,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     public bool CanCopyIp => WebIp != IpPlaceholder && !IsIpMasked;
 
     public string WebIpMeta => Protection.HasNetworkProblem ? Loc.Instance["ip.meta.offline"]
+        : Status.State == ConnectionState.Connected && !Status.IsPaused && Status.Exit.Ip is null
+            ? Loc.Instance[IsChecking || _settings.Current.Protection.CheckLeaksAfterConnect ? "ip.meta.measuring" : "ip.meta.notMeasured"]
+        : Status.LocalSiteFilter ? Loc.Instance["ip.meta.filter"]
         : Status.IsPaused ? Loc.Instance["ip.meta.paused"] : Status.State switch
         {
             ConnectionState.Connected when Status.IsProxy => string.Join(" · ",
@@ -431,7 +435,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string RealIp => Mask(Status.Exit.DirectIp ?? IpPlaceholder);
 
-    public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak
+    public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak || Status.LocalSiteFilter
         ? Loc.Instance["ip.real.visible"]
         : Status.Protection.AllTraffic == CheckState.Off ? Loc.Instance["ip.real.unprotected"]
         : Status.Mode == ConnectionMode.Proxy ? Loc.Instance["externalProxy.ip.real"]
@@ -454,13 +458,15 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool HasServer => Server is not null;
 
-    public string ServerTitle => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
+    public string ServerTitle => Status.LocalSiteFilter ? Loc.Instance["block.local.title"]
+        : Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
         ? Loc.Instance["externalProxy.title"] : Server is { } s
         ? ServerNameDisplay.Format(s.Name)
         : Status is { Mode: ConnectionMode.Proxy, State: not ConnectionState.Off } ? Loc.Instance["externalProxy.title"]
         : Loc.Instance[IsExternalProxy ? "externalProxy.unconfigured" : "server.none"];
 
-    public string ServerMeta => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
+    public string ServerMeta => Status.LocalSiteFilter ? Loc.Instance["status.filter.sub"]
+        : Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
         ? Loc.Instance.Format("externalProxy.meta", ExternalProtocol(external),
             external.Host.Contains(':', StringComparison.Ordinal) ? "[" + external.Host + "]" : external.Host, external.Port)
         : Server is { } s ? Describe(s, withPort: true)
@@ -649,7 +655,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         var paused = Status.IsPaused;
         // Одинаковое Warning бывает у раздельного режима, измеренного открытого IP и потери firewall.
         Chips[0].Update(protection.AllTraffic, paused,
-            Status.Mode != ConnectionMode.Vpn || protection.AllTraffic != CheckState.Warning ? null
+            Status.LocalSiteFilter && Status.State == ConnectionState.Connected ? "local_filter"
+            : Status.Mode != ConnectionMode.Vpn || protection.AllTraffic != CheckState.Warning ? null
             : Status.HasExitIpLeak ? "same_ip"
             : Status.ErrorCode == ErrorCodes.KillSwitchFailed ? "firewall"
             : _settings.Current.Routing is { } routing && (routing.HasBypassApps || routing.HasBypassSites) ? "split"
@@ -709,7 +716,8 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    public string Title => Id == "dns" ? Loc.Instance[Variant == "proxy" && !IsPaused ? "desktop.check.dns.proxy.title" : "desktop.check.dns.title"]
+    public string Title => Id == "all" && Variant == "local_filter" && !IsPaused ? Loc.Instance["check.all_traffic.local_filter.title"]
+        : Id == "dns" ? Loc.Instance[Variant == "proxy" && !IsPaused ? "desktop.check.dns.proxy.title" : "desktop.check.dns.title"]
         : Loc.Instance[Variant is { } variant && !IsPaused && Loc.Instance.Has($"check.{Id}.{variant}.title")
         ? $"check.{Id}.{variant}.title"
         : $"check.{Id}.title"];
@@ -723,9 +731,11 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     /// </summary>
     public string? Variant { get; private set; }
 
-    public string Value => Loc.Instance[$"{(Id == "dns" ? "desktop.check.dns" : "check." + Id)}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
+    public string Value => Id == "all" && Variant == "local_filter" && !IsPaused ? Loc.Instance["check.all_traffic.local_filter"]
+        : Loc.Instance[$"{(Id == "dns" ? "desktop.check.dns" : "check." + Id)}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
 
-    public string Text => Id == "dns" ? Loc.Instance[$"desktop.check.dns.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}.text"]
+    public string Text => Id == "all" && Variant == "local_filter" && !IsPaused ? Loc.Instance["check.all_traffic.local_filter.text"]
+        : Id == "dns" ? Loc.Instance[$"desktop.check.dns.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}.text"]
         : Variant is { } variant && !IsPaused ? Loc.Instance[$"check.{Id}.{variant}.text"]
         // Windows под блоком пишет у сети «Нет подключения к Интернету» — пользователь 2026-11-05 принял это за поломку.
         : Id == "ks" && OperatingSystem.IsWindows() ? Loc.Instance["check.ks.text.windows"]

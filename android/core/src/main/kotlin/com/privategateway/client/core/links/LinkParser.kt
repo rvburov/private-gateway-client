@@ -8,6 +8,7 @@ import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportOptions
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.servers.TransportParameterRules
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -134,7 +135,7 @@ object LinkParser {
         firstError(endpoint.error, transport.error, security.error)?.let { return fail(it) }
 
         val encryption = query(parts.query, "encryption")
-        if (encryption != null && encryption != "none") {
+        if (!TransportParameterRules.validEncryption(encryption)) {
             return fail(ImportErrors.UNSUPPORTED_PARAMETER)
         }
 
@@ -144,7 +145,7 @@ object LinkParser {
         } else {
             ok(
                 parts.name, ProxyProtocol.Vless, endpoint.host, endpoint.port, transport.value, security.value,
-                ProtocolOptions.Empty.copy(flow = query(parts.query, "flow")), ServerCredentials(uuid = uuid),
+                ProtocolOptions.Empty.copy(flow = query(parts.query, "flow"), encryption = encryption?.takeUnless { it == "none" }), ServerCredentials(uuid = uuid),
             )
         }
     }
@@ -172,6 +173,8 @@ object LinkParser {
         query["alpn"] = ConfigTree.text(root, "alpn") ?: ""
         query["pcs"] = ConfigTree.text(root, "pcs") ?: ""
         query["vcn"] = ConfigTree.text(root, "vcn") ?: ""
+        query["mode"] = ConfigTree.text(root, "mode") ?: ""
+        if (root.containsKey("extra")) query["extra"] = root["extra"] as? String ?: TransportParameterRules.encodeExtra(root["extra"]) ?: "null"
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"]!!
         return vmessFrom(
@@ -444,6 +447,12 @@ object LinkParser {
             else -> return Checked(TransportOptions.Tcp, ImportErrors.UNSUPPORTED_TRANSPORT)
         }
 
+        val extra = query(query, "extra")
+        val normalizedExtra = TransportParameterRules.normalizeExtra(extra)
+        if (extra != null && (kind != TransportKind.Xhttp || normalizedExtra == null)) {
+            return Checked(TransportOptions.Tcp, ImportErrors.UNSUPPORTED_PARAMETER)
+        }
+
         val grpc = kind == TransportKind.Grpc
         return Checked(
             if (kind == TransportKind.Tcp) {
@@ -456,6 +465,7 @@ object LinkParser {
                     if (grpc) query(query, "serviceName") else null,
                     // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
                     query(query, "mode")?.lowercase(Locale.ROOT)?.takeIf { kind == TransportKind.Xhttp && it in TransportOptions.XHTTP_MODES },
+                    normalizedExtra,
                 )
             },
             null,

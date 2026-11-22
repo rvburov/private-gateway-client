@@ -3,6 +3,7 @@ package com.privategateway.client.di
 import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.data.BlockedSites
 import com.privategateway.client.notify.ProtectionNotifier
 import com.privategateway.client.subscriptions.SubscriptionBackground
 import com.privategateway.client.subscriptions.SubscriptionUpdater
@@ -11,6 +12,7 @@ import com.privategateway.client.updates.AppUpdates
 import com.privategateway.client.vpn.NetworkAccess
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.vpn.TunnelJournal
+import com.privategateway.client.vpn.LatencyWorker
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -37,6 +39,10 @@ interface AppEntryPoint {
     fun access(): NetworkAccess
 
     fun account(): AccountRepository
+
+    fun blockedSites(): BlockedSites
+
+    fun latencyWorker(): LatencyWorker
 
     /** Обновление приложения: итог установки от Android приходит в приемник (UpdateInstallReceiver). */
     fun updates(): AppUpdates

@@ -567,6 +567,7 @@ fun PgInput(
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     visual: VisualTransformation = VisualTransformation.None,
     actions: KeyboardActions = KeyboardActions.Default,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(PgRadius.Input)
     val interaction = remember { MutableInteractionSource() }
@@ -587,16 +588,20 @@ fun PgInput(
             .clip(shape)
             .background(PgColor.Surface.Solid)
             .border(if (focused) 1.5.dp else 1.dp, if (focused) PgColor.Accent.Base else PgColor.Line.Strong, shape)
-            .padding(horizontal = PgSpace.L, vertical = if (singleLine) PgSpace.L else PgSpace.M)
+            .padding(start = PgSpace.L, end = if (trailing == null) PgSpace.L else PgSpace.Xxs,
+                top = if (trailing != null) PgSpace.Xxs else if (singleLine) PgSpace.L else PgSpace.M,
+                bottom = if (trailing != null) PgSpace.Xxs else if (singleLine) PgSpace.L else PgSpace.M)
             .semantics { contentDescription = label }
             .testTag(tag),
         decorationBox = { field ->
-            Box {
-                if (value.isEmpty() && placeholder != null) {
-                    Text(placeholder, color = PgColor.Text.Muted, style = style)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (value.isEmpty() && placeholder != null) {
+                        Text(placeholder, color = PgColor.Text.Muted, style = style)
+                    }
+                    field()
                 }
-
-                field()
+                trailing?.invoke()
             }
         },
     )
@@ -628,18 +633,5 @@ fun PgPageHeader(title: String, onBack: () -> Unit, action: PgHeaderAction? = nu
 /** Кнопка-значок заголовка: при нажатии значок синеет и кнопка сжимается до 0,98, без заливки (решение 485). */
 @Composable
 private fun HeaderAction(action: PgHeaderAction) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    Box(
-        Modifier
-            .size(PgLayout.TouchTarget)
-            .scale(if (pressed) 0.98f else 1f)
-            .clip(RoundedCornerShape(PgRadius.Button))
-            .clickable(interactionSource = interaction, indication = null, onClickLabel = action.label, role = Role.Button, onClick = action.onClick)
-            .semantics { contentDescription = action.label }
-            .testTag(action.tag),
-        contentAlignment = Alignment.Center,
-    ) {
-        PgIcon(action.icon, null, color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary, size = 22.dp, strokeWidth = 2f)
-    }
+    PgIconButton(action.icon, action.label, action.tag, action.onClick, size = 22.dp)
 }

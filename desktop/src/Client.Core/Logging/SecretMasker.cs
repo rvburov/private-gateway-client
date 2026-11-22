@@ -1,3 +1,5 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace PrivateGateway.Client.Core.Logging;
@@ -9,8 +11,61 @@ namespace PrivateGateway.Client.Core.Logging;
 /// </summary>
 public static partial class SecretMasker
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     /// <summary>Чем заменяется скрытая часть.</summary>
     public const string Hidden = "[скрыто]";
+
+    /// <summary>Значения известных учетных данных, в том числе формы из ошибок URL и JSON.</summary>
+    public static IReadOnlyList<string> KnownVariants(IEnumerable<string?> secrets)
+    {
+        var values = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var secret in secrets.OfType<string>().Where(s => s.Length > 0))
+        {
+            Add(secret);
+            var trimmed = secret.Trim();
+            if (trimmed.Length > 0)
+            {
+                Add(trimmed);
+                if (trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+                {
+                    Add(trimmed[(trimmed.IndexOf(' ') + 1)..].Trim());
+                }
+            }
+        }
+
+        return [.. values.OrderByDescending(s => s.Length)];
+
+        void Add(string value)
+        {
+            if (value.Length == 0)
+            {
+                return;
+            }
+
+            values.Add(value);
+            values.Add(JsonSerializer.Serialize(value)[1..^1]);
+            var json = JsonSerializer.Serialize(value, JsonOptions)[1..^1];
+            values.Add(json);
+            values.Add(json.Replace("/", "\\/", StringComparison.Ordinal));
+            var uri = Uri.EscapeDataString(value);
+            values.Add(uri);
+            values.Add(uri.Replace("%20", "+", StringComparison.Ordinal));
+            values.Add(Regex.Replace(uri, "%[A-Fa-f0-9]{2}", m => m.Value.ToLowerInvariant(), RegexOptions.CultureInvariant));
+        }
+    }
+
+    /// <summary>Сначала скрыть учетные данные активного профиля, затем применить общие правила отчета.</summary>
+    public static string Mask(string? text, IEnumerable<string?> knownSecrets)
+    {
+        var result = text ?? string.Empty;
+        foreach (var secret in KnownVariants(knownSecrets))
+        {
+            result = secret.Length >= 4 ? result.Replace(secret, Hidden, StringComparison.Ordinal)
+                : Regex.Replace(result, $@"(?<![\p{{L}}\p{{N}}_]){Regex.Escape(secret)}(?![\p{{L}}\p{{N}}_])", _ => Hidden, RegexOptions.CultureInvariant);
+        }
+
+        return Mask(result);
+    }
 
     /// <summary>Строка без секретов. Порядок правил важен: сначала ссылки целиком.</summary>
     public static string Mask(string? text)

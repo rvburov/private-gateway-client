@@ -63,6 +63,14 @@ data class StateLook(
     @param:StringRes val title: Int,
 ) {
     companion object {
+        fun localFilter(look: StateLook): StateLook = look.copy(
+            ring = PgState.Blocked.Ring,
+            icon = PgColor.Status.Caution.Text,
+            tint = PgColor.Status.Caution.Tint,
+            power = R.string.block_local_badge,
+            title = R.string.block_local_title,
+            mark = PgIcons.Warning,
+        )
         /** «Нет сети» поверх вида состояния: тон и знак блокировки (трафик стоит), заголовок «Нет сети». */
         fun offline(look: StateLook): StateLook = look.copy(
             ring = PgState.Blocked.Ring,

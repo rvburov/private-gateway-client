@@ -1,0 +1,18 @@
+{
+  "protocol": "vless",
+  "name": "Encrypted",
+  "host": "192.0.2.2",
+  "port": 443,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "encryption": "mlkem768x25519plus.native.1rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

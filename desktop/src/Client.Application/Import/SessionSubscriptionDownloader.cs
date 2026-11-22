@@ -14,9 +14,10 @@ public sealed class SessionSubscriptionDownloader(ISubscriptionDownloader direct
     public async Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
     {
         var initial = gateway.Status;
-        var throughCore = initial.State == ConnectionState.Connected && !initial.IsPaused;
+        var throughCore = initial.State == ConnectionState.Connected && !initial.IsPaused && !initial.LocalSiteFilter;
+        var localDirect = initial.LocalSiteFilter && initial.State == ConnectionState.Connected && !initial.IsPaused;
         if ((requireVpn && (!throughCore || initial.Mode != ConnectionMode.Vpn))
-            || (initial.State != ConnectionState.Off && !throughCore))
+            || (initial.State != ConnectionState.Off && !throughCore && !localDirect))
         {
             gateway.ReportSubscriptionAttempt(DownloadFailure.Connection, null, 0, TimeSpan.Zero, false);
             throw new SubscriptionDownloadException(DownloadFailure.Connection);
@@ -128,6 +129,6 @@ public sealed class SessionSubscriptionDownloader(ISubscriptionDownloader direct
         || failure == DownloadFailure.Status && statusCode is 408 or 429 or 500 or 502 or 503 or 504;
 
     private static bool SameSession(ConnectionStatus before, ConnectionStatus after) =>
-        (before.State, before.Mode, before.ServerId, before.Since, before.IsPaused)
-        == (after.State, after.Mode, after.ServerId, after.Since, after.IsPaused);
+        (before.State, before.Mode, before.ServerId, before.Since, before.IsPaused, before.LocalSiteFilter)
+        == (after.State, after.Mode, after.ServerId, after.Since, after.IsPaused, after.LocalSiteFilter);
 }

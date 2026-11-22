@@ -83,6 +83,13 @@ private final class Protection: @unchecked Sendable {
 /// под защитой не меряется, порция, во время которой началось подключение, отбрасывается, второе нажатие не считается,
 /// отказ ядра записывается как отказ.
 final class LatencyMeterTests: XCTestCase {
+    func testFreshnessRejectsExpiredFutureAndUnmeasuredResults() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertTrue(LatencyFreshness.isFresh(now.addingTimeInterval(-299), now: now))
+        XCTAssertFalse(LatencyFreshness.isFresh(now.addingTimeInterval(-300), now: now))
+        XCTAssertFalse(LatencyFreshness.isFresh(now.addingTimeInterval(1), now: now))
+        XCTAssertFalse(LatencyFreshness.isFresh(nil, now: now))
+    }
     private let core = FakeCore()
     private let protection = Protection()
     private lazy var servers = ServerStore(file: MemoryFile(), vault: MemoryVault())
@@ -192,6 +199,36 @@ final class LatencyMeterTests: XCTestCase {
         XCTAssertEqual(result, .done)
         XCTAssertEqual(seen.values, [5, 7], "окно перечитывает список после каждой порции")
         XCTAssertEqual(supported.count, 7)
+    }
+
+    func testAnIsolatedAppProcessCanMeasureWithAStableProtectedContext() async throws {
+        let (supported, _) = try await fill()
+        protection.connect()
+        let meter = LatencyMeter(
+            servers: servers, settings: settings, off: { false }, ping: { [core] in await core.ping($0) }, context: { "vpn-session-a" }
+        )
+        let result = await meter.measure()
+        XCTAssertEqual(result, .done)
+        let measured = try await latencies()
+        XCTAssertTrue(supported.allSatisfy { measured[$0]??.ms != nil })
+        XCTAssertEqual(core.calls, [5, 2])
+    }
+
+    func testResultsFromAChangedPathAreNeverPublishedOrStored() async throws {
+        let (supported, _) = try await fill()
+        let context = Protection()
+        core.during = { context.connect() }
+        let meter = LatencyMeter(
+            servers: servers, settings: settings, off: { true }, ping: { [core] in await core.ping($0) },
+            context: { context.off ? "old-network" : "new-network" }
+        )
+        let seen = Seen()
+        let result = await meter.measure(results: { results in seen.add(results.values.filter { $0.ms != nil }.count) })
+        XCTAssertEqual(result, .busy)
+        XCTAssertEqual(core.calls, [5])
+        let measured = try await latencies()
+        XCTAssertTrue(supported.allSatisfy { measured[$0] ?? nil == nil })
+        XCTAssertEqual(seen.values, [0], "разрешен только предварительный итог неподдерживаемых профилей")
     }
 }
 

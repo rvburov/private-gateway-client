@@ -324,9 +324,10 @@ public sealed class SubscriptionUpdateTests : IDisposable
         using (var connection = new SqliteDatabase(_paths).Open())
         using (var command = connection.CreateCommand())
         {
-            // База до миграции 5 — без колонок 0006–0007 и очереди очистки 0010.
+            // База до миграции 5 — без колонок 0006–0007, очереди очистки 0010 и истории 0011.
             command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; "
-                + "ALTER TABLE servers DROP COLUMN exit_ip; ALTER TABLE servers DROP COLUMN latency_failure; ALTER TABLE servers DROP COLUMN latency_diagnostic; ALTER TABLE servers DROP COLUMN latency_checked_at; DROP TABLE retired_secret_keys; PRAGMA user_version = 4;";
+                + "ALTER TABLE servers DROP COLUMN exit_ip; ALTER TABLE servers DROP COLUMN latency_failure; ALTER TABLE servers DROP COLUMN latency_diagnostic; ALTER TABLE servers DROP COLUMN latency_checked_at; "
+                + "ALTER TABLE servers DROP COLUMN last_success_latency_ms; ALTER TABLE servers DROP COLUMN last_success_latency_at; DROP TABLE retired_secret_keys; PRAGMA user_version = 4;";
             command.ExecuteNonQuery();
         }
 

@@ -191,6 +191,7 @@ final class LinkParserTests: XCTestCase {
         put(&transport, "host", s.transport.host)
         put(&transport, "serviceName", s.transport.serviceName)
         put(&transport, "mode", s.transport.mode)
+        put(&transport, "extraJson", s.transport.extraJson)
         json["transport"] = transport
 
         var security: [String: Any] = ["kind": s.security.kind.rawValue]
@@ -210,6 +211,7 @@ final class LinkParserTests: XCTestCase {
 
         var options: [String: Any] = [:]
         put(&options, "flow", s.options.flow)
+        put(&options, "encryption", s.options.encryption)
         put(&options, "cipher", s.options.cipher)
         put(&options, "obfs", s.options.obfs)
         put(&options, "congestionControl", s.options.congestionControl)

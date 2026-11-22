@@ -173,6 +173,7 @@ public class LinkParserTests
         Put(transport, "host", s.Transport.Host);
         Put(transport, "serviceName", s.Transport.ServiceName);
         Put(transport, "mode", s.Transport.Mode);
+        Put(transport, "extraJson", s.Transport.ExtraJson);
         json["transport"] = transport;
 
         var security = new JsonObject { ["kind"] = s.Security.Kind.ToString().ToLowerInvariant() };
@@ -189,6 +190,7 @@ public class LinkParserTests
 
         var options = new JsonObject();
         Put(options, "flow", s.Options.Flow);
+        Put(options, "encryption", s.Options.Encryption);
         Put(options, "cipher", s.Options.Cipher);
         Put(options, "obfs", s.Options.Obfs);
         Put(options, "congestionControl", s.Options.CongestionControl);

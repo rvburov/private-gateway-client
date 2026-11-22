@@ -176,6 +176,7 @@ class LinkParserTest {
         put(transport, "host", s.transport.host)
         put(transport, "serviceName", s.transport.serviceName)
         put(transport, "mode", s.transport.mode)
+        put(transport, "extraJson", s.transport.extraJson)
         json["transport"] = JsonObject(transport)
 
         val security = LinkedHashMap<String, JsonElement>()
@@ -196,6 +197,7 @@ class LinkParserTest {
 
         val options = LinkedHashMap<String, JsonElement>()
         put(options, "flow", s.options.flow)
+        put(options, "encryption", s.options.encryption)
         put(options, "cipher", s.options.cipher)
         put(options, "obfs", s.options.obfs)
         put(options, "congestionControl", s.options.congestionControl)

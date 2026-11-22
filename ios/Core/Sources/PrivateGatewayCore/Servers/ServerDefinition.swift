@@ -30,7 +30,7 @@ public enum TransportSecurity: String, Sendable {
 }
 
 /// Транспорт: вид, путь, заголовок Host, имя сервиса gRPC; `mode` — режим XHTTP (`xhttpModes`), не задан — выбирает ядро.
-public struct TransportOptions: Equatable, Hashable, Sendable {
+public struct TransportOptions: Equatable, Hashable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     /// Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны.
     public static let xhttpModes: Set<String> = ["auto", "packet-up", "stream-up", "stream-one"]
 
@@ -39,14 +39,19 @@ public struct TransportOptions: Equatable, Hashable, Sendable {
     public var host: String?
     public var serviceName: String?
     public var mode: String?
+    public var extraJson: String?
 
-    public init(_ kind: TransportKind, path: String? = nil, host: String? = nil, serviceName: String? = nil, mode: String? = nil) {
+    public init(_ kind: TransportKind, path: String? = nil, host: String? = nil, serviceName: String? = nil, mode: String? = nil, extraJson: String? = nil) {
         self.kind = kind
         self.path = path
         self.host = host
         self.serviceName = serviceName
         self.mode = mode
+        self.extraJson = extraJson
     }
+
+    public var description: String { "TransportOptions { kind=\(kind), extra=*** }" }
+    public var debugDescription: String { description }
 
     public static let tcp = TransportOptions(.tcp)
     public static let quic = TransportOptions(.quic)
@@ -104,6 +109,7 @@ public struct ProtocolOptions: Equatable, Hashable, Sendable {
     public var peerPublicKey: String?
     public var addresses: [String]?
     public var mtu: Int?
+    public var encryption: String?
 
     public init(
         flow: String? = nil,
@@ -112,7 +118,8 @@ public struct ProtocolOptions: Equatable, Hashable, Sendable {
         congestionControl: String? = nil,
         peerPublicKey: String? = nil,
         addresses: [String]? = nil,
-        mtu: Int? = nil
+        mtu: Int? = nil,
+        encryption: String? = nil
     ) {
         self.flow = flow
         self.cipher = cipher
@@ -121,6 +128,7 @@ public struct ProtocolOptions: Equatable, Hashable, Sendable {
         self.peerPublicKey = peerPublicKey
         self.addresses = addresses
         self.mtu = mtu
+        self.encryption = encryption
     }
 
     public static let empty = ProtocolOptions()

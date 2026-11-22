@@ -23,6 +23,89 @@ public sealed class ServiceGatewayClientSyncTests
         TransportSecurity.Reality, "203.0.113.10", 443, "tcp", null);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Latency_uses_progress_stream_and_falls_back_only_when_the_old_service_lacks_it(bool oldService)
+    {
+        var calls = new FakeCalls(ConnectionStatus.Initial(Started), accepted: false) { LegacyLatencyOnly = oldService };
+        var definition = new ServerDefinition("Тест", "", ProxyProtocol.Vless, "203.0.113.10", 443,
+            TransportOptions.Tcp, SecurityOptions.None, ProtocolOptions.Empty,
+            new ServerCredentials(Uuid: "11111111-2222-3333-4444-555555555555"));
+        using var client = new ServiceGatewayClient(GrpcChannel.ForAddress("http://127.0.0.1"), ServiceKind.Installed,
+            _ => definition, () => AppSettings.Default, new FakeTimeProvider(Started), calls: calls);
+        var results = new List<KeyValuePair<string, LatencyResult>>();
+
+        await foreach (var item in client.MeasureLatencyProgressAsync(["srv"], TestContext.Current.CancellationToken))
+        {
+            results.Add(item);
+        }
+
+        var result = results.ShouldHaveSingleItem();
+        result.Key.ShouldBe("srv");
+        result.Value.Milliseconds.ShouldBe(77);
+        calls.LatencyStreamReads.ShouldBe(1);
+        calls.LatencyUnaryReads.ShouldBe(oldService ? 1 : 0, "новая служба не должна повторять всю серию после потока");
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Latency_after_sign_out_or_pending_cleanup_reads_no_profile_secrets_and_makes_no_measurement_rpc(bool signedOut, bool pending)
+    {
+        var calls = new FakeCalls(ConnectionStatus.Initial(Started), accepted: false);
+        var reads = 0;
+        using var client = new ServiceGatewayClient(GrpcChannel.ForAddress("http://127.0.0.1"), ServiceKind.Installed,
+            _ => { reads++; return null; }, () => AppSettings.Default with { AccountSignedOut = signedOut, AccountNetworkResetPending = pending },
+            new FakeTimeProvider(Started), calls: calls);
+
+        (await client.MeasureLatencyAsync(["srv"], TestContext.Current.CancellationToken)).ShouldBeEmpty();
+        await foreach (var _ in client.MeasureLatencyProgressAsync(["srv"], TestContext.Current.CancellationToken))
+        {
+            Assert.Fail("после выхода фоновых результатов быть не должно");
+        }
+
+        reads.ShouldBe(0);
+        calls.LatencyStreamReads.ShouldBe(0);
+        calls.LatencyUnaryReads.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("vless/encryption-mlkem", false)]
+    [InlineData("vless/encryption-mlkem", true)]
+    [InlineData("vless/xhttp-extra", false)]
+    [InlineData("vless/xhttp-extra", true)]
+    public async Task Latency_never_silently_drops_extended_fields_when_falling_back_to_the_old_unary_rpc(string fixture, bool supported)
+    {
+        var calls = new FakeCalls(ConnectionStatus.Initial(Started), accepted: false)
+        {
+            LegacyLatencyOnly = true,
+            SupportsExtendedTransport = supported,
+        };
+        var definition = XrayConfigTests.Link(fixture);
+        using var client = new ServiceGatewayClient(GrpcChannel.ForAddress("http://127.0.0.1"), ServiceKind.Installed,
+            _ => definition, () => AppSettings.Default, new FakeTimeProvider(Started), calls: calls);
+        var results = new List<KeyValuePair<string, LatencyResult>>();
+
+        await foreach (var item in client.MeasureLatencyProgressAsync(["srv"], TestContext.Current.CancellationToken))
+        {
+            results.Add(item);
+        }
+
+        var result = results.ShouldHaveSingleItem().Value;
+        if (supported)
+        {
+            result.Milliseconds.ShouldBe(77);
+            calls.LatencyUnaryReads.ShouldBe(1);
+        }
+        else
+        {
+            result.Failure.ShouldBe(LatencyFailure.Unsupported);
+            calls.LatencyStreamReads.ShouldBe(0);
+            calls.LatencyUnaryReads.ShouldBe(0, "старой службе нельзя передать профиль, который она поймет лишь частично");
+        }
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task Connect_refreshes_the_previous_error_before_returning_even_if_watch_is_delayed(bool accepted)
@@ -234,6 +317,10 @@ public sealed class ServiceGatewayClientSyncTests
         private ConnectionStatus _actual = actual;
         private readonly ConnectionStatus _connected = actual;
         public int StatusReads { get; private set; }
+        public bool LegacyLatencyOnly { get; init; }
+        public bool SupportsExtendedTransport { get; init; }
+        public int LatencyStreamReads { get; private set; }
+        public int LatencyUnaryReads { get; private set; }
         public StatusCode? CheckFailure { get; init; }
         public StatusCode? CompareFailure { get; init; }
         public string FailureDetail { get; init; } = "Сбой проверки";
@@ -261,10 +348,30 @@ public sealed class ServiceGatewayClientSyncTests
                 "GetStatus" => ReadStatus(),
                 "PauseForCaptivePortal" => Pause((V1.CaptivePauseRequest)(object)request),
                 "Disconnect" => Disconnect(options),
+                "MeasureLatency" => ReadLatency((V1.MeasureLatencyRequest)(object)request),
+                "GetServiceInfo" => ReadInfo(),
                 _ => throw new NotSupportedException(method.Name),
             };
             return new AsyncUnaryCall<TResponse>(Task.FromResult((TResponse)reply), Task.FromResult(new Metadata()),
                 () => Status.DefaultSuccess, () => new Metadata(), () => { });
+        }
+
+        private V1.MeasureLatencyReply ReadLatency(V1.MeasureLatencyRequest request)
+        {
+            LatencyUnaryReads++;
+            var reply = new V1.MeasureLatencyReply();
+            reply.Results.AddRange(request.Targets.Select(target => new LatencyResult(77, null).ToContract(target.Id)));
+            return reply;
+        }
+
+        private V1.ServiceInfo ReadInfo()
+        {
+            var info = new V1.ServiceInfo { ServiceVersion = "0.3.1", ApiVersion = "1", Os = "test" };
+            if (SupportsExtendedTransport)
+            {
+                info.Capabilities.Add("extended-transports-v1");
+            }
+            return info;
         }
 
         private V1.Status ReadStatus()
@@ -295,8 +402,18 @@ public sealed class ServiceGatewayClientSyncTests
         }
 
         public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method,
-            string? host, CallOptions options, TRequest request) => new(new Reader<TResponse>(method.Name == "WatchStatus" ? _statuses.Reader : null),
+            string? host, CallOptions options, TRequest request)
+        {
+            if (method.Name == "MeasureLatencyProgress")
+            {
+                LatencyStreamReads++;
+                return new AsyncServerStreamingCall<TResponse>(new LatencyReader<TResponse>(LegacyLatencyOnly,
+                    ((V1.MeasureLatencyRequest)(object)request).Targets.Select(target => new LatencyResult(77, null).ToContract(target.Id)).ToArray()),
+                    Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => new Metadata(), () => { });
+            }
+            return new AsyncServerStreamingCall<TResponse>(new Reader<TResponse>(method.Name == "WatchStatus" ? _statuses.Reader : null),
                 Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => new Metadata(), () => { });
+        }
 
         public override TResponse BlockingUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host,
             CallOptions options, TRequest request) => throw new NotSupportedException();
@@ -306,6 +423,26 @@ public sealed class ServiceGatewayClientSyncTests
 
         public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method,
             string? host, CallOptions options) => throw new NotSupportedException();
+    }
+
+    private sealed class LatencyReader<T>(bool legacy, IReadOnlyList<V1.LatencyResult> results) : IAsyncStreamReader<T>
+    {
+        private int _index;
+        public T Current { get; private set; } = default!;
+        public Task<bool> MoveNext(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (legacy)
+            {
+                throw new RpcException(new Status(StatusCode.Unimplemented, "старая служба"));
+            }
+            if (_index >= results.Count)
+            {
+                return Task.FromResult(false);
+            }
+            Current = (T)(object)results[_index++];
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class Reader<T>(ChannelReader<V1.Status>? reader) : IAsyncStreamReader<T>

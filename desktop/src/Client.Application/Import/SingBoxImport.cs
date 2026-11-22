@@ -85,6 +85,7 @@ internal static class SingBoxImport
                 return null;
             case "vless":
                 Put(query, "flow", Text(node, "flow"));
+                Put(query, "encryption", Text(node, "encryption"));
                 return Server(ProxyProtocol.Vless, [Text(node, "uuid")], host, port, query, name);
             case "vmess":
                 return LinkParser.VmessFrom(name, host, port, Text(node, "alter_id"), Text(node, "security"), null, query, Text(node, "uuid"));
@@ -168,6 +169,7 @@ internal static class SingBoxImport
         Put(query, "host", Header(Object(transport, "headers"), "Host") ?? Text(transport, "host"));
         Put(query, "serviceName", Text(transport, "service_name"));
         Put(query, "mode", Text(transport, "mode"));
+        Put(query, "extra", transport["extra"]?.ToJsonString());
     }
 
     /// <summary>

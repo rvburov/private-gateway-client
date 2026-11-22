@@ -113,6 +113,57 @@ internal static class ClashImport
         Put(query, "host", Header(Object(ws, "headers"), "Host") ?? Text(xhttp, "host"));
         Put(query, "serviceName", Text(Object(node, "grpc-opts"), "grpc-service-name"));
         Put(query, "mode", Text(xhttp, "mode"));
+        Put(query, "extra", Extra(xhttp?["extra"]));
+    }
+
+    private static string? Extra(JsonNode? node)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        if (node is JsonValue text && text.TryGetValue<string>(out var json))
+        {
+            return json;
+        }
+
+        return Convert(node).ToJsonString();
+
+        static JsonNode Convert(JsonNode value, string? key = null)
+        {
+            if (key == "headers")
+            {
+                return value.DeepClone();
+            }
+
+            if (value is JsonObject fields)
+            {
+                return new JsonObject(fields.Select(field => new KeyValuePair<string, JsonNode?>(field.Key,
+                    field.Value is null ? null : Convert(field.Value, field.Key))));
+            }
+
+            if (value is JsonArray list)
+            {
+                return new JsonArray([.. list.Select(item => item?.DeepClone())]);
+            }
+
+            if (value is JsonValue scalar && scalar.TryGetValue<string>(out var text))
+            {
+                if (key is "noGRPCHeader" or "noSSEHeader" or "xPaddingObfsMode" && bool.TryParse(text, out var flag))
+                {
+                    return JsonValue.Create(flag)!;
+                }
+
+                if (key is "port" or "scMaxBufferedPosts" or "serverMaxHeaderBytes" or "hKeepAlivePeriod"
+                    && long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number))
+                {
+                    return JsonValue.Create(number)!;
+                }
+            }
+
+            return value.DeepClone();
+        }
     }
 
     /// <summary>WireGuard: поля сервера или один peers; AmneziaWG ядро не поддерживает.</summary>

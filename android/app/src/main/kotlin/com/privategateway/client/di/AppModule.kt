@@ -36,6 +36,8 @@ import com.privategateway.client.vpn.ByteCounters
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.DeviceTunnelDelay
 import com.privategateway.client.vpn.LibXrayEngine
+import com.privategateway.client.vpn.LatencyWorker
+import com.privategateway.client.vpn.IsolatedLatencyWorker
 import com.privategateway.client.vpn.NetworkDns
 import com.privategateway.client.vpn.ServiceTunnelControl
 import com.privategateway.client.vpn.SystemNetworkDns
@@ -112,6 +114,10 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun coreEngine(engine: LibXrayEngine): CoreEngine
+
+    @Binds
+    @Singleton
+    abstract fun latencyWorker(worker: IsolatedLatencyWorker): LatencyWorker
 
     @Binds
     @Singleton

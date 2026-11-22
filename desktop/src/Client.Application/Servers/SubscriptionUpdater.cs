@@ -100,7 +100,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     public UpdateBlock Block =>
         !_settings.Current.UpdateOnlyViaVpn ? UpdateBlock.None
         : _gateway.Service is ServiceKind.Simulated or ServiceKind.None ? UpdateBlock.ServiceMissing
-        : _gateway.Status is not { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false } ? UpdateBlock.ProtectionOff
+        : _gateway.Status is not { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false, LocalSiteFilter: false } ? UpdateBlock.ProtectionOff
         : UpdateBlock.None;
 
     public bool IsUpdating(string subscriptionId)

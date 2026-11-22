@@ -366,7 +366,7 @@ public sealed class RoutingPageTests : WindowHarness
         var casino = new DomainRule("casino.example", RuleAction.Block);
         var (window, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [casino], BlockOthers = true });
         Text(window, "PinState").ShouldBe("Не задан: блок снимается без кода");
-        Text(window, "BlockScope").ShouldBe("Блок действует, пока VPN подключен", "решение 743: без VPN правила ядра не действуют");
+        Text(window, "BlockScope").ShouldBe("Правила действуют при подключенном VPN или явно включенном локальном фильтре");
         Service<SettingsService>().Update(s => s with { BlockPin = BlockPin.Create("1234") });
         Dispatcher.UIThread.RunJobs();
         Text(window, "PinState").ShouldBe("Задан: без него блок не снять");
@@ -518,6 +518,28 @@ public sealed class RoutingPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         shell.CurrentKey.ShouldBe(Pages.Protection);
+    }
+
+    [AvaloniaFact]
+    public void Adding_an_allow_cannot_replace_or_override_a_block_without_pin()
+    {
+        var blocked = new DomainRule("example.com", RuleAction.Block);
+        var (_, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [blocked] });
+        Service<SettingsService>().Update(settings => settings with { BlockPin = BlockPin.Create("1234") });
+        Dispatcher.UIThread.RunJobs();
+        foreach (var pattern in new[] { "example.com", "part.example.com" })
+        {
+            page.AddRuleCommand.Execute(null);
+            var edit = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+            edit.Pattern = pattern;
+            edit.IsProxy = true;
+            edit.SaveCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            var prompt = shell.Overlay.Sheet.ShouldBeOfType<BlockPinPromptViewModel>();
+            prompt.KeepCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            Service<SettingsService>().Current.Routing.Rules.ShouldBe([blocked]);
+        }
     }
 
     private (MainWindow Window, ShellViewModel Shell, RoutingPageViewModel Page) OpenRouting(RoutingSettings? routing = null, bool account = false)

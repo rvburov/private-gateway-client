@@ -1,10 +1,5 @@
 package com.privategateway.client.ui.subscriptions
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,7 +40,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -71,6 +65,7 @@ import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgSmallButton
 import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgHeaderAction
 import com.privategateway.client.ui.theme.PgIcon
@@ -343,77 +338,19 @@ private fun MineCard(count: Int, language: String, onRemove: () -> Unit) {
     }
 }
 
-/** Небольшая кнопка (.btn-small): высота 36, скругление 10, поля 12; [soft] — синяя мягкая (accent.tint, рамка accent.line). */
+/** Небольшая кнопка изменения — общий блок доски 24. */
 @Composable
-private fun SmallFrame(
-    soft: Boolean,
-    tag: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable (pressed: Boolean) -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val shape = RoundedCornerShape(PgRadius.Input)
-    val edge = when {
-        soft -> PgColor.Accent.Line
-        pressed -> PgColor.Accent.Line
-        else -> PgColor.Line.Strong
-    }
-    Row(
-        modifier
-            .height(36.dp)
-            .clip(shape)
-            .background(if (soft) PgColor.Accent.Tint else PgColor.Surface.Solid)
-            .border(1.dp, edge, shape)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = PgSpace.L)
-            .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(PgSpace.Xs),
-    ) {
-        content(pressed && enabled)
-    }
-}
+private fun SmallButton(label: String, tag: String, onClick: () -> Unit) = PgSmallButton(label, tag, onClick)
 
-/** «Изменить» (.btn-small): белая, текст small; при нажатии рамка accent.line и синий текст. */
-@Composable
-private fun SmallButton(label: String, tag: String, onClick: () -> Unit) {
-    SmallFrame(soft = false, tag = tag, onClick = onClick) { pressed ->
-        Text(label, color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary, style = PgType.Small, maxLines = 1)
-    }
-}
-
-/**
- * «Обновить» (.btn-small.soft) со стрелкой 15: пока подписка загружается, вид не меняется — крутится только стрелка
- * (Classes.spin десктопа), а повторное нажатие не считается; для чтения с экрана — «Загружаем подписку…».
- */
+/** Повторное обновление во время загрузки не принимается, стрелка продолжает вращаться. */
 @Composable
 private fun UpdateButton(busy: Boolean, onClick: () -> Unit) {
     val downloading = stringResource(R.string.import_downloading)
-    SmallFrame(
-        soft = true,
-        tag = "subs.update",
-        onClick = onClick,
-        modifier = Modifier.semantics {
-            if (busy) {
-                stateDescription = downloading
-            }
-        },
-        enabled = !busy,
-    ) { pressed ->
-        val color = if (pressed) PgColor.Accent.Base else PgColor.Accent.Text
-        if (busy) {
-            val spin = rememberInfiniteTransition(label = "update")
-            val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "angle")
-            PgIcon(PgIcons.Refresh, null, Modifier.graphicsLayer { rotationZ = angle }.testTag("subs.update.spin"), color = color, size = 15.dp, strokeWidth = 2.2f)
-        } else {
-            PgIcon(PgIcons.Refresh, null, color = color, size = 15.dp, strokeWidth = 2.2f)
-        }
-
-        Text(stringResource(R.string.subs_update), color = color, style = PgType.Small.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
-    }
+    PgSmallButton(
+        stringResource(R.string.subs_update), "subs.update", onClick,
+        modifier = Modifier.semantics { if (busy) stateDescription = downloading },
+        icon = PgIcons.Refresh, soft = true, spinning = busy,
+    )
 }
 
 /** Корзина (.sb-remove, 36): своего цвета status.danger.text — при нажатии не синеет (решение 485), только сжимается. */

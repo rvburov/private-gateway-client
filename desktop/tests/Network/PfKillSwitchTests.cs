@@ -234,6 +234,7 @@ public sealed partial class PfKillSwitchTests : IDisposable
                 new("utun225", [new(Server, 443), new(IPAddress.Parse("2001:db8::20"), 8443)]),
                 new("utun225", [new(Server, 443)], AllowLan: true, LanDiscovery: true, LanDns: IPAddress.Parse("192.168.1.53"), Lookup: lookup),
                 new(null, [], AllowLan: true, BlockOutsideDns: false, Ipv6Outside: true),
+                new("utun225", [], Direct: new DirectExit("/opt/pg/sing-box", 0), LocalSiteFilterRootExit: true),
             })
             {
                 pf.Enable(policy);

@@ -145,6 +145,60 @@ public sealed class WfpKillSwitchTests
     }
 
     [Fact]
+    public void Temporary_service_permissions_belong_to_a_dynamic_session_while_the_strict_block_does_not()
+    {
+        var lookup = new ServiceLookup(@"C:\pg\service.exe", 0x5049, [new(Server, 8444)]);
+        var rules = WfpRules.For(new KillSwitchPolicy(null, [], Lookup: lookup, Persistent: true), null);
+
+        var temporary = rules.Where(rule => rule.Name == "lookup").ToArray();
+        temporary.ShouldNotBeEmpty();
+        temporary.ShouldAllBe(rule => rule.SessionScoped && rule.Permit);
+        rules.Where(rule => rule.Name != "lookup").ShouldAllBe(rule => !rule.SessionScoped,
+            "закрытие диагностической сессии не снимает основной fail-closed блок и разрешения сети");
+    }
+
+    [Fact]
+    public async Task Closing_the_dynamic_lookup_session_revokes_the_permission_and_preserves_the_persistent_block()
+    {
+        if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("фильтры WFP ставятся только на Windows с правами администратора (CI)");
+            return;
+        }
+        var curl = Path.Combine(Environment.SystemDirectory, "curl.exe");
+        Assert.SkipUnless(File.Exists(curl), "нет curl.exe");
+        var address = (await Dns.GetHostAddressesAsync("github.com", AddressFamily.InterNetwork, TestContext.Current.CancellationToken)).FirstOrDefault();
+        Assert.SkipWhen(address is null, "github.com не разрешился");
+        using var firewall = new WfpKillSwitch(onlyProgram: curl);
+        try
+        {
+            (await Reaches(curl, address, 443)).ShouldBeTrue("проверяемый адрес доступен до блока");
+            var blocked = new KillSwitchPolicy(null, [], Persistent: true);
+            var permitted = blocked with { Lookup = new ServiceLookup(curl, 0x5049, [new(address, 443)]) };
+            firewall.Enable(blocked);
+            (await Reaches(curl, address, 443)).ShouldBeFalse();
+            firewall.Enable(permitted);
+            (await Reaches(curl, address, 443)).ShouldBeTrue();
+            firewall.Enable(blocked);
+            (await Reaches(curl, address, 443)).ShouldBeFalse("замена политики закрывает прежнюю динамическую сессию");
+            firewall.Enable(permitted);
+            (await Reaches(curl, address, 443)).ShouldBeTrue();
+
+            // Закрывается тот же динамический handle, который ОС освобождает при завершении процесса службы.
+            firewall.Dispose();
+
+            (await Reaches(curl, address, 443)).ShouldBeFalse("разрешение не переживает свою сессию даже без Enable прежней политики");
+            firewall.IsEnabled.ShouldBeTrue();
+            firewall.IsIntact.ShouldBeTrue();
+            WfpKillSwitch.IsPersistent.ShouldBeTrue("постоянный основной блок живет независимо от диагностической сессии");
+        }
+        finally
+        {
+            firewall.Disable();
+        }
+    }
+
+    [Fact]
     public void Filter_keys_go_in_order_from_one_base()
     {
         WfpRules.FilterKey(0).ShouldBe(new Guid("c9f98d15-2e6c-4db0-aa5c-48a623d10000"));

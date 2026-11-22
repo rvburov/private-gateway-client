@@ -205,6 +205,11 @@ public sealed partial class Gateway
     /// </summary>
     private async Task<bool> ProbeAsync(TimeSpan? timeout = null, bool quiet = false)
     {
+        if (_request is { LocalSiteFilter: true })
+        {
+            // У локального фильтра нет удаленного сервера: доступность контрольного сайта не определяет работу правил.
+            return Volatile.Read(ref _tunnel) is { HasExited: false };
+        }
         if (Status.NetworkUnavailable || _probe is not { } link)
         {
             return false;

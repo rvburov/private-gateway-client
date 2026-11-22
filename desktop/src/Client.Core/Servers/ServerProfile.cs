@@ -48,5 +48,17 @@ public sealed record ServerProfile(
     LatencyFailure? LatencyFailure = null,
     string? LatencyDiagnostic = null,
     DateTimeOffset? LatencyCheckedAt = null,
-    bool IsMeasuringLatency = false);
+    bool IsMeasuringLatency = false)
+{
+    /// <summary>Сохраненный результат относится к прежнему подключению, сети или запуску окна.</summary>
+    public bool IsLatencyStale { get; init; }
+
+    /// <summary>direct или vpn: замер другим путем не обещает прямого подключения.</summary>
+    public string? LatencyRoute { get; init; }
+
+    /// <summary>Последний успешный результат остается историей после последующего отказа.</summary>
+    public int? LastSuccessfulLatencyMs { get; init; }
+
+    public DateTimeOffset? LastSuccessfulLatencyAt { get; init; }
+}
 

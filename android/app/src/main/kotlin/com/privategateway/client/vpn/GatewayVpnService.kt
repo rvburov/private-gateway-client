@@ -29,6 +29,7 @@ import com.privategateway.client.PrivateGatewayApp
 import com.privategateway.client.R
 import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.core.servers.ServerFacts
+import com.privategateway.client.core.servers.TransportParameterRules
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CaptivePause
@@ -52,9 +53,13 @@ import java.net.URLConnection
 import java.util.UUID
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.data.BlockedSites
+import com.privategateway.client.data.BlockedAccess
 import com.privategateway.client.inspect.PhoneHintSource
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,7 +102,10 @@ class GatewayVpnService : VpnService() {
 
     @Inject lateinit var account: AccountRepository
 
+    @Inject lateinit var blockedSites: BlockedSites
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val access by lazy { BlockedAccess(blockedSites, scope) { error -> if (error) journal.error("core error") else journal.warning("core warning") } }
     private val lock = Mutex()
     private var work: Job? = null
     private var tun: ParcelFileDescriptor? = null
@@ -145,6 +153,9 @@ class GatewayVpnService : VpnService() {
     /** Есть ли сеть под туннелем: Android сообщил, что лучшая сеть пропала, — «Нет сети», попытки ждут ее (TunnelGuard). */
     @Volatile
     private var online = true
+    /** Только явная кнопка локального фильтра; не сохраняется и не включается автоматически после нового запуска. */
+    private var localOnly = false
+    @Volatile private var requestedFilter = false
 
     /** Телефон вышел из глубокого сна (Doze) — проба связи сразу, а не через минуту. */
     private val wake = object : BroadcastReceiver() {
@@ -183,9 +194,16 @@ class GatewayVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
+        val filter = when (intent?.action) {
+            ACTION_FILTER -> true
+            ACTION_CONNECT, ACTION_CONNECT_AUTOMATIC -> false
+            else -> localOnly
+        }
+        requestedFilter = filter
+
         // Только явные команды пользователя снимают ожидание после нового входа. Always-on и перезапуск ОС — нет.
-        connect(startId, manual = intent?.action == ACTION_CONNECT)
-        return START_STICKY
+        connect(startId, manual = intent?.action == ACTION_CONNECT || intent?.action == ACTION_FILTER, filter = filter)
+        return if (filter) START_NOT_STICKY else START_STICKY
     }
 
     override fun onRevoke() {
@@ -218,7 +236,7 @@ class GatewayVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun connect(startId: Int, manual: Boolean = false) {
+    private fun connect(startId: Int, manual: Boolean = false, filter: Boolean = requestedFilter) {
         foreground(notification(getString(R.string.status_connecting_title), null))
         resume?.cancel()
         resume = null
@@ -226,17 +244,20 @@ class GatewayVpnService : VpnService() {
         stopGuard()
         work = scope.launch {
             val connected = lock.withLock {
+                currentCoroutineContext().ensureActive()
+                localOnly = filter
                 // Без действующего входа в аккаунт сайта защита не поднимается ни одним путем: окно, плитка, уведомление,
                 // «Постоянная VPN» и перезапуск системой приходят сюда (решение 619). Вход проверяется и в конце: выход или
                 // отзыв, пришедший во время подключения, туннель не оставляет (решение 646).
                 val signedIn = account.allowed()
-                if (signedIn && !permitConnection(manual)) {
+                if (signedIn && !filter && !permitConnection(manual)) {
                     stopCore()
                     monitor.set(TunnelStatus())
                     ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelfResult(startId)
                     return@withLock false
                 }
+                if (signedIn && filter) settings.requireManualConnection()
                 val error = if (!signedIn) refused() else attempt(0) ?: verify() ?: signedOutMeanwhile()
                 if (destroyed) {
                     stopCore()
@@ -251,7 +272,7 @@ class GatewayVpnService : VpnService() {
                 }
             }
 
-            if (connected) {
+            if (connected && !localOnly) {
                 startGuard()
             }
         }
@@ -280,7 +301,7 @@ class GatewayVpnService : VpnService() {
      * выключить защиту не ушла. Вход стирается раньше, чем репозиторий смотрит на монитор, поэтому здесь он уже виден.
      */
     private suspend fun signedOutMeanwhile(): String? {
-        if (account.allowed() && permitConnection(manual = false)) {
+        if (account.allowed() && (localOnly || permitConnection(manual = false))) {
             return null
         }
 
@@ -294,8 +315,8 @@ class GatewayVpnService : VpnService() {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
-        Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
+        // Неизвестный контекст исключения может содержать произвольный секрет из extra: остается только тип сбоя.
+        Log.w(TAG, "connect: " + e.javaClass.simpleName)
         // В журнал «Проверки» — только вид сбоя: в тексте исключения бывает адрес сервера.
         journal.error("connect failed  " + e.javaClass.simpleName)
         TunnelErrors.CORE_FAILED
@@ -308,6 +329,7 @@ class GatewayVpnService : VpnService() {
      * Пробы — до конца «Таймаута подключения», каждая — строкой в журнал «Проверки» (номер, вид отказа, мс).
      */
     private suspend fun verify(): String? {
+        if (localOnly) return null
         val timeout = settings.tunnel.first().connection.probeTimeoutMs
         val started = SystemClock.elapsedRealtime()
         // Проба — через нашу сеть VPN: сразу после establish() сеть приложения по умолчанию бывает еще прежней, и проба
@@ -344,6 +366,10 @@ class GatewayVpnService : VpnService() {
 
     /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */
     private fun fail(error: String, startId: Int) {
+        val failedId = monitor.status.value.serverId
+        if (!localOnly && failedId != null) scope.launch {
+            servers.setLatency(mapOf(failedId to com.privategateway.client.core.servers.Latency.failed(com.privategateway.client.core.servers.LatencyFailure.NoResponse)))
+        }
         journal.error("stopped  error=$error")
         stopCore()
         up = null
@@ -360,13 +386,13 @@ class GatewayVpnService : VpnService() {
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
         val since = SystemClock.elapsedRealtime()
         journal.info("tunnel up  lockdown=" + (lockdown?.toString() ?: "unknown"))
-        monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown, offline = !online))
+        monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id.takeUnless { localOnly }, since = since, alwaysOn = alwaysOn, lockdown = lockdown, offline = !online, localOnly = localOnly))
         // Без туннеля Android этих флагов не сообщает — окно покажет их «по последнему подключению» (решение 445).
         scope.launch { settings.setSystemVpn(SystemVpn(alwaysOn, lockdown)) }
         foreground(
             notification(
-                getString(R.string.status_connected_title) + " · " + current.name,
-                getString(if (current.encrypted) R.string.status_connected_sub else R.string.status_connected_subPlain),
+                if (localOnly) getString(R.string.block_local_title) else getString(R.string.status_connected_title) + " · " + current.name,
+                if (localOnly) getString(R.string.block_local_active) else getString(if (current.encrypted) R.string.status_connected_sub else R.string.status_connected_subPlain),
                 onlineSince = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - since),
             ),
         )
@@ -390,6 +416,8 @@ class GatewayVpnService : VpnService() {
             online = { online },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
+                    val failedId = up?.id
+                    if (failedId != null) servers.setLatency(mapOf(failedId to com.privategateway.client.core.servers.Latency.failed(com.privategateway.client.core.servers.LatencyFailure.NoResponse)))
                     journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")
                     monitor.update { it.copy(state = TunnelState.Reconnecting, since = null, attempt = attempt) }
                     foreground(notification(getString(R.string.status_reconnecting_title), up?.name))
@@ -425,16 +453,17 @@ class GatewayVpnService : VpnService() {
             journal.info("reconnect  attempt=$attempt")
         }
 
-        val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
+        val id = if (localOnly) "local-site-filter" else settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
         if (attempt == 0) {
             monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
         }
 
-        val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
+        val server = if (localOnly) LOCAL_CONFIG_ANCHOR else servers.load(id) ?: return TunnelErrors.NO_SERVER
         // Название для уведомления — свое, если есть. Читается до карты и ядра: после них точек ожидания нет — отмена не
         // оставит туннель без хозяина.
         val name = servers.servers.first().firstOrNull { it.id == id }?.displayName ?: server.name
         val tunnel = settings.tunnel.first()
+        if (localOnly && !tunnel.routing.blockOthers && tunnel.routing.rules.none { it.action == com.privategateway.client.core.settings.RuleAction.Block }) return TunnelErrors.UNSUPPORTED
         val core = tunnel.core()
         val plan = tunnel.plan()
 
@@ -450,7 +479,7 @@ class GatewayVpnService : VpnService() {
         // Раздельный режим («Маршрутизация»): программы мимо VPN Android в карту не пускает — их трафик идет к провайдеру
         // напрямую. Само приложение — всегда в туннеле: через него идут проба связи и подписки. Удаленная с телефона
         // программа пропускается: иначе отказ Android сорвал бы все подключение.
-        plan.disallowedApps.filter { it != packageName }.forEach { app ->
+        plan.disallowedApps.filter { !localOnly && it != packageName }.forEach { app ->
             try {
                 builder.addDisallowedApplication(app)
             } catch (_: PackageManager.NameNotFoundException) {
@@ -459,7 +488,7 @@ class GatewayVpnService : VpnService() {
         }
 
         // Строгие маршруты выключены — программа может сама уйти мимо карты, привязавшись к Wi-Fi или мобильной сети.
-        if (plan.allowBypass) {
+        if (plan.allowBypass && !localOnly) {
             builder.allowBypass()
         }
 
@@ -479,14 +508,15 @@ class GatewayVpnService : VpnService() {
         // Порт резервируется только для выбора; endpoint публикуется после успешного bind самим ядром. Если порт успела
         // занять другая программа, runXray откажет, и запросы с секретами туда не отправятся.
         val proxy = SubscriptionProxy(ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }, UUID.randomUUID().toString(), UUID.randomUUID().toString())
-        val config = XrayConfig.build(server, core, descriptor.fd, proxy)
-        val json = config.json ?: return TunnelErrors.UNSUPPORTED
+        val config = XrayConfig.build(server, core, descriptor.fd, proxy, localOnly = localOnly)
+        val raw = config.json ?: return TunnelErrors.UNSUPPORTED
+        val json = access.configure(raw, tunnel.routing.blockOthers || tunnel.routing.rules.any { it.action == com.privategateway.client.core.settings.RuleAction.Block })
         // Ядро считается запущенным и при отказе: остановка снимет то, что успело запуститься (DNS, контроллер сокетов).
         coreRunning = true
         val failure = engine.start(json, { socket -> protect(socket) }, follower.endpoint)
         if (failure != null) {
             // Текст ядра — в журнал Android через SecretMasker: ссылок, UUID и ключей в журнале нет.
-            Log.w(TAG, "core: " + SecretMasker.mask(failure))
+            Log.w(TAG, "core: " + SecretMasker.mask(failure, TransportParameterRules.sensitiveExtraValues(server)))
             // Текст ядра бывает с адресом сервера — в журнал «Проверки» он не идет.
             journal.error("core did not start")
             return TunnelErrors.CORE_FAILED
@@ -495,7 +525,8 @@ class GatewayVpnService : VpnService() {
         dns = follower
         applied.value = tunnel
         watchNetwork()
-        subscriptionNetwork.established(networksBefore, plan, proxy, SubscriptionProxy.hasPrivateDns(server.protocol, core))
+        // «Только через VPN» не получает этот вход: здесь выход прямой, хотя Android показывает свою карту VPN.
+        if (!localOnly) subscriptionNetwork.established(networksBefore, plan, proxy, SubscriptionProxy.hasPrivateDns(server.protocol, core))
         up = Up(id, name, ServerFacts.isEncrypted(server.protocol, server.security.kind))
         return null
     }
@@ -504,11 +535,11 @@ class GatewayVpnService : VpnService() {
     private fun establish(builder: Builder): ParcelFileDescriptor? = try {
         builder.establish()
     } catch (e: IllegalStateException) {
-        Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
+        Log.w(TAG, "establish: " + e.javaClass.simpleName)
         journal.error("establish refused  " + e.javaClass.simpleName)
         null
     } catch (e: SecurityException) {
-        Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
+        Log.w(TAG, "establish: " + e.javaClass.simpleName)
         journal.error("establish refused  " + e.javaClass.simpleName)
         null
     }
@@ -621,14 +652,14 @@ class GatewayVpnService : VpnService() {
             coreRunning = false
         }
 
+        access.close()
+
         tun?.close()
         tun = null
     }
 
     private fun activeNetworkDns(): List<String> {
-        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return emptyList()
-        val properties = connectivity.getLinkProperties(connectivity.activeNetwork) ?: return emptyList()
-        return properties.dnsServers.mapNotNull { it.hostAddress }
+        return SystemNetworkDns(this).current()
     }
 
     /**
@@ -683,7 +714,7 @@ class GatewayVpnService : VpnService() {
 
             underlying = callback
         } catch (e: RuntimeException) {
-            Log.w(TAG, "network callback: " + SecretMasker.mask(e.message))
+            Log.w(TAG, "network callback: " + e.javaClass.simpleName)
             journal.warning("network callback refused  " + e.javaClass.simpleName)
         }
     }
@@ -693,7 +724,7 @@ class GatewayVpnService : VpnService() {
         val follower = dns ?: return
         val endpoint = networkDns?.let { follower.network(it) } ?: return
         engine.changeDns(endpoint)?.let {
-            Log.w(TAG, "core dns: " + SecretMasker.mask(it))
+            Log.w(TAG, "core dns update failed")
             journal.warning("core dns change failed")
         }
     }
@@ -723,7 +754,12 @@ class GatewayVpnService : VpnService() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(lockScreen)
-            .addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
+        if (localOnly) {
+            // Остановка фильтра с PIN подтверждается в окне; уведомление не обходит эту проверку.
+            builder.addAction(0, getString(R.string.block_local_title), openApp())
+        } else {
+            builder.addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
+        }
         if (onlineSince != null) {
             builder.setSubText(getString(R.string.status_online))
                 .setWhen(onlineSince)
@@ -753,6 +789,18 @@ class GatewayVpnService : VpnService() {
         private const val ACTION_CONNECT_AUTOMATIC = "com.privategateway.client.CONNECT_AUTOMATIC"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"
         const val ACTION_PAUSE = "com.privategateway.client.PAUSE"
+        const val ACTION_FILTER = "com.privategateway.client.LOCAL_FILTER"
+
+        // Только опора общего построителя DNS; при localOnly этот протокол и реквизиты не входят в конфигурацию выхода.
+        private val LOCAL_CONFIG_ANCHOR = com.privategateway.client.core.servers.ServerDefinition(
+            "local-site-filter", "", com.privategateway.client.core.servers.ProxyProtocol.Vless, "127.0.0.1", 1,
+            com.privategateway.client.core.servers.TransportOptions.Tcp, com.privategateway.client.core.servers.SecurityOptions.None,
+            com.privategateway.client.core.servers.ProtocolOptions.Empty, com.privategateway.client.core.servers.ServerCredentials(),
+        )
+
+        fun filter(context: Context) {
+            ContextCompat.startForegroundService(context, Intent(context, GatewayVpnService::class.java).setAction(ACTION_FILTER))
+        }
 
         /** Подключить: разрешение на VPN (VpnService.prepare) окно уже получило. */
         fun connect(context: Context) {

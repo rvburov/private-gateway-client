@@ -7,6 +7,15 @@ import kotlin.test.assertEquals
 
 // Те же случаи, что у десктопа (SecretMaskerTests); значения заведомо ненастоящие.
 class SecretMaskerTest {
+    @Test
+    fun `known custom headers hide raw json and url forms while ordinary text remains`() {
+        val value = "demo/token\" space"
+        val json = "demo/token\\\" space"
+        val url = "demo%2Ftoken%22%20space"
+        val line = "ordinary text raw=$value; json=$json; url=$url; form=${url.replace("%20", "+")}; auth=demo-bearer; xy; xylophone"
+        assertEquals("ordinary text raw=$hidden; json=$hidden; url=$hidden; form=$hidden; auth=$hidden; $hidden; xylophone", SecretMasker.mask(line, listOf(value, "Bearer demo-bearer", "xy")))
+    }
+
     private val hidden = SecretMasker.HIDDEN
 
     @ParameterizedTest

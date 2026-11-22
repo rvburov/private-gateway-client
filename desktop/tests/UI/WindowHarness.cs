@@ -218,6 +218,11 @@ public abstract class WindowHarness : IDisposable
 
         public bool HasReceivedStatus { get; set; }
 
+        public TaskCompletionSource<IReadOnlyList<BlockedSite>?>? BlockedSitesReply { get; set; }
+
+        public Task<IReadOnlyList<BlockedSite>?> GetBlockedSitesAsync(CancellationToken cancellationToken = default) =>
+            BlockedSitesReply?.Task ?? Task.FromResult<IReadOnlyList<BlockedSite>?>(null);
+
         /// <summary>Что служба скажет о себе (GetServiceInfo); null — не ответила.</summary>
         public ServiceDetails? Details { get; set; }
 

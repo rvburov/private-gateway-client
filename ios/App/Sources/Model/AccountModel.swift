@@ -10,11 +10,15 @@ final class AccountModel: ObservableObject {
     /// Вход; nil — еще не прочитан: окно показывает только фон, чтобы экран входа не мелькал у тех, кто вошел.
     @Published private(set) var state: AccountState?
     @Published private(set) var form = LoginForm()
+    @Published private(set) var signingOut = false
+    @Published private(set) var cleanupPending = false
+    @Published private(set) var restoringNetwork = false
 
     /// Доступ кончился (выход, отзыв, срок) — выключить защиту; задает окно.
-    var onLost: (() async -> Void)?
+    var onLost: (() async -> Bool)?
 
     private let service: AccountService
+    private var formGeneration: UInt64 = 0
 
     /// - Parameters:
     ///   - source: сайт; nil — настоящий (`AccountClient`).
@@ -64,17 +68,45 @@ final class AccountModel: ObservableObject {
 
     /// «Войти» и «Готово» на клавиатуре в последнем поле; запрос уже идет или поля не заполнены — ничего.
     func submit() {
-        guard let codes = form.begin() else {
+        guard !signingOut, !restoringNetwork, let codes = form.begin() else {
             return
         }
 
         let email = form.email
         let password = form.password
+        formGeneration &+= 1
+        let attempt = formGeneration
         Task {
+            // Прежде чем новый аккаунт станет разрешенным для расширения, все прежние сохранения VPN и cleanup закончены.
+            let cleared = await cleanupAccess()
+            guard attempt == formGeneration, !signingOut else { return }
+            guard cleared else {
+                form.answered(.failed(.network))
+                return
+            }
             let result = await service.login(email: email, password: password, code: codes.code, recovery: codes.recovery)
+            guard attempt == formGeneration, !signingOut else { return }
             form.answered(result)
-            state = await service.state()
+            let loaded = await service.state()
+            if attempt == formGeneration, !signingOut { state = loaded }
         }
+    }
+
+    /// Повторить только восстановление сети: пароль и запрос входа не нужны, авторизация сама не продолжается.
+    func retryCleanup() {
+        guard !signingOut, !restoringNetwork, !form.busy else { return }
+        restoringNetwork = true
+        Task { _ = await cleanupAccess() }
+    }
+
+    private func cleanupAccess() async -> Bool {
+        let attempt = formGeneration
+        restoringNetwork = true
+        let confirmed = await onLost?() ?? true
+        guard attempt == formGeneration else { return false }
+        cleanupPending = !confirmed
+        restoringNetwork = false
+        return confirmed
     }
 
     /// Сброс PIN-кода блока сайтов (решение 742): вход тем же аккаунтом, защита остается.
@@ -84,23 +116,31 @@ final class AccountModel: ObservableObject {
         return result
     }
 
-    /// «Выйти» в «Настройках» (после вопроса): экран входа — сразу и с пустыми полями; сайту — выход, пока защита еще идет
-    /// (не дольше 3 секунд), потом защита выключается.
+    /// «Выйти» в «Настройках» (после вопроса): экран входа — сразу и с пустыми полями; прежние запуски отменяются, профиль
+    /// выключается. Новый вход ждет завершения очистки и выхода на сайте (не дольше 3 секунд).
     func signOut() async {
+        guard !signingOut else { return }
+        signingOut = true
+        defer { signingOut = false }
+        formGeneration &+= 1
         form = LoginForm()
         state = AccountState()
-        await service.signOut()
-        state = await service.state()
-        await onLost?()
+        let remote = Task { await service.signOut() }
+        _ = await cleanupAccess()
+        await remote.value
+        state = AccountState()
     }
 
     /// Спросить сайт о доступе: `force` — по расписанию; иначе (запуск, возврат в приложение) не чаще раза в минуту. Отзыв
     /// и истечение — защита выключается, окно показывает вход с причиной.
     func refresh(force: Bool) async {
+        let attempt = formGeneration
         let verdict = await service.refresh(force: force)
-        state = await service.state()
+        let loaded = await service.state()
+        guard attempt == formGeneration, !signingOut else { return }
+        state = loaded
         if verdict == .revoked || verdict == .expired {
-            await onLost?()
+            _ = await cleanupAccess()
         }
     }
 
@@ -115,9 +155,14 @@ final class AccountModel: ObservableObject {
                 return
             }
 
-            if await service.expireIfDue() == .expired {
-                state = await service.state()
-                await onLost?()
+            let attempt = formGeneration
+            let expiry = await service.expireIfDue()
+            guard attempt == formGeneration, !signingOut else { continue }
+            if expiry == .expired {
+                let loaded = await service.state()
+                guard attempt == formGeneration, !signingOut else { continue }
+                state = loaded
+                _ = await cleanupAccess()
             } else if wait >= AccountGate.checkEvery {
                 await refresh(force: true)
             }

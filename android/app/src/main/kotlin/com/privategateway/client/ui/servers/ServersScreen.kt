@@ -2,11 +2,6 @@ package com.privategateway.client.ui.servers
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,8 +29,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -45,7 +45,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
@@ -69,6 +68,9 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerGroup
 import com.privategateway.client.core.servers.ServerItem
+import com.privategateway.client.data.LatencyCheck
+import com.privategateway.client.vpn.LatencyProgress
+import kotlinx.coroutines.delay
 import com.privategateway.client.core.servers.ServerList
 import com.privategateway.client.core.servers.ServerListEmpty
 import com.privategateway.client.core.servers.ServerListQuery
@@ -80,6 +82,9 @@ import com.privategateway.client.ui.theme.CountryFlag
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCheck
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgBadge
+import com.privategateway.client.ui.theme.PgBadgeKind
+import com.privategateway.client.ui.theme.PgIconButton
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
@@ -122,7 +127,17 @@ private val FilterGap = 6.dp
  * выбирает сервер (под защитой — сразу переподключение), «⋯» — карточка. Сервер меняется только нажатием пользователя.
  */
 @Composable
-fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions) {
+fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions, latencyChecks: Map<String, LatencyCheck>? = null, latencyProgress: LatencyProgress = LatencyProgress()) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, latencyChecks != null) {
+        if (latencyChecks != null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                now = System.currentTimeMillis()
+                delay(30_000)
+            }
+        }
+    }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
     val locale = LocalConfiguration.current.locales[0]
     val groups = remember(ui.servers, ui.subscriptions, query, locale) { ServerList.build(ui.servers, ui.subscriptions, query, locale) }
@@ -130,6 +145,10 @@ fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions) {
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         Column(Modifier.fillMaxSize().testTag("servers")) {
             Header(ui.measuring, actions)
+            if (latencyChecks != null) {
+                Text(stringResource(R.string.latency_route_directCandidate), Modifier.padding(horizontal = PgSpace.WindowSideMobile), style = PgType.Caption, color = PgColor.Text.Muted)
+                if (ui.measuring) Text(stringResource(R.string.latency_progress, latencyProgress.done.toString(), latencyProgress.total.toString()), Modifier.padding(horizontal = PgSpace.WindowSideMobile), style = PgType.Caption, color = PgColor.Accent.Base)
+            }
             Column(Modifier.padding(horizontal = PgSpace.WindowSideMobile), verticalArrangement = Arrangement.spacedBy(PgSpace.M)) {
                 SearchField(query.search, ServerList.filterCount(ui.servers, query), filterOpen, actions.search) { filterOpen = !filterOpen }
                 Tabs(query.tab, ui.servers.size, actions.tab)
@@ -158,6 +177,9 @@ fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions) {
                             connected = ui.status.state == TunnelState.Connected && ui.status.serverId == server.id,
                             onSelect = { actions.select(server.id) },
                             onMore = { actions.open(server.id) },
+                            check = latencyChecks?.get(server.id),
+                            checkFreshness = latencyChecks != null,
+                            now = now,
                         )
                     }
                 }
@@ -242,27 +264,7 @@ private fun HeaderButton(
     steady: Boolean = false,
     spinning: Boolean = false,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    Box(
-        Modifier
-            .size(PgLayout.TouchTarget)
-            .scale(if (pressed && !steady) 0.98f else 1f)
-            .clip(RoundedCornerShape(PgRadius.Button))
-            .clickable(interactionSource = interaction, indication = null, onClickLabel = label, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = label }
-            .testTag(tag),
-        contentAlignment = Alignment.Center,
-    ) {
-        val color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary
-        if (spinning) {
-            val spin = rememberInfiniteTransition(label = "refresh")
-            val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "angle")
-            PgIcon(icon, null, Modifier.graphicsLayer { rotationZ = angle }.testTag("$tag.spin"), color = color, size = size, strokeWidth = stroke)
-        } else {
-            PgIcon(icon, null, color = color, size = size, strokeWidth = stroke)
-        }
-    }
+    PgIconButton(icon, label, tag, onClick, size = size, stroke = stroke, steady = steady, spinning = spinning)
 }
 
 /**
@@ -491,7 +493,6 @@ private val RowMeta = PgType.Mono.copy(fontSize = PgType.Overline.fontSize, font
 private val RowLatency = PgType.Mono.copy(fontSize = PgType.Caption.fontSize, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End)
 
 /** Метка строки (.sv-tag): overline, жирным. */
-private val TagText = TextStyle(fontSize = PgType.Overline.fontSize, fontWeight = FontWeight.Bold)
 
 /**
  * Строка сервера (Border.serverRow): рамка 1,5 line.border на surface.card; выбранная — белая, с рамкой status.success.base и
@@ -500,7 +501,7 @@ private val TagText = TextStyle(fontSize = PgType.Overline.fontSize, fontWeight 
  * «пропал из подписки» в строке нет — они в карточке.
  */
 @Composable
-private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean, onSelect: () -> Unit, onMore: () -> Unit) {
+private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean, onSelect: () -> Unit, onMore: () -> Unit, check: LatencyCheck? = null, checkFreshness: Boolean = false, now: Long = System.currentTimeMillis()) {
     val tag = when {
         connected -> R.string.servers_tag_active
         selected -> R.string.servers_tag_selected
@@ -545,21 +546,20 @@ private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean,
             }
 
             if (tag != null) {
-                Text(
+                PgBadge(
                     stringResource(tag),
-                    Modifier
-                        .padding(end = PgSpace.M)
-                        .clip(RoundedCornerShape(PgRadius.Chip))
-                        .background(PgColor.Status.Success.Tint)
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                        .testTag("server.tag.${server.id}"),
-                    color = PgColor.Status.Success.Badge,
-                    style = TagText,
-                    maxLines = 1,
+                    Modifier.padding(end = PgSpace.M).testTag("server.tag.${server.id}"),
+                    ink = PgColor.Status.Success.Badge, tint = PgColor.Status.Success.Tint, kind = PgBadgeKind.Pill,
                 )
             }
 
-            LatencyText(server, Modifier.widthIn(min = 52.dp), RowLatency)
+            Column(horizontalAlignment = Alignment.End) {
+                LatencyText(server, Modifier.widthIn(min = 52.dp), RowLatency, check, checkFreshness, now)
+                check?.let {
+                    val at = DateTimeFormatter.ofPattern("HH:mm:ss").format(Instant.ofEpochMilli(it.at).atZone(ZoneId.systemDefault()))
+                    Text(stringResource(R.string.latency_checkedAt, at), style = PgType.Caption, color = PgColor.Text.Muted, maxLines = 1)
+                }
+            }
         }
 
         MoreButton(server.title, Modifier.align(Alignment.CenterEnd).padding(end = PgSpace.Xs).testTag("more.${server.id}"), onMore)
@@ -621,7 +621,13 @@ internal fun latencyReason(latency: Latency?): Int? = when (latency?.failure) {
 }
 
 @Composable
-fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextStyle = PgType.Mono) {
+fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextStyle = PgType.Mono, check: LatencyCheck? = null, checkFreshness: Boolean = false, now: Long = System.currentTimeMillis()) {
+    if (checkFreshness && server.latency != null && (check == null || check.isStale(now))) {
+        val hint = stringResource(R.string.latency_stale_text)
+        Text(stringResource(R.string.latency_stale_short), color = PgColor.Text.Muted, style = style,
+            modifier = modifier.semantics { contentDescription = hint }.testTag("latency.${server.id}"))
+        return
+    }
     val kind = LatencyKind.of(server.latency)
     val ms = server.latency?.ms
     val (text, color) = when (kind) {

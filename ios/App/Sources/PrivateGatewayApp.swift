@@ -54,6 +54,7 @@ struct RootView: View {
     @StateObject private var check = CheckModel()
     @State private var checkPage = CheckPage.main
     @State private var focusDelay = false
+    @State private var powerPin: PinStep?
     @Environment(\.scenePhase) private var phase
 
     /// Первое «Защищено» — вопрос об уведомлениях с пояснением (DECISIONS.md, п. 7), а не системный запрос до VPN.
@@ -88,7 +89,7 @@ struct RootView: View {
                 page
                 Island(
                     texts: model.texts, tab: tab, state: model.home.status.state, hasServer: model.home.inUse != nil, blocked: model.blocked,
-                    leak: homeFacts.leak(model.home.status.state), paused: model.paused != nil,
+                    leak: homeFacts.leak(model.home.status.state), paused: model.paused != nil, localSiteFilter: model.home.status.localSiteFilter,
                     onTab: { next in
                         tab = next
                         cardOpen = false
@@ -101,6 +102,9 @@ struct RootView: View {
             }
         }
         .pgLayers(layers)
+        .pgSheet(isPresented: Binding(get: { powerPin != nil }, set: { if !$0 { powerPin = nil } })) {
+            BlockPinSheet(texts: model.texts, control: pinControl, step: $powerPin)
+        }
         .task {
             importing.onAdded = { result, existing in
                 Task { await model.reload() }
@@ -119,6 +123,7 @@ struct RootView: View {
             measureWebIp()
         }
         .onChange(of: model.home.status.state) { state in
+            check.invalidate()
             // Внешний IP главной: подключились — адрес выхода, выключились — реальный; прежний адрес выхода больше не тот.
             if state != .connected {
                 inspector.forgetExit()
@@ -143,14 +148,17 @@ struct RootView: View {
             }
         }
         .onChange(of: model.home.status.serverId) { _ in
+            check.invalidate()
             // Под защитой сменили сервер, туннель не опускался: у нового сервера — свой адрес выхода.
             if model.home.status.state == .connected {
-                measureWebIp()
+                if tab == .check { runChecks() } else { measureWebIp() }
             }
         }
         .onChange(of: inspector.networkKey) { _ in
+            check.invalidate()
             // Другая сеть — другой реальный IP (и под защитой — повод проверить выход заново).
-            measureWebIp()
+            model.invalidateLatency()
+            if tab == .check { runChecks() } else { measureWebIp() }
         }
         .task(id: journalWanted) {
             // Журнал туннеля обновляется сам, пока «Проверка» на экране: расширение пишет его в общую папку.
@@ -170,6 +178,13 @@ struct RootView: View {
             }
 
             await speed.run()
+        }
+        .task(id: latencyWanted) {
+            guard latencyWanted else { return }
+            while !Task.isCancelled {
+                model.refreshLatencyFreshness()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
         }
         .onChange(of: model.home.servers) { _ in
             // Список серверов изменился, пока открыт предпросмотр «Добавить» (обновление подписки, удаление): дубли и «уже
@@ -274,7 +289,8 @@ struct RootView: View {
             )
         case .servers:
             ServersView(
-                texts: model.texts, home: model.home, query: $query, onSelect: { id in Task { await model.select(id) } },
+                texts: model.texts, home: model.home, query: $query, latencyUpdated: model.latencyUpdated, latencyViaVpn: model.latencyViaVpn,
+                onSelect: { id in Task { await model.select(id) } },
                 onOpen: { id in
                     card = id
                     cardOpen = true
@@ -292,11 +308,12 @@ struct RootView: View {
                 about: model.about, settings: model.settings, page: $checkPage, probe: $inspector.probe, focusDelay: focusDelay, onRun: runChecks,
                 onDelay: {
                     Task {
-                        await check.measureDelay(connected: model.home.status.state == .connected, toServer: { await model.serverDelay() })
+                        await check.measureDelay(connected: model.home.status.state == .connected && !model.home.status.localSiteFilter,
+                                                 toServer: { await model.serverDelay() })
                     }
                 },
                 onFocused: { focusDelay = false },
-                onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
+                onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected && !model.home.status.localSiteFilter) } },
                 onDescribe: { Task { await inspector.describe() } }, onProbe: { Task { await inspector.runProbe() } }
             )
             .onAppear {
@@ -317,7 +334,9 @@ struct RootView: View {
                 },
                 onCaptive: askPause,
                 backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack, pinControl: pinControl.withoutReset)) },
-                account: account.state?.record, onSignOut: { Task { await account.signOut() } }, pinControl: pinControl
+                account: account.state?.record, onSignOut: { Task { await account.signOut() } }, pinControl: pinControl,
+                blockedSites: model.blockedSites, historyAvailable: model.blockedHistoryAvailable, localSiteFilter: model.home.status.localSiteFilter,
+                onRefreshBlocked: { await model.refreshBlockedSites() }, onLocalSiteFilter: { on in Task { await model.setLocalSiteFilter(on) } }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,
@@ -372,6 +391,7 @@ struct RootView: View {
     /// «Проверке») и скорость туннеля.
     private var homeFacts: HomeFacts {
         var ip = inspector.web
+        if model.home.status.localSiteFilter { ip.exit = nil }
         ip.info = inspector.ip.info
         return HomeFacts(blocked: model.blocked, uplink: inspector.uplink, ip: ip, speed: speed.speed, paused: model.paused)
     }
@@ -383,7 +403,8 @@ struct RootView: View {
         return CheckInput(
             state: state, system: model.systemVpn, error: model.home.status.error, blocked: model.blocked, leak: homeFacts.leak(state),
             killSwitch: model.settings.killSwitch, core: model.coreVersion, ip: inspector.ip, direct: inspector.web.direct, proxy: check.findings.proxy,
-            running: check.findings.running
+            running: check.findings.running, localSiteFilter: model.home.status.localSiteFilter,
+            sessionKey: "\(model.home.status.serverId ?? ""):\(model.home.status.since?.timeIntervalSince1970 ?? 0):\(model.home.status.localSiteFilter)"
         )
     }
 
@@ -392,13 +413,18 @@ struct RootView: View {
         tab == .check && !adding && phase == .active
     }
 
+    private var latencyWanted: Bool {
+        tab == .servers && !adding && phase == .active
+    }
+
     /// «Проверить», открытие «Проверки» и смена состояния защиты на ней: прокси и VPN других приложений, внешний IP, журнал,
     /// затем задержка (`CheckModel`).
     private func runChecks() {
         model.refreshLog()
         Task {
             await check.run(
-                connected: { model.home.status.state == .connected }, measureIp: { await measureIpNow() }, toServer: { await model.serverDelay() }
+                connected: { model.home.status.state == .connected && !model.home.status.localSiteFilter },
+                measureIp: { await measureIpNow() }, toServer: { await model.serverDelay() }
             )
         }
     }
@@ -417,11 +443,11 @@ struct RootView: View {
             return
         }
 
-        guard asked || state != .connected || model.settings.tunnel.checkLeaks else {
+        guard asked || state != .connected || model.home.status.localSiteFilter || model.settings.tunnel.checkLeaks else {
             return
         }
 
-        Task { await inspector.measureIp(protected: state == .connected) }
+        Task { await inspector.measureIp(protected: state == .connected && !model.home.status.localSiteFilter) }
     }
 
     /// То же, но с ожиданием итога — для «Проверки»: строка «IP для сайтов» ждет замера.
@@ -431,12 +457,19 @@ struct RootView: View {
             return
         }
 
-        await inspector.measureIp(protected: state == .connected)
+        await inspector.measureIp(protected: state == .connected && !model.home.status.localSiteFilter)
     }
 
     /// Кнопка-щит: подключаться не к чему — серверов нет (добавить) или ни один не выбран (к списку: сервер выбирает только
     /// пользователь). В «Блокировке» снять защиту — открыть сайтам реальный IP: сначала вопрос (доска 18), как у десктопа.
     private func power() {
+        if model.home.status.localSiteFilter, blockPin.pin != nil {
+            powerPin = .prompt(PinAsk(title: model.texts.text(key: "block.local.stop") ?? "",
+                                      text: model.texts.text(key: "block.local.stop.guard") ?? "") {
+                Task { await model.togglePower() }
+            })
+            return
+        }
         switch model.home.power {
         case .toggle:
             if model.blocked {
@@ -457,6 +490,10 @@ struct RootView: View {
     /// «Вход в Wi-Fi» (главная, «Защита и утечки»): защита выключена — пауза не нужна; иначе вопрос, как у десктопа (доска 18):
     /// «Открыть на 5 минут» — опасная вторая кнопка (решение 557).
     private func askPause() {
+        if model.home.status.localSiteFilter {
+            power()
+            return
+        }
         guard !model.home.off || model.blocked else {
             layers.show(model.texts.pauseOff)
             return

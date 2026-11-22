@@ -10,7 +10,7 @@ public enum LinkWriter {
         let name = "#" + escape(nameWithFlag(server))
         switch server.protocol {
         case .vless:
-            let vless: [(String, String?)] = [("encryption", "none"), ("flow", server.options.flow)] + stream(server)
+            let vless: [(String, String?)] = [("encryption", server.options.encryption ?? "none"), ("flow", server.options.flow)] + stream(server)
             return "vless://\(escape(credentials.uuid))@\(address)\(query(vless))\(name)"
         case .vmess:
             return "vmess://" + Data(vmess(server).utf8).base64EncodedString()
@@ -83,6 +83,7 @@ public enum LinkWriter {
             ("host", transport.host),
             ("serviceName", transport.serviceName),
             ("mode", transport.mode),
+            ("extra", transport.extraJson),
             ("security", server.security.kind.rawValue),
         ] + tls(server)
     }
@@ -125,6 +126,8 @@ public enum LinkWriter {
             ("fp", security.fingerprint ?? ""),
             ("alpn", security.alpn?.joined(separator: ",") ?? ""),
         ]
+        if let mode = transport.mode { fields.append(("mode", mode)) }
+        if let extra = transport.extraJson { fields.append(("extra", extra)) }
         // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
         if let pinned = security.pinnedPeerCertSha256, !pinned.isEmpty {
             fields.append(("pcs", pinned.joined(separator: ",")))

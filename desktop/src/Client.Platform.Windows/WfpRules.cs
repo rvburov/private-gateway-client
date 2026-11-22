@@ -71,7 +71,7 @@ public sealed record WfpCondition(WfpField Field, ulong Number = 0, IPAddress? A
 
 /// <summary>Фильтр WFP: разрешить или закрыть; чем больше вес, тем раньше он решает.</summary>
 public sealed record WfpRule(string Name, WfpFamily Family, bool Permit, byte Weight, IReadOnlyList<WfpCondition> Conditions,
-    WfpHook Hook = WfpHook.Connection)
+    WfpHook Hook = WfpHook.Connection, bool SessionScoped = false)
 {
     public override string ToString() =>
         $"{Weight} {(Permit ? "permit" : "block")} {Family}{(Hook == WfpHook.Forward ? " forward" : string.Empty)} {Name}: {string.Join(", ", Conditions)}";
@@ -148,12 +148,12 @@ public static class WfpRules
                 [new(WfpField.RemoteAddress, Address: server.Address), new(WfpField.RemotePort, (ulong)server.Port), .. TcpOrUdp()]));
         }
 
-        // Поиск адреса сервера службой под блоком: только программа службы и только к DoH.
+        // Поиск адреса и диагностика службой: точные TCP-адреса. Разрешение живет только в динамической сессии WFP.
         foreach (var endpoint in policy.Lookup?.Endpoints ?? [])
         {
             rules.Add(new("lookup", endpoint.Address.AddressFamily == AddressFamily.InterNetworkV6 ? WfpFamily.V6 : WfpFamily.V4, true, 15,
                 [new(WfpField.App, Program: policy.Lookup!.Program), new(WfpField.RemoteAddress, Address: endpoint.Address),
-                    new(WfpField.RemotePort, (ulong)endpoint.Port), new(WfpField.Protocol, Tcp)]));
+                    new(WfpField.RemotePort, (ulong)endpoint.Port), new(WfpField.Protocol, Tcp)], SessionScoped: true));
         }
 
         // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — тяжелее закрытия DNS.

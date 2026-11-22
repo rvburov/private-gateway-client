@@ -447,19 +447,19 @@ class MainViewModelTest {
         val release = CountDownLatch(1)
         source.entered = entered
         source.release = release
+        val background = model.viewModelScope.coroutineContext.job.children.toSet()
         model.preview("https://example.com/sub/old")
         check(entered.await(3, TimeUnit.SECONDS))
+        val pending = model.viewModelScope.coroutineContext.job.children.filterNot { it in background }.toList()
+        assertTrue(pending.isNotEmpty())
         model.closeImport()
         val fresh = com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().distinctBy { Fixtures.identity(it) }[1])
         model.edit(fresh)
         model.preview(fresh)
         val expected = wait { model.importing.first { it.batch != null } }
         release.countDown()
-        // Дождаться всех продолжений модели: старый результат не должен вновь появиться после завершения загрузки. Постоянных
-        // корутин у модели пять: состояние экрана (ui), наблюдатель подписчиков скорости (stateIn с WhileSubscribed держит
-        // его и без подписчиков), слежение за путем запросов для замера IP, запоминание выхода сервера для карточки (решение
-        // 583) и события обновления подписок.
-        waitUntil { model.viewModelScope.coroutineContext.job.children.count() <= 5 }
+        // Дожидаемся именно отмененной загрузки, не полагаясь на число постоянных наблюдателей модели.
+        wait { pending.forEach { it.join() } }
         assertEquals(expected, model.importing.value)
     }
 
@@ -824,7 +824,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `refresh says the desktop result and why it did not measure under protection`() {
+    fun `refresh reports its result both without and with an active vpn`() {
         val said = CopyOnWriteArrayList<Int>()
         val listener = CoroutineScope(Dispatchers.Unconfined).launch { model.messages.collect { said += it.text } }
         try {
@@ -835,7 +835,8 @@ class MainViewModelTest {
             monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
             model.refreshLatency()
             waitUntil { said.size == 2 }
-            assertEquals(R.string.android_servers_ping_busy, said[1])
+            assertEquals(R.string.server_refreshed, said[1])
+            assertEquals(TunnelState.Connected, monitor.status.value.state)
         } finally {
             listener.cancel()
         }

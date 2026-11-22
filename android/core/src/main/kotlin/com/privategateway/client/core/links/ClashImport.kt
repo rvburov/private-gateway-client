@@ -8,6 +8,7 @@ import com.privategateway.client.core.links.ConfigTree.put
 import com.privategateway.client.core.links.ConfigTree.server
 import com.privategateway.client.core.links.ConfigTree.text
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.TransportParameterRules
 import java.util.Locale
 
 /**
@@ -115,6 +116,7 @@ internal object ClashImport {
         put(query, "host", header(obj(ws, "headers"), "Host") ?: text(xhttp, "host"))
         put(query, "serviceName", text(obj(node, "grpc-opts"), "grpc-service-name"))
         put(query, "mode", text(xhttp, "mode"))
+        if (xhttp?.containsKey("extra") == true) query["extra"] = TransportParameterRules.configExtra(xhttp["extra"]) ?: "null"
     }
 
     /** WireGuard: поля сервера или один peers; AmneziaWG ядро не поддерживает. */

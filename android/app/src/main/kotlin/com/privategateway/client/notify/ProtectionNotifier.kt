@@ -74,6 +74,11 @@ class ProtectionNotifier @Inject constructor(
             monitor.status.collect { after ->
                 val previous = before
                 before = after
+                if (previous.localOnly || after.localOnly) {
+                    // Локальная фильтрация не скрывает IP: обычное уведомление «Защищено» здесь неверно.
+                    NotificationManagerCompat.from(context).cancel(Notice.PROTECTION_TAG, ID)
+                    return@collect
+                }
                 val server = name(after.serverId ?: previous.serverId)
                 NotificationPolicy.forChange(previous, after, server, after.lockdown ?: previous.lockdown ?: false)?.let { deliver(it) }
             }

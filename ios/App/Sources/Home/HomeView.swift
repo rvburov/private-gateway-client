@@ -32,17 +32,43 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: PgSpace.m) {
                 header
+                if home.status.localSiteFilter {
+                    localFilter
+                } else {
                 StatusCard(
                     texts: texts, home: home, killSwitch: killSwitch, facts: facts, onCheckNow: onCheckNow, onRetry: onRetry, onCaptive: onCaptive,
                     onResume: onResume
                 )
                 WebIpCard(texts: texts, home: home, facts: facts, onAdd: onAdd, onServers: onServers, onSelect: onSelect, onRefresh: onRefresh)
                 SpeedCard(texts: texts, look: SpeedLook.of(home.status.state, home: home, speed: facts.speed, texts), onPing: onCheck)
+                }
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
             .padding(.bottom, PgLayout.scrollBottomPadding)
         }
         .accessibilityIdentifier("home")
+    }
+
+    private var localFilter: some View {
+        VStack(alignment: .leading, spacing: PgSpace.l) {
+            Text(texts.text(key: home.status.state == .connected ? "status.filter.title" : "status.connecting.title") ?? "")
+                .pgText(PgType.status).foregroundStyle(Color(PgColor.Accent.text))
+            Text(texts.text(key: "block.local.note") ?? "")
+                .pgText(PgType.body).foregroundStyle(Color(PgColor.Text.secondary)).fixedSize(horizontal: false, vertical: true)
+            Text(texts.text(key: "ip.meta.filter") ?? "").pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+            Text(facts.ip.checking ? (texts.text(key: "ip.meta.measuring") ?? "") : facts.ip.direct ?? "—")
+                .pgText(PgType.mono).foregroundStyle(Color(PgColor.Text.primary))
+            if let network = NetworkLine.of(facts.uplink, texts) {
+                Text(network.text).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+            }
+            if let error = home.status.error {
+                Text(texts.text(key: "error." + error) ?? error).pgText(PgType.caption).foregroundStyle(Color(PgColor.Status.Danger.text))
+            }
+            PgActionButton(label: texts.navServers, kind: .secondary, identifier: "filter.servers", action: onServers)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .pgCard()
+        .accessibilityIdentifier("home.localFilter")
     }
 
     /// Шапка (MainPage десктопа): знак — щит с отметкой, название, версия полностью, «+».
@@ -61,14 +87,7 @@ struct HomeView: View {
                 .padding(.leading, PgSpace.m)
                 .padding(.trailing, PgSpace.s)
             if !version.isEmpty {
-                Text(version)
-                    .pgText(PgTextStyle(size: PgType.overline.size, weight: 600))
-                    .foregroundStyle(Color(PgColor.Accent.text))
-                    .lineLimit(1)
-                    .padding(.horizontal, PgSpace.xs)
-                    .padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: PgRadius.chip, style: .continuous).fill(Color(PgColor.Accent.tint)))
-                    .accessibilityIdentifier("version")
+                PgBadge(text: version, identifier: "version")
             }
 
             Spacer(minLength: 0)

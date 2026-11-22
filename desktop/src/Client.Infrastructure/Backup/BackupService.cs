@@ -148,7 +148,7 @@ public sealed class BackupService(SettingsService settings, IServerStore servers
         {
             groups = [.. servers.Snapshot().Select(g => parts.Keys ? g : g with
             {
-                Servers = [.. g.Servers.Select(s => s with { Definition = s.Definition with { Credentials = new ServerCredentials() } })],
+                Servers = [.. g.Servers.Select(s => s with { Definition = s.Definition with { Credentials = new ServerCredentials(), Transport = s.Definition.Transport with { ExtraJson = null } } })],
             })];
         }
 

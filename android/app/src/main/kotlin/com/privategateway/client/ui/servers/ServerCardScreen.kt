@@ -38,7 +38,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -71,6 +70,7 @@ import com.privategateway.client.ui.theme.CountryFlag
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgTileButton
 import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
@@ -99,6 +99,7 @@ class CardActions(
     val share: suspend (String) -> String? = { null },
     val copy: (String) -> Unit = {},
     val exit: suspend (String) -> String? = { null },
+    val latencyCheck: (String) -> com.privategateway.client.data.LatencyCheck? = { null },
 )
 
 /**
@@ -149,7 +150,7 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
                     renaming = false
                 }
 
-                else -> Details(server, actions.address, actions.exit)
+                else -> Details(server, actions.address, actions.exit, actions.latencyCheck(server.id))
             }
         }
 
@@ -172,13 +173,13 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(PgSpace.S)) {
-                Tile(PgIcons.Edit, stringResource(R.string.card_rename), "card.rename", Modifier.weight(1f)) {
+                PgTileButton(PgIcons.Edit, stringResource(R.string.card_rename), "card.rename", Modifier.weight(1f)) {
                     link = null
                     renaming = true
                 }
 
                 val sharing = link != null
-                Tile(
+                PgTileButton(
                     PgIcons.Qr,
                     stringResource(if (sharing) R.string.card_share_hide else R.string.card_share),
                     if (sharing) "card.share.hide" else "card.share",
@@ -203,7 +204,7 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
                     }
                 }
 
-                Tile(PgIcons.Trash, stringResource(R.string.card_delete), "card.delete", Modifier.weight(1f), danger = true) { deleting = true }
+                PgTileButton(PgIcons.Trash, stringResource(R.string.card_delete), "card.delete", Modifier.weight(1f), danger = true) { deleting = true }
             }
         }
     }
@@ -391,7 +392,7 @@ private fun Inset(modifier: Modifier, padding: PaddingValues, spacing: Dp = 0.dp
  * транспорт, защита, ядро.
  */
 @Composable
-private fun Details(server: ServerItem, address: suspend (String) -> String?, exit: suspend (String) -> String?) {
+private fun Details(server: ServerItem, address: suspend (String) -> String?, exit: suspend (String) -> String?, latency: com.privategateway.client.data.LatencyCheck? = null) {
     val host by produceState("…", server.id) { value = address(server.id) ?: "—" }
     val unknown = stringResource(R.string.card_exitIp_unknown)
     val seen by produceState("…", server.id, unknown) { value = exit(server.id) ?: unknown }
@@ -405,6 +406,12 @@ private fun Details(server: ServerItem, address: suspend (String) -> String?, ex
         Detail(stringResource(R.string.card_security), security, "card.security")
         Detail(stringResource(R.string.card_core), ServerFacts.coreName(server.protocol) ?: stringResource(R.string.android_card_core_none), "card.core")
         latencyReason(server.latency)?.let { Detail(stringResource(R.string.card_latency_reason), stringResource(it), "card.latencyReason", lines = 3) }
+        latency?.let {
+            val at = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format(java.time.Instant.ofEpochMilli(it.at).atZone(java.time.ZoneId.systemDefault()))
+            Detail(stringResource(R.string.card_latency_checked), at, "card.latency.checked")
+            if (it.isStale(System.currentTimeMillis())) Detail(stringResource(R.string.card_latency_reason), stringResource(R.string.latency_stale_text), "card.latency.stale", lines = 3)
+            if (server.latency?.ms == null && it.lastSuccessMs != null) Detail(stringResource(R.string.card_latency_lastSuccess), "${it.lastSuccessMs} ${stringResource(R.string.unit_ms)}", "card.latency.lastSuccess")
+        }
     }
 }
 
@@ -562,54 +569,3 @@ private fun InUse() {
 
 /** Текст полосы «Используется сейчас»: размер title, полужирным. */
 private val TitleStrong = TextStyle(fontSize = PgType.Title.fontSize, fontWeight = FontWeight.SemiBold)
-
-/**
- * Плитка действия (.sc-tile, Button.secondary.tile): 58 в высоту, значок 18 над подписью caption; при нажатии рамка и текст
- * синеют, сжатие 0,98. [danger] — красная («Удалить»), [on] — переключена («Скрыть QR»): accent.tint и рамка accent.base;
- * недоступная — прозрачность 0,45.
- */
-@Composable
-private fun Tile(
-    icon: String,
-    label: String,
-    tag: String,
-    modifier: Modifier,
-    enabled: Boolean = true,
-    danger: Boolean = false,
-    on: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val active = pressed && enabled
-    val shape = RoundedCornerShape(14.dp)
-    val edge = when {
-        on -> PgColor.Accent.Base
-        danger -> if (active) PgColor.Status.Danger.Base else PgColor.Status.Danger.Line
-        active -> PgColor.Accent.Base
-        else -> PgColor.Line.Strong
-    }
-    val ink = when {
-        on -> PgColor.Accent.Text
-        danger -> PgColor.Status.Danger.Text
-        active -> PgColor.Accent.Base
-        else -> PgColor.Text.Primary
-    }
-    Column(
-        modifier
-            .scale(if (active) 0.98f else 1f)
-            .alpha(if (enabled) 1f else 0.45f)
-            .heightIn(min = 58.dp)
-            .clip(shape)
-            .background(if (on) PgColor.Accent.Tint else PgColor.Surface.Solid)
-            .border(1.dp, edge, shape)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = PgSpace.Xxs, vertical = PgSpace.S)
-            .testTag(tag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(PgSpace.Xxs, Alignment.CenterVertically),
-    ) {
-        PgIcon(icon, null, color = ink, size = 18.dp, strokeWidth = 1.9f)
-        Text(label, color = ink, style = PgType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}

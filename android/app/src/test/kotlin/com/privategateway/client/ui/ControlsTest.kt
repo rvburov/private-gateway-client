@@ -2,6 +2,7 @@ package com.privategateway.client.ui
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
@@ -15,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -36,6 +40,9 @@ import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgCheck
 import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgIcons
+import com.privategateway.client.ui.theme.PgIconButton
+import com.privategateway.client.ui.theme.PgSmallButton
+import com.privategateway.client.ui.theme.PgTileButton
 import com.privategateway.client.ui.theme.PgLinkRow
 import com.privategateway.client.ui.theme.PgPrimaryButton
 import com.privategateway.client.ui.theme.PgSegments
@@ -82,6 +89,57 @@ class ControlsTest {
         NotificationLevel.All -> R.string.settings_notifications_all
         NotificationLevel.ImportantOnly -> R.string.settings_notifications_important
         NotificationLevel.Off -> R.string.settings_notifications_off
+    }
+
+    @Test
+    fun `icon action has a full touch target and disabled actions never run`() {
+        var enabled by mutableStateOf(false)
+        var calls = 0
+        compose.setContent {
+            PgTheme { PgIconButton(PgIcons.Copy, text(R.string.ip_copy), "copy", { calls++ }, enabled = enabled) }
+        }
+        compose.onNodeWithTag("copy").assertHeightIsAtLeast(44.dp)
+            .assertContentDescriptionEquals(text(R.string.ip_copy)).assertIsNotEnabled().performClick()
+        assertEquals(0, calls)
+        enabled = true
+        compose.onNodeWithTag("copy").performClick()
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `small refresh retains its label and rejects repeat taps while busy`() {
+        var busy by mutableStateOf(false)
+        var calls = 0
+        compose.setContent {
+            PgTheme {
+                PgSmallButton(text(R.string.subs_update), "update", { calls++; busy = true }, icon = PgIcons.Refresh, soft = true, spinning = busy)
+            }
+        }
+        compose.onNodeWithTag("update").assertHeightIsAtLeast(44.dp).assertTextEquals(text(R.string.subs_update)).performClick()
+        compose.onNodeWithTag("update").assertIsNotEnabled().assertTextEquals(text(R.string.subs_update)).performClick()
+        compose.onNodeWithTag("update.spin", useUnmergedTree = true).assertExists()
+        assertEquals(1, calls)
+        busy = false
+        compose.onNodeWithTag("update").performClick()
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun `tile reports its selected state and unavailable destructive action cannot run`() {
+        var selected by mutableStateOf(false)
+        var deleted = 0
+        compose.setContent {
+            PgTheme {
+                Column {
+                    PgTileButton(PgIcons.Qr, text(R.string.card_share), "share", on = selected) { selected = !selected }
+                    PgTileButton(PgIcons.Trash, text(R.string.card_delete), "delete", danger = true, enabled = false) { deleted++ }
+                }
+            }
+        }
+        compose.onNodeWithTag("share").assertIsNotSelected().performClick()
+        compose.onNodeWithTag("share").assertIsSelected().assertTextEquals(text(R.string.card_share))
+        compose.onNodeWithTag("delete").assertIsNotEnabled().performClick()
+        assertEquals(0, deleted)
     }
 
     @Test

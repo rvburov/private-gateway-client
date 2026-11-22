@@ -1,6 +1,7 @@
 package com.privategateway.client.ui.account
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
 import com.privategateway.client.account.AccountNotice
@@ -68,6 +70,8 @@ import com.privategateway.client.ui.theme.PgSecondaryButton
 import com.privategateway.client.ui.theme.PgSegments
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
+import com.privategateway.client.ui.theme.PgShadow
+import com.privategateway.client.ui.theme.pgShadow
 
 /**
  * Действия экрана входа: поля, переключатель кода, «Войти», страница сайта ([site] — полный адрес https) и «Войти другим
@@ -149,9 +153,11 @@ fun LoginScreen(
         }
 
         Spacer(Modifier.size(32.dp))
-        Box(Modifier.align(Alignment.CenterHorizontally).testTag("login.logo")) {
-            PgIcon(PgIcons.Shield, null, color = PgColor.Accent.Base, size = 40.dp)
-            PgIcon(PgIcons.MarkOk, null, color = PgColor.Accent.Base, size = 40.dp)
+        val logoShape = RoundedCornerShape(PgRadius.Card)
+        Box(Modifier.align(Alignment.CenterHorizontally).size(72.dp).pgShadow(PgShadow.Card, logoShape)
+            .background(PgColor.Surface.Solid, logoShape).border(1.dp, PgColor.Line.Border, logoShape).testTag("login.logo"), contentAlignment = Alignment.Center) {
+            PgIcon(PgIcons.Shield, null, color = PgColor.Accent.Base, size = 36.dp)
+            PgIcon(PgIcons.MarkOk, null, color = PgColor.Accent.Base, size = 36.dp)
         }
 
         Spacer(Modifier.size(PgSpace.L))
@@ -322,27 +328,25 @@ fun LoginScreen(
 /** Подпись поля над ним. */
 @Composable
 private fun Field(text: String) {
-    Text(text, Modifier.padding(bottom = PgSpace.Xs), color = PgColor.Text.Primary, style = PgType.BodyStrong)
+    Text(text, Modifier.padding(bottom = PgSpace.Xs), color = PgColor.Text.Secondary, style = PgType.Small.copy(fontWeight = FontWeight.SemiBold))
 }
 
 /** Пароль и «глаз» рядом с полем: показать или скрыть введенное. Пароль — последнее поле первого шага: Enter — «Войти». */
 @Composable
 private fun Password(value: String, onChange: (String) -> Unit, submit: () -> Unit, focused: (Boolean) -> Unit) {
     var shown by rememberSaveable { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        PgInput(
+    PgInput(
             value,
             onChange,
             stringResource(R.string.account_password),
             "login.password",
-            Modifier.weight(1f).onFocusChanged { focused(it.isFocused) },
+            Modifier.fillMaxWidth().onFocusChanged { focused(it.isFocused) },
             keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done),
             visual = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
             actions = KeyboardActions(onDone = { submit() }),
-        )
-        Spacer(Modifier.width(PgSpace.S))
-        val label = stringResource(R.string.account_password_show)
-        Box(
+            trailing = {
+                val label = stringResource(R.string.account_password_show)
+                Box(
             Modifier
                 .size(PgLayout.TouchTarget)
                 .clip(RoundedCornerShape(PgRadius.Button))
@@ -350,10 +354,11 @@ private fun Password(value: String, onChange: (String) -> Unit, submit: () -> Un
                 .semantics { contentDescription = label }
                 .testTag("login.password.show"),
             contentAlignment = Alignment.Center,
-        ) {
-            PgIcon(if (shown) PgIcons.EyeOff else PgIcons.Eye, null, color = PgColor.Text.Secondary, size = 20.dp, strokeWidth = 2f)
-        }
-    }
+                ) {
+                    PgIcon(if (shown) PgIcons.EyeOff else PgIcons.Eye, null, color = PgColor.Text.Secondary, size = 20.dp, strokeWidth = 2f)
+                }
+            },
+        )
 }
 
 /** Почему вход нужен снова: «Доступ отозван…» или «Срок входа истек…» — плашкой предупреждения над формой. */
@@ -364,6 +369,7 @@ private fun Notice(notice: AccountNotice) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(PgRadius.Input))
             .background(PgColor.Status.Warning.Tint)
+            .border(1.dp, PgColor.Status.Warning.Line, RoundedCornerShape(PgRadius.Input))
             .padding(PgSpace.L)
             .testTag("login.notice"),
         verticalAlignment = Alignment.Top,
@@ -378,7 +384,7 @@ private fun Notice(notice: AccountNotice) {
                     AccountNotice.SignOutNotSaved -> R.string.account_logout_unsaved
                 },
             ),
-            color = PgColor.Status.Warning.Text,
+            color = PgColor.Status.Warning.Badge,
             style = PgType.Small,
         )
     }

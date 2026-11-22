@@ -31,7 +31,7 @@ public static class ToneOf
             return Tone.Error;
         }
 
-        var partial = status.Mode == ConnectionMode.Proxy;
+        var partial = status.Mode == ConnectionMode.Proxy || status.LocalSiteFilter;
         return status.State switch
         {
             ConnectionState.Connected => partial ? Tone.Partial : Tone.Connected,

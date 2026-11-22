@@ -55,6 +55,10 @@ public sealed partial class Gateway
     /// <param name="reuse">Взять вывод прошлой проверки этого сервера (переподключение); false — проверить заново.</param>
     private Func<ProbeLink, CancellationToken, Task<bool>>? ServerIpv6(CoreRequest core, bool reuse)
     {
+        if (core.LocalSiteFilter)
+        {
+            return null;
+        }
         if (_options.Trace is not { } trace || _options.Trace6 is not { } trace6)
         {
             return null;
@@ -175,6 +179,11 @@ public sealed partial class Gateway
             if (ip is not null)
             {
                 _exitIpMeasurementVersion++;
+                if (status.LocalSiteFilter)
+                {
+                    _directIp = ip;
+                    Update(s => s with { Exit = s.Exit with { DirectIp = ip } });
+                }
             }
         }
         if (ip is null)
@@ -187,6 +196,11 @@ public sealed partial class Gateway
             }
 
             return (CheckState.Warning, "no_answer");
+        }
+
+        if (status.LocalSiteFilter)
+        {
+            return (CheckState.Off, "local_filter");
         }
 
         if (ip == direct)

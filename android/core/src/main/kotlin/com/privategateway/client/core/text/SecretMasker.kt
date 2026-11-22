@@ -1,5 +1,8 @@
 package com.privategateway.client.core.text
 
+import com.privategateway.client.core.links.JsonText
+import java.net.URLEncoder
+
 /**
  * Скрывает секреты в строке перед записью в журнал — как `SecretMasker` десктопа, те же правила: ссылки на серверы,
  * пути и параметры адресов подписок, UUID, ключи. Журнал пользователь может отправить в отчете, поэтому в нем не должно
@@ -8,6 +11,38 @@ package com.privategateway.client.core.text
 object SecretMasker {
     /** Чем заменяется скрытая часть. */
     const val HIDDEN = "[скрыто]"
+
+    /** Известные учетные данные с формами из ошибок URL и JSON; длинные формы скрываются раньше частей. */
+    fun knownVariants(secrets: Iterable<String>): List<String> {
+        val values = linkedSetOf<String>()
+        fun add(value: String) {
+            if (value.isEmpty()) return
+            values += value
+            val json = JsonText.value(value).drop(1).dropLast(1)
+            values += json
+            values += json.replace("/", "\\/")
+            val uri = URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20").replace("*", "%2A").replace("%7E", "~")
+            values += uri
+            values += uri.replace("%20", "+")
+            values += Regex("%[A-Fa-f0-9]{2}").replace(uri) { it.value.lowercase() }
+        }
+        for (secret in secrets) {
+            add(secret)
+            val trimmed = secret.trim()
+            add(trimmed)
+            if (trimmed.startsWith("Bearer ", ignoreCase = true) || trimmed.startsWith("Basic ", ignoreCase = true)) add(trimmed.substringAfter(' ').trim())
+        }
+        return values.sortedByDescending { it.length }
+    }
+
+    fun mask(text: String?, knownSecrets: Iterable<String>): String {
+        var result = text.orEmpty()
+        for (secret in knownVariants(knownSecrets)) {
+            result = if (secret.length >= 4) result.replace(secret, HIDDEN)
+            else Regex("(?<![\\p{L}\\p{N}_])${Regex.escape(secret)}(?![\\p{L}\\p{N}_])").replace(result) { HIDDEN }
+        }
+        return mask(result)
+    }
 
     // Ссылки серверов: все после схемы — учетные данные и параметры.
     private val proxyLink = Regex("""\b(?<scheme>vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|wireguard|wg)://[^\s"'<>]+""", RegexOption.IGNORE_CASE)

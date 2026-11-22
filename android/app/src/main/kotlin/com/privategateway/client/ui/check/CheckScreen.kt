@@ -70,6 +70,8 @@ import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgBadge
+import com.privategateway.client.ui.theme.PgBadgeKind
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
@@ -89,6 +91,11 @@ enum class CheckPage {
     Main,
     Network,
     Probe,
+    LabPath,
+    LabLayers,
+    LabEvents,
+    LabTrouble,
+    LabCompare,
 }
 
 /** Что делают кнопки «Проверки». */
@@ -112,7 +119,6 @@ private val CardPadding = PaddingValues(horizontal = PgSpace.Card, vertical = Pg
 private val LinkPadding = PaddingValues(vertical = 10.dp)
 
 /** Чип строки (.check-chip): размер overline, полужирный, без заглавных и разрядки. */
-private val ChipText = PgType.Caption.copy(fontSize = PgType.Overline.fontSize, fontWeight = FontWeight.SemiBold)
 
 /** Надпись-кнопка (.btn-link): small, полужирный. */
 private val LinkText = PgType.Small.copy(fontWeight = FontWeight.SemiBold)
@@ -158,10 +164,15 @@ fun CheckScreen(
 
         CheckPage.Probe -> {
             BackHandler { page = CheckPage.Main }
-            ProbePage(inspector.probe, ui.status.state == TunnelState.Connected, inspectorActions) { page = CheckPage.Main }
+            ProbePage(inspector.probe, ui.status.state == TunnelState.Connected && !ui.status.localOnly, inspectorActions) { page = CheckPage.Main }
         }
 
         CheckPage.Main -> CheckMain(ui, core, check, actions, tunnel, scroll) { page = it }
+
+        else -> {
+            BackHandler { page = CheckPage.Main }
+            LabScreen(page, inspector, check, tunnel, inspectorActions) { page = CheckPage.Main }
+        }
     }
 }
 
@@ -214,7 +225,22 @@ private fun CheckMain(
             Delay(ui, check, actions, Modifier.onGloballyPositioned { delayTop = it.positionInParent().y.roundToInt() })
             Hindrances(HinderRows.of(check.hints))
             InspectorLinks(onPage)
+            LaboratoryLinks(onPage)
             Journal(check.journal)
+        }
+    }
+}
+
+@Composable
+private fun LaboratoryLinks(onPage: (CheckPage) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(PgSpace.S)) {
+        Overline(stringResource(R.string.diag_lab))
+        PgCard(Modifier.fillMaxWidth().testTag("check.lab"), contentPadding = CardPadding) {
+            val pages = listOf(CheckPage.LabPath, CheckPage.LabLayers, CheckPage.LabEvents, CheckPage.LabTrouble, CheckPage.LabCompare)
+            val icons = listOf(PgIcons.LabSite, PgIcons.LabLayers, PgIcons.Clock, PgIcons.Search, PgIcons.AdvRouting)
+            pages.forEachIndexed { index, page ->
+                PgLinkRow(icons[index], stringResource(labTitle(page)), null, "check.lab.${page.name}", { onPage(page) }, divider = index > 0, padding = LinkPadding)
+            }
         }
     }
 }
@@ -354,17 +380,7 @@ private fun CheckLine(look: ChipLook, title: String, detail: String, chip: Strin
             }
         }
 
-        Text(
-            chip,
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(look.tint)
-                .padding(horizontal = 9.dp, vertical = 3.dp)
-                .testTag("$tag.chip"),
-            color = look.text,
-            style = ChipText,
-            maxLines = 1,
-        )
+        PgBadge(chip, Modifier.testTag("$tag.chip"), ink = look.text, tint = look.tint, kind = PgBadgeKind.Result)
     }
 }
 

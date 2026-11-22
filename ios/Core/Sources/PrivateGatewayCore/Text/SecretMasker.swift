@@ -7,6 +7,41 @@ public enum SecretMasker {
     /// Чем заменяется скрытая часть.
     public static let hidden = "[скрыто]"
 
+    /// Известные учетные данные с формами из ошибок URL и JSON; длинные формы скрываются раньше частей.
+    public static func mask(_ text: String?, knownSecrets: [String]) -> String {
+        var values = Set<String>()
+        func add(_ value: String) {
+            guard !value.isEmpty else { return }
+            values.insert(value)
+            let json = String(JsonText.write(.string(value)).dropFirst().dropLast())
+            values.insert(json)
+            values.insert(json.replacingOccurrences(of: "/", with: "\\/"))
+            let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~")
+            if let uri = value.addingPercentEncoding(withAllowedCharacters: allowed) {
+                values.insert(uri)
+                values.insert(uri.replacingOccurrences(of: "%20", with: "+"))
+                values.insert(replace(regex("%[A-Fa-f0-9]{2}", ignoreCase: false), uri) { $0[0].lowercased() })
+            }
+        }
+        for secret in knownSecrets {
+            add(secret)
+            let trimmed = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+            add(trimmed)
+            if trimmed.lowercased().hasPrefix("bearer ") || trimmed.lowercased().hasPrefix("basic "), let space = trimmed.firstIndex(of: " ") {
+                add(String(trimmed[trimmed.index(after: space)...]).trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+        var result = text ?? ""
+        for secret in values.sorted(by: { $0.utf16.count > $1.utf16.count }) {
+            if secret.utf16.count >= 4 { result = result.replacingOccurrences(of: secret, with: hidden) }
+            else {
+                let expression = regex("(?<![\\p{L}\\p{N}_])" + NSRegularExpression.escapedPattern(for: secret) + "(?![\\p{L}\\p{N}_])", ignoreCase: false)
+                result = replace(expression, result) { _ in hidden }
+            }
+        }
+        return mask(result)
+    }
+
     // Ссылки серверов: все после схемы — учетные данные и параметры. Выражения ICU неизменяемы — их можно делить между
     // потоками.
     nonisolated(unsafe) private static let proxyLink = regex(#"\b(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|wireguard|wg)://[^\s"'<>]+"#, ignoreCase: true)

@@ -59,6 +59,7 @@ import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgBanner
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgInput
@@ -468,18 +469,7 @@ private fun Tile(count: Int, caption: String, tone: TileTone, tag: String, modif
 /** Оранжевая плашка (Border.notice, .im-notice): warning.tint, рамка warning.line, скругление 12. */
 @Composable
 private fun Notice(tag: String, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(12.dp)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(PgColor.Status.Warning.Tint)
-            .border(1.dp, PgColor.Status.Warning.Line, shape)
-            .padding(horizontal = PgSpace.L, vertical = PgSpace.M)
-            .testTag(tag),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        content = content,
-    )
+    PgBanner(tag, compact = true, content = content)
 }
 
 @Composable

@@ -100,6 +100,15 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
             return;
         }
 
+        if (status.LocalSiteFilter)
+        {
+            if (!settings.Current.AccountSignedOut && !settings.Current.AccountNetworkResetPending)
+            {
+                await gateway.StartSiteFilterAsync().ConfigureAwait(false);
+            }
+            return;
+        }
+
         var server = target is null ? catalog.Selected : target.Selected;
         if (server is null)
         {

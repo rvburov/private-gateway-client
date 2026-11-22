@@ -156,7 +156,7 @@ class CheckViewModel @Inject constructor(
 
     /** Задержка меряется только под защитой: без нее прежнего замера нет — числа были бы о другом подключении. */
     private suspend fun measure() {
-        if (monitor.status.value.state != TunnelState.Connected) {
+        if (monitor.status.value.state != TunnelState.Connected || monitor.status.value.localOnly) {
             state.update { it.copy(delay = null) }
             return
         }

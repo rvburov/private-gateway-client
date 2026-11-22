@@ -94,10 +94,10 @@ data class MainUi(
     private val exit: String? get() = ip.exit?.takeIf { status.state == TunnelState.Connected && ip.session == status.since }
 
     /** Защита включена, а замер видит реальный IP: выход совпал с адресом, измеренным без защиты в этой же сети. */
-    val leak: Boolean get() = exit != null && exit == ip.direct
+    val leak: Boolean get() = !status.localOnly && exit != null && exit == ip.direct
 
     /** Что показывает главная: состояние туннеля, блок Android и утечка (доска 09). */
-    val view: ProtectionView get() = ProtectionView.of(status.state, closedWithoutTunnel, leak, status.paused)
+    val view: ProtectionView get() = if (status.localOnly && status.state == TunnelState.Connected) ProtectionView.Off else ProtectionView.of(status.state, closedWithoutTunnel, leak, status.paused)
 
     /**
      * «Нет сети» (`status.offline.*` десктопа): туннель поднят или поднимается, а сети под ним нет — или попытки кончились без
@@ -117,7 +117,7 @@ data class MainUi(
      * в подключении и блокировке — никакого: прямой путь закрыт, а выхода еще нет. Не измерен — null.
      */
     val webAddress: String?
-        get() = when (view) {
+        get() = if (status.localOnly) exit else when (view) {
             ProtectionView.Connected, ProtectionView.Leak -> exit
             ProtectionView.Off, ProtectionView.Error, ProtectionView.Paused -> ip.direct
             else -> null
@@ -131,7 +131,7 @@ data class MainUi(
         get() {
             val id = status.serverId ?: return null
             val address = exit ?: return null
-            return (id to address).takeIf { view == ProtectionView.Connected && !status.paused }
+            return (id to address).takeIf { view == ProtectionView.Connected && !status.paused && !status.localOnly }
         }
 
     /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
@@ -250,6 +250,8 @@ class MainViewModel @Inject constructor(
     private val account: AccountRepository,
 ) : ViewModel() {
     private val webIp = MutableStateFlow(WebIp())
+    val latencyChecks = servers.latencyChecks
+    val latencyProgress = meter.progress
 
     // Состояние замеров внешнего IP — до init: подписка в init идет сразу (Main.immediate) и уже пишет сюда.
     private var lastPath: IpPath? = null
@@ -296,6 +298,12 @@ class MainViewModel @Inject constructor(
             servers.locate()
         }
         networks.start()
+        viewModelScope.launch {
+            networks.networks.map { list -> list.filter { it.kind != com.privategateway.client.core.inspect.PhoneNetworkKind.Vpn }
+                .map { "${it.name}:${it.addresses.sorted()}:${it.dns.sorted()}" }.sorted() }.distinctUntilChanged().collect {
+                meter.networkChanged()
+            }
+        }
         // Внешний IP — сам, когда меняется путь запросов приложения: подключились — выход (проверка, нет ли утечки),
         // выключено без блока Android или сменилась сеть — реальный IP.
         viewModelScope.launch {
@@ -358,7 +366,7 @@ class MainViewModel @Inject constructor(
     fun select(id: String) {
         viewModelScope.launch {
             val state = monitor.status.value.state
-            if (choose(id) && state != TunnelState.Off && state != TunnelState.Stopping) {
+            if (choose(id) && state != TunnelState.Off && state != TunnelState.Stopping && !monitor.status.value.localOnly) {
                 control.connect()
             }
         }
@@ -373,7 +381,7 @@ class MainViewModel @Inject constructor(
             val changed = choose(id)
             when (monitor.status.value.state) {
                 TunnelState.Off, TunnelState.Error -> start()
-                TunnelState.Connecting, TunnelState.Connected, TunnelState.Reconnecting -> if (changed) control.connect()
+                TunnelState.Connecting, TunnelState.Connected, TunnelState.Reconnecting -> if (changed && !monitor.status.value.localOnly) control.connect()
                 TunnelState.Stopping -> Unit
             }
         }

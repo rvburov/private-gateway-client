@@ -436,7 +436,7 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
   --state-glow: var(--pg-state-connecting-glow); --state-fill: var(--pg-state-connecting-fill); }
 [data-state="blocked"], [data-state="strict"] { --state-ring: var(--pg-state-blocked-ring); --state-icon: var(--pg-state-blocked-icon);
   --state-glow: var(--pg-state-blocked-glow); --state-fill: var(--pg-state-blocked-fill); }
-[data-state="proxy"], [data-state="paused"] { --state-ring: var(--pg-state-partial-ring); --state-icon: var(--pg-state-partial-icon);
+[data-state="proxy"], [data-state="paused"], [data-state="filter"] { --state-ring: var(--pg-state-partial-ring); --state-icon: var(--pg-state-partial-icon);
   --state-glow: var(--pg-state-partial-glow); --state-fill: var(--pg-state-partial-fill); }
 [data-state="error"], [data-state="leak"] { --state-ring: var(--pg-state-error-ring); --state-icon: var(--pg-state-error-icon);
   --state-glow: var(--pg-state-error-glow); --state-fill: var(--pg-state-error-fill); }

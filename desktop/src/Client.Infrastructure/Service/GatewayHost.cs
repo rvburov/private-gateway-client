@@ -91,6 +91,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
 
     public bool HasReceivedStatus => Current?.HasReceivedStatus ?? false;
 
+    public bool CanAutomaticallyMeasureLatency => HasReceivedStatus && MayMeasureLatency;
+
+    private bool MayMeasureLatency => _mayConnect?.Invoke() != false && !_settings().AccountSignedOut && !_settings().AccountNetworkResetPending;
+
     public int? ManagedUserProxyPort => Current?.ManagedUserProxyPort;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -122,6 +126,24 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
 
     public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
         ConnectCurrentAsync(server, false, cancellationToken);
+
+    public async Task<bool> StartSiteFilterAsync(CancellationToken cancellationToken = default)
+    {
+        var intent = Interlocked.Increment(ref _connectIntent);
+        if (_mayConnect?.Invoke() == false || _settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+        {
+            return false;
+        }
+        ClearRefusal();
+        var service = await EnsureAsync(launch: false, cancellationToken, requireInstalled: true).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (intent != Volatile.Read(ref _connectIntent) || _mayConnect?.Invoke() == false
+            || _settings().AccountSignedOut || _settings().AccountNetworkResetPending)
+        {
+            return false;
+        }
+        return service is not null && await service.StartSiteFilterAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
         ConnectCurrentAsync(server, true, cancellationToken);
@@ -172,6 +194,11 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     public void AccessGranted()
     {
         ClearRefusal();
+        if (Current is { } current)
+        {
+            StatusChanged?.Invoke(this, current.Status);
+            return;
+        }
         ConnectionStatus status;
         lock (_gate)
         {
@@ -244,15 +271,44 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     }
 
     /// <summary>Пинг меряет служба; в режиме прокси ради него запускается служба пользователя.</summary>
-    public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
-        await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
+    public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default)
+    {
+        if (!MayMeasureLatency)
+        {
+            return new Dictionary<string, LatencyResult>();
+        }
+        var service = await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false);
+        return service is not null && MayMeasureLatency
             ? await service.MeasureLatencyAsync(serverIds, cancellationToken).ConfigureAwait(false)
             : new Dictionary<string, LatencyResult>();
+    }
+
+    public async IAsyncEnumerable<KeyValuePair<string, LatencyResult>> MeasureLatencyProgressAsync(IReadOnlyList<string> serverIds,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (!MayMeasureLatency || await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is not { } service || !MayMeasureLatency)
+        {
+            yield break;
+        }
+        await foreach (var item in service.MeasureLatencyProgressAsync(serverIds, cancellationToken).ConfigureAwait(false))
+        {
+            if (!MayMeasureLatency)
+            {
+                yield break;
+            }
+            yield return item;
+        }
+    }
 
     /// <summary>Сведения службы — той, что найдена (службу пользователя ради них не запускает); нет — null.</summary>
     public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) =>
         await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
             ? await service.GetDetailsAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
+    public async Task<IReadOnlyList<BlockedSite>?> GetBlockedSitesAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.GetBlockedSitesAsync(cancellationToken).ConfigureAwait(false)
             : null;
 
     public async Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) =>
@@ -359,9 +415,12 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// прокси и при <paramref name="launch"/> — запуск службы пользователя. null — службы нет. Просят
     /// VPN, а отвечает служба пользователя, — окно ищет установленную (ее могли только что поставить).
     /// </summary>
-    private async Task<IGatewayClient?> EnsureAsync(bool launch, CancellationToken cancellationToken)
+    /// <param name="launch">Можно запустить службу пользователя для режима прокси.</param>
+    /// <param name="cancellationToken">Отмена ожидания службы.</param>
+    /// <param name="requireInstalled">Локальному фильтру нужен TUN даже при сохраненном режиме прокси.</param>
+    private async Task<IGatewayClient?> EnsureAsync(bool launch, CancellationToken cancellationToken, bool requireInstalled = false)
     {
-        if (Current is { } current && Usable(current))
+        if (Current is { } current && Usable(current) && (!requireInstalled || current.Service == ServiceKind.Installed))
         {
             return current;
         }
@@ -369,13 +428,17 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         await _finding.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Current is { } found && Usable(found))
+            if (Current is { } found && Usable(found) && (!requireInstalled || found.Service == ServiceKind.Installed))
             {
                 return found;
             }
 
             if (await Task.Run(_locator.Find, cancellationToken).ConfigureAwait(false) is { } address)
             {
+                if (requireInstalled && !address.System)
+                {
+                    return null;
+                }
                 if (Current is { Service: ServiceKind.User } same && !address.System)
                 {
                     return same;
@@ -392,6 +455,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             }
 
             // Пропавшая служба остается: ее клиент сам покажет, что она не отвечает.
+            if (requireInstalled)
+            {
+                return null;
+            }
             if (!launch || _settings().Mode != ConnectionMode.Proxy)
             {
                 Log(JournalLevel.Warning, "Служба не найдена: ни установленной, ни службы пользователя (PGC-SVC-001)");

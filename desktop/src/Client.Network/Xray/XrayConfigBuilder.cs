@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 
@@ -14,7 +15,14 @@ public sealed record CoreRequest(
     ProtectionSettings Protection,
     ConnectionSettings Connection,
     RoutingSettings Routing,
-    bool UserProxyManagedByWindow = false);
+    bool UserProxyManagedByWindow = false,
+    bool LocalSiteFilter = false)
+{
+    /// <summary>Разрешенные службой адреса дополнительных потоков, только на время этого подключения.</summary>
+    public ServerDefinition? ResolvedTransportServer { get; init; }
+
+    public IReadOnlyList<KillSwitchEndpoint>? TransportEndpoints { get; init; }
+}
 
 /// <summary>Почему ядро Xray не возьмется за сервер.</summary>
 public enum CoreRejection
@@ -89,7 +97,16 @@ public sealed record ProbeLink(int Port, string User, string Password, int Stats
 public sealed record RelayLink(int Port, string User, string Password);
 
 /// <summary>Имя и пароль входов замера задержки (<see cref="XrayConfigBuilder.BuildProbe"/>) — свои на каждый замер.</summary>
-public sealed record SocksAccount(string User, string Password);
+public sealed record SocksAccount(string User, string Password)
+{
+    public override string ToString() => "SocksAccount { *** }";
+}
+
+/// <summary>Проверки других профилей через уже работающий защищенный вход VPN, без изменения брандмауэра.</summary>
+public sealed record XrayProbeUpstream(int Port, SocksAccount Account)
+{
+    public override string ToString() => "XrayProbeUpstream { *** }";
+}
 
 /// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
 public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
@@ -195,8 +212,26 @@ public static class XrayConfigBuilder
     public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null, RelayLink? relay = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var outbound = Outbound(request.Server, request.Connection, relay, out var rejection,
-            tun is not null && !NeedsRelay(request.Server) ? tun.ServerAddress : null);
+        if (request.LocalSiteFilter)
+        {
+            // Локальный фильтр не переносит в DNS, правила и API никакие данные ранее выбранного удаленного профиля.
+            request = request with
+            {
+                Server = new ServerDefinition("Local site filter", string.Empty, ProxyProtocol.Socks5, "127.0.0.1", 10808,
+                    TransportOptions.Tcp, SecurityOptions.None, ProtocolOptions.Empty, new ServerCredentials()),
+                ResolvedTransportServer = null,
+            };
+        }
+        CoreRejection? rejection = null;
+        var outbound = request.LocalSiteFilter
+            ? new JsonObject
+            {
+                ["tag"] = ProxyTag,
+                ["protocol"] = "freedom",
+                ["settings"] = new JsonObject { ["domainStrategy"] = "UseIPv4", ["finalRules"] = AllowAll() },
+            }
+            : Outbound(request.ResolvedTransportServer ?? request.Server, request.Connection, relay, out rejection,
+                tun is not null && !NeedsRelay(request.Server) ? tun.ServerAddress : null);
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
@@ -217,7 +252,7 @@ public static class XrayConfigBuilder
         }
 
         // Адрес сервера ретранслятор получает сам: у выхода Xray к нему — 127.0.0.1.
-        if (tun is not null && !NeedsRelay(request.Server))
+        if (tun is not null && !request.LocalSiteFilter && !NeedsRelay(request.Server))
         {
             Dial(outbound, tun.ServerAddress);
         }
@@ -249,7 +284,7 @@ public static class XrayConfigBuilder
             },
             new JsonObject { ["tag"] = BlockTag, ["protocol"] = "blackhole" },
         };
-        var fragment = request.Connection.TlsFragment ? Fragment() : null;
+        var fragment = !request.LocalSiteFilter && request.Connection.TlsFragment ? Fragment() : null;
         if (fragment is not null)
         {
             outbounds.Add(fragment);
@@ -261,7 +296,7 @@ public static class XrayConfigBuilder
         // (фрагментация TLS), иначе — он сам. У ретранслятора Hysteria2 и TUIC выход к нему — 127.0.0.1: привязка не нужна.
         // Сервер на самой машине (127.0.0.1, ::1) — тоже без привязки: сокет на внешнем адаптере до петли не дозвонится, а в
         // TUN соединение с петлей и так не заходит.
-        if (tun is { Outside: { Length: > 0 } outside } && !NeedsRelay(request.Server) && !OnThisMachine(tun.ServerAddress))
+        if (tun is { Outside: { Length: > 0 } outside } && !request.LocalSiteFilter && !NeedsRelay(request.Server) && !OnThisMachine(tun.ServerAddress))
         {
             Outside(outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null ? fragment : outbound, outside);
         }
@@ -316,6 +351,7 @@ public static class XrayConfigBuilder
                 {
                     CoreLogLevel.Debug => "debug",
                     CoreLogLevel.Info => "info",
+                    _ when request.Routing.HasSiteBlocks => "info",
                     _ => "warning",
                 },
                 ["access"] = "none",
@@ -359,7 +395,7 @@ public static class XrayConfigBuilder
     /// с этим именем и паролем: пока идет замер, другая программа на машине через них к серверам не пройдет; null — без пароля.
     /// </summary>
     public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection,
-        IReadOnlyList<RelayLink?>? relays = null, SocksAccount? account = null)
+        IReadOnlyList<RelayLink?>? relays = null, SocksAccount? account = null, string? outside = null, XrayProbeUpstream? upstream = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(ports);
@@ -373,11 +409,28 @@ public static class XrayConfigBuilder
         var outbounds = new JsonArray();
         var rules = new JsonArray();
         var rejections = new CoreRejection?[servers.Count];
+        var fragment = connection.TlsFragment ? Fragment() : null;
         for (var i = 0; i < servers.Count; i++)
         {
+            if (upstream is not null && TransportParameterRules.RequiresUdpProbe(servers[i]))
+            {
+                rejections[i] = CoreRejection.UnsupportedTransport;
+                continue;
+            }
+
             if (Outbound(servers[i], connection, relays?[i], out rejections[i]) is not { } outbound)
             {
                 continue;
+            }
+
+            var dialer = outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null ? fragment : outbound;
+            if (upstream is not null)
+            {
+                RouteStream(StreamObject(dialer), "dialerProxy", "probe-upstream");
+            }
+            else if (outside is { Length: > 0 } && !NeedsRelay(servers[i]) && !OnThisMachine(servers[i].Host))
+            {
+                Outside(dialer, outside);
             }
 
             outbound["tag"] = $"probe-out-{i}";
@@ -410,9 +463,23 @@ public static class XrayConfigBuilder
             return new XrayProbeConfig(null, rejections);
         }
 
-        if (connection.TlsFragment)
+        if (fragment is not null)
         {
-            outbounds.Add(Fragment());
+            outbounds.Add(fragment);
+        }
+
+        if (upstream is not null)
+        {
+            outbounds.Add(new JsonObject
+            {
+                ["tag"] = "probe-upstream",
+                ["protocol"] = "socks",
+                ["settings"] = Servers(new JsonObject
+                {
+                    ["address"] = "127.0.0.1", ["port"] = upstream.Port,
+                    ["users"] = new JsonArray(new JsonObject { ["user"] = upstream.Account.User, ["pass"] = upstream.Account.Password }),
+                }),
+            });
         }
 
         return new XrayProbeConfig(new JsonObject
@@ -548,21 +615,39 @@ public static class XrayConfigBuilder
 
     /// <summary>Выход соединяется с уже разрешенным адресом сервера: в vnext, servers и у WireGuard — в endpoint.</summary>
     // Привязка сокета выхода к интерфейсу: на Linux — SO_BINDTODEVICE, на Windows — IP_UNICAST_IF, на macOS — IP_BOUND_IF (Xray-core).
-    private static bool OnThisMachine(string address) => IPAddress.TryParse(address, out var ip) && IPAddress.IsLoopback(ip);
+    private static bool OnThisMachine(string address) => string.Equals(address.TrimEnd('.'), "localhost", StringComparison.OrdinalIgnoreCase)
+        || IPAddress.TryParse(address.Trim('[', ']'), out var ip) && IPAddress.IsLoopback(ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip);
 
-    private static void Outside(JsonObject outbound, string outside)
+    private static JsonObject StreamObject(JsonObject outbound)
     {
         if (outbound["streamSettings"] is not JsonObject stream)
         {
             outbound["streamSettings"] = stream = new JsonObject();
         }
 
+        return stream;
+    }
+
+    private static void Outside(JsonObject outbound, string outside) => RouteStream(StreamObject(outbound), "interface", outside);
+
+    // Отдельное соединение загрузки XHTTP должно идти тем же защищенным путем, что и основное соединение.
+    private static void RouteStream(JsonObject stream, string name, string value)
+    {
         if (stream["sockopt"] is not JsonObject sockopt)
         {
             stream["sockopt"] = sockopt = new JsonObject();
         }
 
-        sockopt["interface"] = outside;
+        sockopt[name] = value;
+        foreach (var key in new[] { "xhttpSettings", "splithttpSettings" })
+        {
+            var xhttp = stream[key] as JsonObject;
+            var download = xhttp?["extra"]?["downloadSettings"] as JsonObject ?? xhttp?["downloadSettings"] as JsonObject;
+            if (download is not null)
+            {
+                RouteStream(download, name, value);
+            }
+        }
     }
 
     private static void Dial(JsonObject outbound, string address)
@@ -790,7 +875,8 @@ public static class XrayConfigBuilder
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(address);
-        if (server.Protocol is not (ProxyProtocol.Vless or ProxyProtocol.Trojan) || server.Security.Kind != TransportSecurity.None)
+        if (server.Protocol is not (ProxyProtocol.Vless or ProxyProtocol.Trojan) || server.Security.Kind != TransportSecurity.None
+            || server.Protocol == ProxyProtocol.Vless && server.Options.Encryption is not (null or "none"))
         {
             return false;
         }
@@ -815,6 +901,14 @@ public static class XrayConfigBuilder
         string? dial = null)
     {
         rejection = null;
+        if (!TransportParameterRules.ValidEncryption(server.Options.Encryption)
+            || !TransportParameterRules.TryXhttpExtra(server.Transport.ExtraJson, out _)
+            || server.Transport.ExtraJson is not null && server.Transport.Kind != TransportKind.Xhttp)
+        {
+            rejection = CoreRejection.UnsupportedTransport;
+            return null;
+        }
+
         var credentials = server.Credentials;
         if (ForwardProxyRules.IsForwardProxy(server.Protocol))
         {
@@ -834,7 +928,7 @@ public static class XrayConfigBuilder
         switch (server.Protocol)
         {
             case ProxyProtocol.Vless when credentials.Uuid is { Length: > 0 } uuid:
-                var user = new JsonObject { ["id"] = uuid, ["encryption"] = "none" };
+                var user = new JsonObject { ["id"] = uuid, ["encryption"] = server.Options.Encryption ?? "none" };
                 if (server.Options.Flow is { Length: > 0 } flow)
                 {
                     user["flow"] = flow;
@@ -1005,6 +1099,11 @@ public static class XrayConfigBuilder
                     path["mode"] = mode;
                 }
 
+                if (transport.Kind == TransportKind.Xhttp && transport.ExtraJson is not null)
+                {
+                    path["extra"] = System.Text.Json.Nodes.JsonNode.Parse(TransportParameterRules.ExtraForServer(server)!);
+                }
+
                 stream[network + "Settings"] = path;
                 break;
             case TransportKind.Grpc:
@@ -1064,7 +1163,7 @@ public static class XrayConfigBuilder
 
         if (connection.TlsFragment)
         {
-            stream["sockopt"] = new JsonObject { ["dialerProxy"] = FragmentTag };
+            RouteStream(stream, "dialerProxy", FragmentTag);
         }
 
         return stream;

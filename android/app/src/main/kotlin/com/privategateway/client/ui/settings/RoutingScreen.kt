@@ -67,11 +67,16 @@ import com.privategateway.client.core.settings.SitePattern
 import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.data.PhoneApp
+import com.privategateway.client.data.BlockedSite
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgCheck
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgBanner
 import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
@@ -106,6 +111,10 @@ fun RoutingScreen(
     onProtection: () -> Unit,
     installedApps: suspend () -> List<PhoneApp>,
     pinControl: BlockPinControl = BlockPinControl.None,
+    blockedHistory: List<BlockedSite> = emptyList(),
+    localFilter: Boolean = false,
+    onFilter: () -> Unit = {},
+    onStopFilter: () -> Unit = {},
 ) {
     // Открытый лист правила: null — закрыт, NEW_RULE — новое, иначе — номер правила в списке.
     var editing by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -139,7 +148,13 @@ fun RoutingScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             ModeCard(routing.mode) {
-                if (it == RoutingMode.Split && !routing.split) askingSplit = true else change(routing.copy(mode = it))
+                if (it == RoutingMode.Split && !routing.split) {
+                    val open = { askingSplit = true }
+                    if ((routing.blockOthers || routing.rules.any { rule -> rule.action == RuleAction.Block }) &&
+                        (routing.rules.any { rule -> rule.action == RuleAction.Direct } || routing.apps.any { app -> app.enabled })) {
+                        guarded(context.getString(R.string.block_guard_routing_title), context.getString(R.string.block_guard_routing_text), open)
+                    } else open()
+                } else change(routing.copy(mode = it))
             }
             if (routing.split) {
                 SplitWarning()
@@ -149,7 +164,13 @@ fun RoutingScreen(
                     } else {
                         PgCard(Modifier.fillMaxWidth(), contentPadding = ListCard) {
                             routing.apps.forEachIndexed { index, app ->
-                                AppRow(app, index, divider = index > 0) { change(routing.setApp(app, it)) }
+                                AppRow(app, index, divider = index > 0) { replacement ->
+                                    val apply = { change(routing.setApp(app, replacement)) }
+                                    if (replacement?.enabled == true && !app.enabled &&
+                                        (routing.blockOthers || routing.rules.any { it.action == RuleAction.Block })) {
+                                        guarded(context.getString(R.string.block_guard_routing_title), context.getString(R.string.block_guard_routing_text), apply)
+                                    } else apply()
+                                }
                             }
                         }
                     }
@@ -208,6 +229,43 @@ fun RoutingScreen(
                         settingPin = true
                     }
                 }
+                PgCard(Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.block_local_title), style = PgType.BodyStrong, color = PgColor.Text.Primary)
+                    Text(stringResource(if (localFilter) R.string.block_local_active else R.string.block_local_note), style = PgType.Caption, color = PgColor.Text.Muted)
+                    val canStart = routing.blockOthers || routing.rules.any { it.action == RuleAction.Block }
+                    if (!canStart && !localFilter) Text(stringResource(R.string.block_local_noRules), style = PgType.Caption, color = PgColor.Text.Muted)
+                    PgSecondaryButton(stringResource(if (localFilter) R.string.block_local_stop else R.string.block_local_start), "block.local.toggle", {
+                        if (localFilter) guarded(context.getString(R.string.block_local_stop), context.getString(R.string.block_local_stop_guard), onStopFilter)
+                        else onFilter()
+                    }, Modifier.fillMaxWidth(), enabled = localFilter || canStart)
+                }
+            }
+
+            Section(stringResource(R.string.block_history_title)) {
+                Text(stringResource(R.string.block_history_note), style = PgType.Caption, color = PgColor.Text.Muted)
+                if (blockedHistory.isEmpty()) {
+                    EmptyNote(stringResource(R.string.block_history_empty), "block.history.empty")
+                } else {
+                    PgCard(Modifier.fillMaxWidth()) {
+                        blockedHistory.forEach { event ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = PgSpace.S), verticalArrangement = Arrangement.spacedBy(PgSpace.Xs)) {
+                                Text(event.host, style = PgType.BodyStrong, color = PgColor.Text.Primary)
+                                val at = DateTimeFormatter.ofPattern("HH:mm:ss").format(Instant.ofEpochMilli(event.lastSeen).atZone(ZoneId.systemDefault()))
+                                Text(stringResource(R.string.block_history_count, event.count.toString(), at), style = PgType.Caption, color = PgColor.Text.Muted)
+                                if (event.canAllow) {
+                                    PgSecondaryButton(stringResource(R.string.block_history_allow), "block.history.allow.${event.host}", {
+                                        guarded(context.getString(R.string.block_guard_allow_title, event.host), context.getString(R.string.block_guard_rule_text)) {
+                                            // Узкое разрешение: только фактически заблокированный домен, не весь сервис или CDN.
+                                            change(routing.saveRule(null, SiteRule(event.host, RuleAction.Proxy, exact = true)))
+                                        }
+                                    }, Modifier.fillMaxWidth())
+                                } else {
+                                    Text(stringResource(R.string.block_history_ip), style = PgType.Caption, color = PgColor.Text.Muted)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if (routing.blockOthers) {
@@ -236,8 +294,10 @@ fun RoutingScreen(
             onSave = { rule ->
                 editing = null
                 // Решение 742: меняется или пропадает «Блокировать», а при блоке остальных — новое разрешение — сначала PIN-код.
-                val allowsMore = routing.blockOthers && rule.action != RuleAction.Block &&
-                    (original == null || original.action == RuleAction.Block || original.pattern != rule.pattern || original.isExact != rule.isExact)
+                // Новое разрешение тоже может заменить блок того же адреса или перекрыть более широкое правило.
+                // Поэтому PIN нужен для любого нового/измененного разрешения, пока есть блокирующие правила.
+                val allowsMore = rule.action != RuleAction.Block &&
+                    (routing.blockOthers || routing.rules.any { it.action == RuleAction.Block }) && original != rule
                 when {
                     original?.action == RuleAction.Block && original != rule ->
                         guarded(context.getString(R.string.block_guard_rule_title, original.pattern), context.getString(R.string.block_guard_rule_text)) {
@@ -278,7 +338,10 @@ fun RoutingScreen(
                 picking = false
                 // Уже в списке — включить, а не заводить вторую строку (как AddApp десктопа).
                 val existing = routing.apps.firstOrNull { it.packageName == app.packageName }
-                change(routing.addApp(app.packageName, app.label))
+                val apply = { change(routing.addApp(app.packageName, app.label)) }
+                if (existing?.enabled != true && (routing.blockOthers || routing.rules.any { it.action == RuleAction.Block })) {
+                    guarded(context.getString(R.string.block_guard_routing_title), context.getString(R.string.block_guard_routing_text), apply)
+                } else apply()
                 if (existing != null) {
                     toast.show(context.getString(R.string.routing_apps_exists, existing.name))
                 }
@@ -459,18 +522,7 @@ private fun SplitWarning() = Notice(stringResource(R.string.routing_warning), "r
  */
 @Composable
 private fun Notice(text: String, tag: String) {
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(PgColor.Status.Warning.Tint)
-            .border(1.dp, PgColor.Status.Warning.Line, shape)
-            .padding(horizontal = 14.dp, vertical = PgSpace.L)
-            .testTag(tag),
-        horizontalArrangement = Arrangement.spacedBy(PgSpace.M),
-    ) {
-        PgIcon(PgIcons.Warning, null, Modifier.padding(top = 1.dp), color = PgColor.Status.Warning.Badge, size = 18.dp, strokeWidth = 2f)
+    PgBanner(tag, icon = PgIcons.Warning) {
         Text(text, color = PgColor.Status.Warning.Badge, style = PgType.Small)
     }
 }

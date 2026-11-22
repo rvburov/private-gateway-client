@@ -6,6 +6,7 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.servers.TransportParameterRules
 import com.privategateway.client.core.settings.AlwaysAllowed
 import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.IpAddress
@@ -48,8 +49,8 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  * @property fingerprint отпечаток TLS (uTLS): null — из профиля сервера.
  * @property sniffing распознавание имени сайта в TLS, HTTP и QUIC — только для правил.
  * @property mtu MTU туннеля.
- * @property logLevel подробность журнала ядра. Журнал соединений выключен всегда; с «Информацией» и «Отладкой» ядро само
- *   пишет в системный журнал Android имена сайтов и адрес сервера — поэтому по умолчанию только предупреждения.
+ * @property logLevel внутренняя подробность ядра; журнал соединений выключен. Приложение направляет ошибки в частный
+ *   очищаемый канал, события правил не передает в системный журнал; изолированные пробы закрывают сырую консоль.
  * @property lanDns свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
  * @property fragment фрагментация TLS ClientHello против DPI: выход сервера дозванивается через выход фрагментации.
  * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`): точнее — раньше (решение 739).
@@ -124,8 +125,11 @@ object XrayConfig {
      * @param settings настройки подключения.
      * @param tunFd дескриптор TUN от VpnService.
      */
-    fun build(server: ServerDefinition, settings: CoreSettings, tunFd: Int, subscriptionProxy: SubscriptionProxy? = null): XrayConfigResult {
-        val outbound = outbound(server, settings)
+    fun build(server: ServerDefinition, settings: CoreSettings, tunFd: Int, subscriptionProxy: SubscriptionProxy? = null, localOnly: Boolean = false): XrayConfigResult {
+        val outbound = if (localOnly) Outbound(
+            linkedMapOf("tag" to PROXY_TAG, "protocol" to "freedom", "settings" to linkedMapOf("domainStrategy" to if (settings.ipv6) "UseIPv4v6" else "UseIPv4", "finalRules" to listOf(linkedMapOf("action" to "allow")))),
+            null,
+        ) else outbound(server, settings)
         outbound.rejection?.let { return XrayConfigResult(null, it) }
 
         val config = linkedMapOf<String, Any?>(
@@ -303,10 +307,13 @@ object XrayConfig {
 
     /** Выход сервера — те же поля, что собирает десктоп; метка — [PROXY_TAG]. Его же меряет [PingBatch]. */
     internal fun outbound(server: ServerDefinition, settings: CoreSettings): Outbound {
+        if (!TransportParameterRules.validEncryption(server.options.encryption) ||
+            server.transport.extraJson != null && (server.transport.kind != TransportKind.Xhttp || TransportParameterRules.extraObject(server.transport.extraJson) == null)
+        ) return Outbound(null, CoreRejection.UnsupportedTransport)
         val credentials = server.credentials
         val protocolSettings: Map<String, Any?> = when {
             server.protocol == ProxyProtocol.Vless && !credentials.uuid.isNullOrEmpty() -> {
-                val user = linkedMapOf<String, Any?>("id" to credentials.uuid, "encryption" to "none")
+                val user = linkedMapOf<String, Any?>("id" to credentials.uuid, "encryption" to (server.options.encryption ?: "none"))
                 server.options.flow?.takeIf { it.isNotEmpty() }?.let { user["flow"] = it }
                 vnext(server, user)
             }
@@ -365,7 +372,9 @@ object XrayConfig {
      * правило, что у Xray-core в libXray (`validateOutboundTransportSecurity`) и у десктопа (`XrayConfigBuilder.Unencrypted`).
      */
     fun unencrypted(server: ServerDefinition): Boolean {
-        if (server.protocol != ProxyProtocol.Vless && server.protocol != ProxyProtocol.Trojan || server.security.kind != TransportSecurity.None) {
+        if (server.protocol != ProxyProtocol.Vless && server.protocol != ProxyProtocol.Trojan || server.security.kind != TransportSecurity.None ||
+            server.protocol == ProxyProtocol.Vless && server.options.encryption != null && server.options.encryption != "none"
+        ) {
             return false
         }
 
@@ -424,6 +433,7 @@ object XrayConfig {
                 val path = linkedMapOf<String, Any?>("path" to (transport.path ?: "/"))
                 transport.host?.takeIf { it.isNotEmpty() }?.let { path["host"] = it }
                 transport.mode?.takeIf { transport.kind == TransportKind.Xhttp && it.isNotEmpty() }?.let { path["mode"] = it }
+                if (transport.kind == TransportKind.Xhttp) TransportParameterRules.extraForServer(server)?.let { path["extra"] = it }
                 stream[network + "Settings"] = path
             }
 

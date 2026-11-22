@@ -4,6 +4,15 @@ import XCTest
 
 /// Те же случаи, что у десктопа (`SecretMaskerTests`) и Android (`SecretMaskerTest`); значения заведомо ненастоящие.
 final class SecretMaskerTests: XCTestCase {
+    func testKnownCustomHeadersHideRawJsonAndUrlFormsWhileOrdinaryTextRemains() {
+        let value = "demo/token\" space"
+        let json = #"demo/token\" space"#
+        let url = "demo%2Ftoken%22%20space"
+        let form = url.replacingOccurrences(of: "%20", with: "+")
+        let line = "ordinary text raw=\(value); json=\(json); url=\(url); form=\(form); auth=demo-bearer; xy; xylophone"
+        XCTAssertEqual(SecretMasker.mask(line, knownSecrets: [value, "Bearer demo-bearer", "xy"]), "ordinary text raw=\(hidden); json=\(hidden); url=\(hidden); form=\(hidden); auth=\(hidden); \(hidden); xylophone")
+    }
+
     private let hidden = SecretMasker.hidden
 
     func testServerLinkIsHiddenAfterScheme() {

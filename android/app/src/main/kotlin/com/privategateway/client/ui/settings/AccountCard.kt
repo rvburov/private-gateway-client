@@ -2,6 +2,7 @@ package com.privategateway.client.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,11 +40,12 @@ internal fun AccountCard(account: AccountInfo, onSignOut: () -> Unit) {
     var asking by rememberSaveable { mutableStateOf(false) }
     GroupTitle(stringResource(R.string.settings_account_title), top = 0.dp)
     PgCard(Modifier.fillMaxWidth().testTag("settings.account")) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PgSpace.M)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val name = account.displayName.ifBlank { account.email }
             Text(name, Modifier.testTag("settings.account.name"), color = PgColor.Text.Primary, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (name != account.email && account.email.isNotEmpty()) {
-                Text(account.email, Modifier.testTag("settings.account.email"), color = PgColor.Text.Secondary, style = PgType.Small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(account.email, Modifier.testTag("settings.account.email"), color = PgColor.Text.Secondary, style = PgType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
             if (account.deviceName.isNotEmpty()) {
@@ -55,14 +58,13 @@ internal fun AccountCard(account: AccountInfo, onSignOut: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.size(PgSpace.L))
         PgSecondaryButton(
             stringResource(R.string.settings_account_signOut),
             "settings.account.signOut",
             { asking = true },
-            Modifier.fillMaxWidth().padding(top = PgSpace.Xxs),
             danger = true,
         )
+        }
     }
 
     if (asking) {

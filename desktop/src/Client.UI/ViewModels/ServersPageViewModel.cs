@@ -31,6 +31,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
     private readonly OverlayViewModel _overlay;
     private readonly ConnectionTarget _target;
     private readonly HashSet<ProxyProtocol> _hidden = [];
+    private int _rebuildScheduled;
 
     public ServersPageViewModel(
         ProtectionViewModel protection,
@@ -54,7 +55,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         _toast = toast;
         _overlay = overlay;
         _target = target;
-        catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
+        catalog.Changed += (_, _) => ScheduleRebuild();
         Loc.Instance.LanguageChanged += (_, _) => Rebuild();
         Protection.PropertyChanged += (_, e) =>
         {
@@ -170,7 +171,16 @@ public sealed partial class ServersPageViewModel : ObservableObject
     public bool IsEmpty => !HasRows;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RefreshProgress), nameof(IsMeasuring))]
     public partial bool IsRefreshing { get; private set; }
+
+    public bool IsMeasuring => IsRefreshing || _catalog.Servers.Any(server => server.IsMeasuringLatency);
+
+    public string RefreshProgress => Loc.Instance.Format("latency.progress", _catalog.Servers.Count(s => !s.IsMeasuringLatency), _catalog.Servers.Count);
+
+    public bool HasMeasurementRouteHint => _catalog.Servers.Any(server => !server.IsLatencyStale && server.LatencyRoute == "vpn");
+
+    public string MeasurementRouteHint => Loc.Instance["latency.viaVpn"];
 
     // ── Команды ──────────────────────────────────────────────────────────────
 
@@ -178,7 +188,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RefreshAsync()
     {
-        if (IsRefreshing)
+        if (IsMeasuring)
         {
             return;
         }
@@ -268,6 +278,10 @@ public sealed partial class ServersPageViewModel : ObservableObject
 
     private void Rebuild()
     {
+        OnPropertyChanged(nameof(RefreshProgress));
+        OnPropertyChanged(nameof(IsMeasuring));
+        OnPropertyChanged(nameof(HasMeasurementRouteHint));
+        OnPropertyChanged(nameof(MeasurementRouteHint));
         var servers = _catalog.Servers;
         SyncProtocols(servers);
         var query = new ServerListQuery(SearchText, Tab, _hidden, Sort);
@@ -280,6 +294,19 @@ public sealed partial class ServersPageViewModel : ObservableObject
                 g.Servers.Select(s => Row(s, s.Id == selectedId, connected)).ToList()))
             .ToList();
         OnPropertyChanged(string.Empty);
+    }
+
+    private void ScheduleRebuild()
+    {
+        if (Interlocked.Exchange(ref _rebuildScheduled, 1) != 0)
+        {
+            return;
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            Volatile.Write(ref _rebuildScheduled, 0);
+            Rebuild();
+        });
     }
 
     /// <summary>Флажки протоколов — только тех, что есть среди серверов.</summary>
@@ -333,7 +360,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         Address(server) + " · " + ServerFacts.Summary(server),
         isSelected ? Loc.Instance[connected ? "servers.tag.active" : _target.IsExternalProxy ? "externalProxy.vpn.selected" : "servers.tag.selected"] : null,
         ServerLatencyText.Of(server),
-        server.IsMeasuringLatency ? LatencyKind.Unchecked : server.LatencyMs switch
+        server.IsMeasuringLatency || server.IsLatencyStale || ServerLatencyText.IsUnconfirmed(server) ? LatencyKind.Unchecked : server.LatencyMs switch
         {
             null => server.LatencyFailure is null ? LatencyKind.Unchecked : LatencyKind.None,
             > SlowLatencyMs => LatencyKind.Slow,
@@ -379,6 +406,8 @@ public sealed record ServerRowViewModel(
     public bool IsSlow => Latency == LatencyKind.Slow;
 
     public bool IsDown => Latency == LatencyKind.None;
+
+    public bool IsUnchecked => Latency == LatencyKind.Unchecked;
 
     /// <summary>Причина отказа и время сохраненного результата: прежнее измерение не выглядит только что выполненным.</summary>
     public string LatencyHint => (FailureHint ?? Loc.Instance["latency.method"])

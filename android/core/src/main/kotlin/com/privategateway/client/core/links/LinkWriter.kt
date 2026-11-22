@@ -19,7 +19,7 @@ object LinkWriter {
         val name = "#" + escape(nameWithFlag(server))
         return when (server.protocol) {
             ProxyProtocol.Vless -> {
-                val vless = mutableListOf<Pair<String, String?>>("encryption" to "none", "flow" to server.options.flow)
+                val vless = mutableListOf<Pair<String, String?>>("encryption" to (server.options.encryption ?: "none"), "flow" to server.options.flow)
                 vless.addAll(stream(server))
                 "vless://${escape(credentials.uuid)}@$address${query(vless)}$name"
             }
@@ -89,6 +89,7 @@ object LinkWriter {
             "host" to transport.host,
             "serviceName" to transport.serviceName,
             "mode" to transport.mode,
+            "extra" to transport.extraJson,
             "security" to server.security.kind.name.lowercase(Locale.ROOT),
         ) + tls(server)
     }
@@ -131,6 +132,8 @@ object LinkWriter {
             "fp" to (security.fingerprint ?: ""),
             "alpn" to (security.alpn?.joinToString(",") ?: ""),
         )
+        transport.mode?.let { fields += "mode" to it }
+        transport.extraJson?.let { fields += "extra" to it }
         // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
         security.pinnedPeerCertSha256?.takeIf { it.isNotEmpty() }?.let { fields += "pcs" to it.joinToString(",") }
         security.verifyPeerCertByName?.takeIf { it.isNotEmpty() }?.let { fields += "vcn" to it.joinToString(",") }

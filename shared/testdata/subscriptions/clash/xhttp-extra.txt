@@ -1,0 +1,22 @@
+proxies:
+  - name: Extra envelope
+    type: vless
+    server: 192.0.2.1
+    port: 443
+    uuid: 11111111-2222-3333-4444-555555555555
+    tls: true
+    servername: example.com
+    network: xhttp
+    xhttp-opts:
+      path: /upload
+      mode: packet-up
+      extra:
+        noGRPCHeader: true
+        downloadSettings:
+          address: download.example.com
+          port: 443
+          network: xhttp
+          security: tls
+          tlsSettings:
+            serverName: example.com
+            alpn: [h3]

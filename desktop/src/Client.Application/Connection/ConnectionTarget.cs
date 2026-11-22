@@ -58,6 +58,10 @@ public sealed class ConnectionTarget
     public ServerProfile? InUse(ConnectionStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
+        if (status.LocalSiteFilter)
+        {
+            return null;
+        }
         if (status.State == ConnectionState.Off)
         {
             return Selected;

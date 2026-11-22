@@ -55,6 +55,7 @@ enum SingBoxImport {
             return nil
         case "vless":
             ConfigTree.put(&query, "flow", ConfigTree.text(node, "flow"))
+            ConfigTree.put(&query, "encryption", ConfigTree.text(node, "encryption"))
             return ConfigTree.server(.vless, [ConfigTree.text(node, "uuid")], host: host, port: port, query: query, name: name)
         case "vmess":
             return LinkParser.vmessFrom(
@@ -147,5 +148,6 @@ enum SingBoxImport {
         ConfigTree.put(&query, "host", ConfigTree.header(ConfigTree.object(transport, "headers"), "Host") ?? ConfigTree.text(transport, "host"))
         ConfigTree.put(&query, "serviceName", ConfigTree.text(transport, "service_name"))
         ConfigTree.put(&query, "mode", ConfigTree.text(transport, "mode"))
+        TransportParameterRules.extraQuery(transport, into: &query)
     }
 }

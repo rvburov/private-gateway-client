@@ -62,7 +62,16 @@ data class HinderRow(val id: String, val title: CheckText, val detail: List<Chec
  */
 object CheckRows {
     fun of(ui: MainUi, core: String?, hints: PhoneHints?, tunnel: TunnelSettings, running: Boolean): List<CheckRow> {
-        val rows = listOf(
+        val rows = if (ui.status.localOnly && ui.status.state == com.privategateway.client.core.vpn.TunnelState.Connected) listOf(
+            row("tunnel", R.string.fact_tunnel, ChipLook.Warning, R.string.block_local_title, CheckText.of(R.string.block_local_active)),
+            row("core", R.string.diag_core_title, ChipLook.Ok, R.string.diag_state_ok_chip, CheckText.of(R.string.diag_core_ok, listOfNotNull("Xray-core", core).joinToString(" "))),
+            allTraffic(ProtectionView.Off, tunnel),
+            killSwitch(ui),
+            dns(ProtectionView.Connected, tunnel),
+            ipv6(ProtectionView.Connected, tunnel),
+            exitIp(ui),
+            otherVpn(hints),
+        ) else listOf(
             tunnelRow(ui.view),
             core(ui, core),
             allTraffic(ui.view, tunnel),

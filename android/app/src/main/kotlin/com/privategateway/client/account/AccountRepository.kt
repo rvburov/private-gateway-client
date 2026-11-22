@@ -155,6 +155,7 @@ class AccountRepository @Inject constructor(
     private val journal: TunnelJournal,
     private val logoutFence: AccountLogoutFence,
     private val settings: SettingsRepository,
+    private val blockedSites: com.privategateway.client.data.BlockedSites = com.privategateway.client.data.BlockedSites(),
 ) : UpdatesFeedSource {
     // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
     private val scope = CoroutineScope(
@@ -808,6 +809,7 @@ class AccountRepository @Inject constructor(
             reset = false
             journal.warning("account  network settings reset failed " + e.javaClass.simpleName)
         }
+        blockedSites.clear()
         return (reset && stopped).also {
             recovery.value = if (it) AccountNetworkRecovery.Idle else AccountNetworkRecovery.Failed
         }

@@ -22,6 +22,7 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
     private readonly List<JournalEntry> _entries = [];
     private readonly Lock _gate = new();
     private string[] _secrets = [];
+    private string[] _knownSecrets = [];
 
     // Короткие секреты (логин прокси из одной-трех букв) — только отдельным словом: замена внутри слов превращала каждую
     // букву «a» журнала в «***» (логин «a» прокси HTTP/SOCKS, аудит 2026-11-05).
@@ -31,12 +32,14 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
     public event EventHandler<JournalEntry>? Added;
 
     /// <summary>Ключи подключения, которые нельзя показывать ни в каком виде.</summary>
-    public void Hide(IEnumerable<string?> secrets, bool includeShort = false)
+    public void Hide(IEnumerable<string?> secrets, bool includeShort = false, bool append = false)
     {
         lock (_gate)
         {
             // Сначала длинная форма (например, Basic), затем ее короткие составляющие: иначе останется часть токена.
-            var all = secrets.OfType<string>().Where(s => s.Length >= (includeShort ? 1 : 4)).Distinct(StringComparer.Ordinal).ToList();
+            var incoming = secrets.OfType<string>().Where(s => s.Length >= (includeShort ? 1 : 4));
+            var all = SecretMasker.KnownVariants(incoming).Concat(append ? _knownSecrets : []).Distinct(StringComparer.Ordinal).ToList();
+            _knownSecrets = [.. all];
             _secrets = [.. all.Where(s => s.Length >= ShortSecret).OrderByDescending(s => s.Length)];
             _shortSecrets = [.. all.Where(s => s.Length < ShortSecret).OrderByDescending(s => s.Length)
                 .Select(s => new System.Text.RegularExpressions.Regex($@"(?<![\p{{L}}\p{{N}}_]){System.Text.RegularExpressions.Regex.Escape(s)}(?![\p{{L}}\p{{N}}_])",

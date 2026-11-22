@@ -11,6 +11,7 @@ public sealed partial class Gateway
     /// </summary>
     private async Task StopAndRestoreNetworkAsync()
     {
+        _blockedSites?.Clear();
         List<Exception> failures = [];
         EndPauseTimer();
         // Намерение отключиться отменяет восстановление старого блока сторожем и подключение после паузы.
@@ -60,6 +61,7 @@ public sealed partial class Gateway
         }, "Блок при обрыве не снят");
 
         _journal.Hide([]);
+        _blockedSites?.Clear();
         if (failures.Count > 0)
         {
             var unknown = new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null);

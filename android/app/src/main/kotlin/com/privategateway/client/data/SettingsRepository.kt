@@ -186,6 +186,11 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
     /** После выхода или нового входа даже Android Always-on ждет явного подключения. Старый действующий сеанс сохраняется. */
     val manualConnectRequired: Flow<Boolean> = store.data.map { it[MANUAL_CONNECT_REQUIRED] ?: false }
 
+    /** После явного локального фильтра ни Always-on, ни запуск окна не поднимают сохраненный удаленный профиль. */
+    suspend fun requireManualConnection() {
+        store.edit { it[MANUAL_CONNECT_REQUIRED] = true }
+    }
+
     /** Только явная команда щита, плитки или уведомления снимает ожидание; автоматическая команда его не меняет. */
     suspend fun permitConnection(manual: Boolean): Boolean {
         if (!manual) return !manualConnectRequired.first()

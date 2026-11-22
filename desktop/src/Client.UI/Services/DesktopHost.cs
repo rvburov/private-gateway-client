@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Account;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -24,6 +25,9 @@ public sealed class DesktopHost
     private readonly SettingsService _settings;
     private readonly Dictionary<(Tone, string), WindowIcon> _icons = [];
     private bool _quitting;
+    private bool _askingQuit;
+    private readonly BlockPinGate? _pin;
+    private readonly IGatewayClient? _gateway;
 
     public DesktopHost(
         Avalonia.Application app,
@@ -35,11 +39,15 @@ public sealed class DesktopHost
         bool minimized,
         NoticeWindow notices,
         UpdateWatcher updates,
-        AccountService? account = null)
+        AccountService? account = null,
+        BlockPinGate? pin = null,
+        IGatewayClient? gateway = null)
     {
         _desktop = desktop;
         _window = window;
         _settings = settings;
+        _pin = pin;
+        _gateway = gateway;
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         if (OperatingSystem.IsMacOS() && MacStatusItem.IsMainThread())
@@ -111,8 +119,46 @@ public sealed class DesktopHost
 
     private void Quit()
     {
+        if (!_quitting && _gateway?.Status.LocalSiteFilter == true)
+        {
+            _ = QuitFilterAsync();
+            return;
+        }
         _quitting = true;
         _desktop.Shutdown();
+    }
+
+    private async Task QuitFilterAsync()
+    {
+        if (_askingQuit)
+        {
+            return;
+        }
+        _askingQuit = true;
+        try
+        {
+            Show();
+            if (_pin is not null && !await _pin.AllowAsync(
+                Localization.Loc.Instance["block.local.stop"], Localization.Loc.Instance["block.local.stop.guard"]).ConfigureAwait(true))
+            {
+                return;
+            }
+            try
+            {
+                await _gateway!.DropProtectionAsync().ConfigureAwait(true);
+            }
+            catch (IOException)
+            {
+                // Оставить доступ к управлению, пока служба не подтвердила возврат маршрутов и DNS.
+                return;
+            }
+            _quitting = true;
+            _desktop.Shutdown();
+        }
+        finally
+        {
+            _askingQuit = false;
+        }
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -120,6 +166,12 @@ public sealed class DesktopHost
         // Cmd+Q, «Завершить» в Dock и выход из ОС завершают процесс, даже если крестик сворачивает окно в трей.
         if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
         {
+            if (!_quitting && e.CloseReason == WindowCloseReason.ApplicationShutdown && _gateway?.Status.LocalSiteFilter == true)
+            {
+                e.Cancel = true;
+                Quit();
+                return;
+            }
             _quitting = true;
             return;
         }
@@ -133,6 +185,7 @@ public sealed class DesktopHost
 
         if (!_quitting)
         {
+            e.Cancel = _gateway?.Status.LocalSiteFilter == true;
             Quit();
         }
     }

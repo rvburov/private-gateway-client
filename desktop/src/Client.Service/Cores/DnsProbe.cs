@@ -81,7 +81,7 @@ public static class DnsProbe
     }
 
     /// <summary>
-    /// Привязать сокет IPv4 к карте <paramref name="adapter"/>: он пойдет ее маршрутом, мимо TUN. Нет карты —
+    /// Привязать сокет IPv4 или IPv6 к карте <paramref name="adapter"/>: он пойдет ее маршрутом, мимо TUN. Нет карты —
     /// <see cref="SocketException"/>; ОС без такой привязки — <see cref="PlatformNotSupportedException"/>.
     /// </summary>
     public static void BindTo(Socket socket, string adapter)
@@ -93,16 +93,22 @@ public static class DnsProbe
             return;
         }
 
-        var index = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == adapter)?.GetIPProperties().GetIPv4Properties()?.Index
-            ?? throw new SocketException((int)SocketError.NetworkDown);
+        var properties = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == adapter)?.GetIPProperties();
+        var ipv6 = socket.AddressFamily == AddressFamily.InterNetworkV6;
+        var index = ipv6 ? properties?.GetIPv6Properties()?.Index : properties?.GetIPv4Properties()?.Index;
+        if (index is null)
+        {
+            throw new SocketException((int)SocketError.NetworkDown);
+        }
         if (OperatingSystem.IsWindows())
         {
             // Windows ждет номер карты в сетевом порядке байт.
-            socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)IpUnicastIf, IPAddress.HostToNetworkOrder(index));
+            socket.SetSocketOption(ipv6 ? SocketOptionLevel.IPv6 : SocketOptionLevel.IP, (SocketOptionName)IpUnicastIf,
+                ipv6 ? index.Value : IPAddress.HostToNetworkOrder(index.Value));
             return;
         }
 
         // macOS: опции IP_BOUND_IF нет среди имен .NET — значение прямо в setsockopt (IPPROTO_IP — 0), номер в своем порядке.
-        socket.SetRawSocketOption(0, IpBoundIf, BitConverter.GetBytes(index));
+        socket.SetRawSocketOption(ipv6 ? 41 : 0, ipv6 ? 125 : IpBoundIf, BitConverter.GetBytes(index.Value));
     }
 }

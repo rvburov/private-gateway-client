@@ -14,7 +14,8 @@ namespace PrivateGateway.Client.Service;
 /// сбое и остановке снимаются. По нему служба возвращает тот же блок после паузы, узнает строгий режим после своего
 /// перезапуска (а открытые правила снимает) и подключается к тому же серверу, когда имя под блоком не найти.
 /// </summary>
-public sealed record HeldBlock(KillSwitchPolicy Policy, string Host, bool Boot, bool Strict, bool Paused = false, bool Open = false);
+public sealed record HeldBlock(KillSwitchPolicy Policy, string Host, bool Boot, bool Strict, bool Paused = false, bool Open = false,
+    IReadOnlyList<IPAddress>? PrimaryAddresses = null);
 
 /// <summary>
 /// Файл блока, который держит служба (<see cref="HeldBlock"/>): пишется при каждом блоке, стирается, когда блок
@@ -42,6 +43,10 @@ public static class BootBlock
             ["paused"] = block.Paused,
             ["open"] = block.Open,
         };
+        if (block.PrimaryAddresses is { } primary)
+        {
+            json["primaryAddresses"] = new JsonArray([.. primary.Select(address => (JsonNode)address.ToString())]);
+        }
         var temporary = path + ".tmp";
         var text = System.Text.Encoding.UTF8.GetBytes(json.ToJsonString());
         if (OperatingSystem.IsWindows())
@@ -96,8 +101,14 @@ public static class BootBlock
             var boot = json["boot"]?.GetValue<bool>() ?? true;
             var policy = new KillSwitchPolicy(null, servers, json["allowLan"]!.GetValue<bool>(), json["lanDiscovery"]!.GetValue<bool>(),
                 json["blockOutsideDns"]!.GetValue<bool>(), Persistent: boot);
+            var primary = json["primaryAddresses"]?.AsArray().Select(address => IPAddress.Parse(address!.GetValue<string>())).ToArray();
+            if (primary is not null && (primary.Length > KillSwitchPolicy.MaxServers
+                || primary.Any(address => !servers.Any(endpoint => endpoint.Address.Equals(address)))))
+            {
+                return null;
+            }
             return new HeldBlock(policy, json["host"]?.GetValue<string>() ?? string.Empty, boot, json["strict"]?.GetValue<bool>() ?? false,
-                json["paused"]?.GetValue<bool>() ?? false, json["open"]?.GetValue<bool>() ?? false);
+                json["paused"]?.GetValue<bool>() ?? false, json["open"]?.GetValue<bool>() ?? false, primary);
         }
         catch (Exception e) when (e is JsonException or FormatException or InvalidOperationException or NullReferenceException or IOException)
         {

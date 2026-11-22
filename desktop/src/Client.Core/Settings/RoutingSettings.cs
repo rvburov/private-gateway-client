@@ -44,6 +44,9 @@ public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> 
 {
     public static RoutingSettings Default { get; } = new(RoutingMode.AllTraffic, [], []);
 
+    /// <summary>Есть реальные правила блокировки: включая режим разрешенного списка.</summary>
+    public bool HasSiteBlocks => BlockOthers || Rules.Any(rule => rule.Action == RuleAction.Block);
+
     /// <summary>Идут ли сейчас программы мимо VPN: только в раздельном режиме и только включенные.</summary>
     public bool HasBypassApps => Mode == RoutingMode.Split && Apps.Any(a => a.IsEnabled);
 

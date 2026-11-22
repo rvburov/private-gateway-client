@@ -186,8 +186,10 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             {
                 if (Rows.Find(r => r.Profile.Id == id) is { } row)
                 {
-                    var at = _time.GetUtcNow();
-                    Execute("UPDATE servers SET latency_ms = $ms, latency_failure = $failure, latency_diagnostic = $diagnostic, latency_checked_at = $at WHERE id = $id",
+                    var at = result.CheckedAt ?? _time.GetUtcNow();
+                    Execute("UPDATE servers SET latency_ms = $ms, latency_failure = $failure, latency_diagnostic = $diagnostic, latency_checked_at = $at, "
+                        + "last_success_latency_ms = CASE WHEN $ms IS NOT NULL THEN $ms ELSE last_success_latency_ms END, "
+                        + "last_success_latency_at = CASE WHEN $ms IS NOT NULL THEN $at ELSE last_success_latency_at END WHERE id = $id",
                         ("$ms", (object?)result.Milliseconds ?? DBNull.Value), ("$failure", result.Failure is { } failure ? (int)failure : DBNull.Value),
                         ("$diagnostic", (object?)result.Diagnostic ?? DBNull.Value), ("$at", Text(at)), ("$id", id));
                     Replace(row with
@@ -198,7 +200,11 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                             LatencyFailure = result.Failure,
                             LatencyDiagnostic = result.Diagnostic,
                             LatencyCheckedAt = at,
-                            IsMeasuringLatency = false
+                            IsMeasuringLatency = false,
+                            IsLatencyStale = false,
+                            LatencyRoute = result.Route,
+                            LastSuccessfulLatencyMs = result.Milliseconds ?? row.Profile.LastSuccessfulLatencyMs,
+                            LastSuccessfulLatencyAt = result.Milliseconds is not null ? at : row.Profile.LastSuccessfulLatencyAt,
                         }
                     });
                 }
@@ -215,11 +221,36 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         {
             foreach (var row in Rows.ToArray())
             {
-                Replace(row with { Profile = row.Profile with { IsMeasuringLatency = measuring } });
+                var unfinished = !measuring && row.Profile.IsMeasuringLatency
+                    && (row.Profile.LatencyMs is not null || row.Profile.LatencyFailure is not null);
+                Replace(row with { Profile = row.Profile with { IsMeasuringLatency = measuring, IsLatencyStale = row.Profile.IsLatencyStale || unfinished } });
             }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Старое число остается историей; после смены пути или пяти минут оно не считается текущей доступностью.</summary>
+    public void InvalidateLatency(bool expiredOnly = false)
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            var cutoff = _time.GetUtcNow().AddMinutes(-5);
+            foreach (var row in Rows.ToArray())
+            {
+                if (!row.Profile.IsLatencyStale && (row.Profile.LatencyMs is not null || row.Profile.LatencyFailure is not null)
+                    && (!expiredOnly || row.Profile.LatencyCheckedAt is null || row.Profile.LatencyCheckedAt < cutoff))
+                {
+                    Replace(row with { Profile = row.Profile with { IsLatencyStale = true } });
+                    changed = true;
+                }
+            }
+        }
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public void RememberExit(string serverId, string ip)
@@ -340,7 +371,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                         var id = "srv-" + Guid.NewGuid().ToString("N");
                         position++;
                         // Секрет — первым: если хранилище откажет, строки в базе не останется.
-                        Save(saved, SecretKey(id), JsonSerializer.Serialize(server.Credentials, Json));
+                        Save(saved, SecretKey(id), SecretText(server));
                         Run(connection, transaction,
                             "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
                             + "VALUES ($id, $group, $position, $definition, $at)",
@@ -519,7 +550,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             var fresh = new List<ServerDefinition>();
             foreach (var server in unmatched)
             {
-                var exit = Exit(server.Protocol, server.Host, server.Port, JsonSerializer.Serialize(server.Credentials, Json));
+                var exit = Exit(server.Protocol, server.Host, server.Port, SecretText(server));
                 if (ownByExit.TryGetValue(exit, out var row) && keptIds.Add(row.Profile.Id))
                 {
                     kept.Add((row, server));
@@ -551,7 +582,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 {
                     var id = "srv-" + Guid.NewGuid().ToString("N");
                     position++;
-                    Save(saved, SecretKey(id), JsonSerializer.Serialize(server.Credentials, Json));
+                    Save(saved, SecretKey(id), SecretText(server));
                     Run(connection, transaction,
                         "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
                         + "VALUES ($id, $group, $position, $definition, $at)",
@@ -590,6 +621,10 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     LatencyDiagnostic = row.Profile.LatencyDiagnostic,
                     LatencyCheckedAt = row.Profile.LatencyCheckedAt,
                     IsMeasuringLatency = row.Profile.IsMeasuringLatency,
+                    IsLatencyStale = true,
+                    LatencyRoute = row.Profile.LatencyRoute,
+                    LastSuccessfulLatencyMs = row.Profile.LastSuccessfulLatencyMs,
+                    LastSuccessfulLatencyAt = row.Profile.LastSuccessfulLatencyAt,
                 };
                 Replace(row with { Profile = profile, Endpoint = Endpoint(server), LinkName = server.Name });
             }
@@ -772,13 +807,32 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         var withoutKeys = 0;
         lock (_gate)
         {
-            // Ключи здешних серверов — для серверов, сохраненных в копии без ключей.
-            var local = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var row in Rows)
+            // Копия без ключей не дает права угадать учетные данные по адресу или названию. Два разных набора
+            // доступа с одинаковыми несекретными настройками — неоднозначность: такой сервер пропускается.
+            var local = new Dictionary<string, string?>(StringComparer.Ordinal);
+            using (var lookup = _database.Open())
             {
-                if (_secrets.Read(SecretKey(row.Profile.Id)) is { } secret)
+                foreach (var row in Rows)
                 {
-                    local.TryAdd(row.Endpoint, secret);
+                    if (_secrets.Read(SecretKey(row.Profile.Id)) is not { } secret)
+                    {
+                        continue;
+                    }
+
+                    using var query = lookup.CreateCommand();
+                    query.CommandText = "SELECT definition FROM servers WHERE id = $id";
+                    query.Parameters.AddWithValue("$id", row.Profile.Id);
+                    if (query.ExecuteScalar() is not string json)
+                    {
+                        continue;
+                    }
+
+                    var stored = JsonSerializer.Deserialize<Stored>(json, Json)!;
+                    var identity = RestoreIdentity(stored);
+                    if (!local.TryAdd(identity, secret) && local[identity] != secret)
+                    {
+                        local[identity] = null;
+                    }
                 }
             }
 
@@ -820,8 +874,8 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                         var definition = server.Definition;
                         var endpoint = Endpoint(definition);
                         var secret = definition.Credentials != new ServerCredentials()
-                            ? JsonSerializer.Serialize(definition.Credentials, Json)
-                            : local.GetValueOrDefault(endpoint);
+                            ? SecretText(definition)
+                            : local.GetValueOrDefault(RestoreIdentity(Stored.From(definition)));
                         if (secret is null)
                         {
                             withoutKeys++;
@@ -891,10 +945,11 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         TransportOptions Transport, SecurityOptions Security, ProtocolOptions Options)
     {
         public static Stored From(ServerDefinition s) =>
-            new(s.Name, s.CountryCode, s.Protocol, s.Host, s.Port, s.Transport, s.Security, s.Options);
+            new(s.Name, s.CountryCode, s.Protocol, s.Host, s.Port, s.Transport with { ExtraJson = null }, s.Security, s.Options);
 
         public ServerDefinition ToDefinition(ServerCredentials credentials) =>
-            new(Name, Country, Protocol, Host, Port, Transport, Security, Options, credentials);
+            new(Name, Country, Protocol, Host, Port, Transport with { ExtraJson = credentials.TransportExtraJson ?? Transport.ExtraJson },
+                Security, Options, credentials with { TransportExtraJson = null });
     }
 
     private List<Row> Rows
@@ -946,7 +1001,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "SELECT id, subscription_id, position, definition, custom_name, latency_ms, is_favorite, last_used_at, "
-                + "missing_since, exit_ip, latency_failure, latency_diagnostic, latency_checked_at FROM servers ORDER BY position";
+                + "missing_since, exit_ip, latency_failure, latency_diagnostic, latency_checked_at, last_success_latency_ms, last_success_latency_at FROM servers ORDER BY position";
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
@@ -965,6 +1020,9 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     LatencyFailure = reader.IsDBNull(10) ? null : (LatencyFailure)reader.GetInt32(10),
                     LatencyDiagnostic = reader.IsDBNull(11) ? null : reader.GetString(11),
                     LatencyCheckedAt = Time(reader, 12),
+                    IsLatencyStale = true,
+                    LastSuccessfulLatencyMs = reader.IsDBNull(13) ? null : reader.GetInt32(13),
+                    LastSuccessfulLatencyAt = Time(reader, 14),
                 };
                 _rows.Add(new Row(profile, reader.GetInt64(2), Endpoint(stored.ToDefinition(new ServerCredentials())), stored.Name,
                     reader.IsDBNull(4) ? null : reader.GetString(4)));
@@ -1111,8 +1169,16 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         return stored;
     }
 
+    // Название и флаг пользователь меняет независимо от доступа; все остальные несекретные настройки должны совпасть.
+    private static string RestoreIdentity(Stored stored) =>
+        JsonSerializer.Serialize(stored with { Name = string.Empty, Country = string.Empty, Transport = stored.Transport with { ExtraJson = null } }, Json);
+
+    // Заголовки XHTTP могут содержать данные доступа: только в защищенном конверте, не в metadata SQLite.
+    private static string SecretText(ServerDefinition server) =>
+        JsonSerializer.Serialize(server.Credentials with { TransportExtraJson = server.Transport.ExtraJson }, Json);
+
     /// <summary>Ключ сервера для поиска дублей: адрес и данные доступа.</summary>
-    private static string Key(ServerDefinition s) => Endpoint(s) + "|" + JsonSerializer.Serialize(s.Credentials, Json);
+    private static string Key(ServerDefinition s) => Endpoint(s) + "|" + SecretText(s);
 
     /// <summary>Выход сервера: протокол, адрес, порт и данные доступа — без транспорта и защиты.</summary>
     private static string Exit(ProxyProtocol protocol, string host, int port, string? secret) =>

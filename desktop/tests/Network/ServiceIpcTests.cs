@@ -285,7 +285,9 @@ public sealed class ServiceIpcTests
 
         var results = reply.Results.ToDictionary(r => r.Id, r => r.ToCore());
         results["alive"].Milliseconds.ShouldNotBeNull();
-        results["broken"].ShouldBe(LatencyResult.Failed(LatencyFailure.Unsupported), "цель без сервера — не поддерживается, а не ошибка службы");
+        (results["broken"] with { CheckedAt = null }).ShouldBe(LatencyResult.Failed(LatencyFailure.Unsupported),
+            "цель без сервера — не поддерживается, а не ошибка службы");
+        results["broken"].CheckedAt.ShouldNotBeNull("неудачная проба тоже имеет время попытки");
         site.Requests.ShouldBe(1);
     }
 

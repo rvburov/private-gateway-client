@@ -61,6 +61,8 @@ struct CheckInput: Equatable {
     var direct: String?
     var proxy = ProxyFindings()
     var running = false
+    var localSiteFilter = false
+    var sessionKey: String?
 }
 
 /// Строки результатов (доска 7, Refresh и Detail десктопа): порядок — туннель, ядро, весь трафик, блок при обрыве, DNS, IPv6,
@@ -79,6 +81,21 @@ enum CheckRows {
         let title = first(texts, ["diag.\(id.rawValue).title"]) ?? texts.networkKindTunnel
         guard !input.running else {
             return CheckRow(key: id.rawValue, title: title, detail: texts.diagChecking, chip: texts.diagStateWaitingChip, outcome: .waiting)
+        }
+
+        if input.localSiteFilter, input.state == .connected, id != .otherVpn {
+            let active = id == .tunnel || id == .core
+            let detail: String
+            if id == .exitIp {
+                detail = input.ip.address ?? texts.labNotMeasured
+            } else if id == .killSwitch {
+                detail = texts.text(key: "diag.kill_switch.off") ?? ""
+            } else {
+                detail = texts.text(key: "diag.all_traffic.local_filter.full") ?? ""
+            }
+            return CheckRow(key: id.rawValue, title: title, detail: detail,
+                            chip: texts.text(key: active ? "power.label.filter" : "check.all_traffic.local_filter") ?? "",
+                            outcome: active ? .ok : .warning)
         }
 
         let (outcome, reason) = result(id, input)

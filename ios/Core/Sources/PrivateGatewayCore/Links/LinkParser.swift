@@ -133,7 +133,8 @@ public enum LinkParser {
             return fail(error)
         }
 
-        if let encryption = value(parts.query, "encryption"), encryption != "none" {
+        let encryption = value(parts.query, "encryption")
+        if !TransportParameterRules.validEncryption(encryption) {
             return fail(ImportErrors.unsupportedParameter)
         }
 
@@ -144,7 +145,7 @@ public enum LinkParser {
 
         return ok(
             parts.name, .vless, endpoint.host, endpoint.port, transport.value, security.value,
-            ProtocolOptions(flow: value(parts.query, "flow")), ServerCredentials(uuid: uuid)
+            ProtocolOptions(flow: value(parts.query, "flow"), encryption: encryption == "none" ? nil : encryption), ServerCredentials(uuid: uuid)
         )
     }
 
@@ -169,6 +170,8 @@ public enum LinkParser {
         query["alpn"] = ConfigTree.text(root, "alpn") ?? ""
         query["pcs"] = ConfigTree.text(root, "pcs") ?? ""
         query["vcn"] = ConfigTree.text(root, "vcn") ?? ""
+        query["mode"] = ConfigTree.text(root, "mode") ?? ""
+        TransportParameterRules.extraQuery(root, into: &query)
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"]
         return vmessFrom(
@@ -473,6 +476,12 @@ public enum LinkParser {
         default: return Checked(value: .tcp, error: ImportErrors.unsupportedTransport)
         }
 
+        let extra = value(query, "extra")
+        let normalizedExtra = TransportParameterRules.normalizeExtra(extra)
+        if extra != nil, kind != .xhttp || normalizedExtra == nil {
+            return Checked(value: .tcp, error: ImportErrors.unsupportedParameter)
+        }
+
         if kind == .tcp {
             return Checked(value: .tcp, error: nil)
         }
@@ -485,7 +494,8 @@ public enum LinkParser {
                 host: grpc ? nil : value(query, "host"),
                 serviceName: grpc ? value(query, "serviceName") : nil,
                 // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
-                mode: value(query, "mode").map { $0.lowercased() }.flatMap { kind == .xhttp && TransportOptions.xhttpModes.contains($0) ? $0 : nil }
+                mode: value(query, "mode").map { $0.lowercased() }.flatMap { kind == .xhttp && TransportOptions.xhttpModes.contains($0) ? $0 : nil },
+                extraJson: normalizedExtra
             ),
             error: nil
         )

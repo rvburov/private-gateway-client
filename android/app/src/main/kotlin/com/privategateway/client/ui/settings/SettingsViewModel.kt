@@ -12,6 +12,7 @@ import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.data.PhoneApps
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.data.BlockedSites
 import com.privategateway.client.updates.AppUpdates
 import com.privategateway.client.updates.UpdatesView
 import com.privategateway.client.vpn.TunnelMonitor
@@ -32,7 +33,11 @@ class SettingsViewModel @Inject constructor(
     monitor: TunnelMonitor,
     private val phoneApps: PhoneApps,
     private val appUpdates: AppUpdates,
+    private val blockedSites: BlockedSites = BlockedSites(),
 ) : ViewModel() {
+    val blockedHistory = blockedSites.entries
+
+    fun refreshBlockedHistory() = blockedSites.prune()
     /**
      * «Обновления» в «О программе»: проверка, итог, загрузка и установка. Ведет их [AppUpdates] приложения, а не модель окна:
      * закрытое окно загрузку не обрывает, а итог установки от Android приходит туда же.

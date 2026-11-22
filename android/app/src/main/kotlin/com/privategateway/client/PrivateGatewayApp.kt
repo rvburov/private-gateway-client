@@ -6,13 +6,24 @@ import android.content.Context
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import com.privategateway.client.di.AppEntryPoint
+import com.privategateway.client.vpn.NativeProbeLogs
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filterNotNull
 
 @HiltAndroidApp
 class PrivateGatewayApp : Application() {
     override fun onCreate() {
+        // До первого обращения к классу native-ядра: его внутренний pingBatch не наследует log-конфиг профиля.
+        if (getProcessName() == "$packageName:latency") NativeProbeLogs.discard()
         super.onCreate()
+
+        // Замер живет в своем процессе Go: ни аккаунт, ни Room/DataStore, ни фоновые задания там не запускаются.
+        if (getProcessName() != packageName) return
 
         createChannels(this)
 
@@ -26,6 +37,14 @@ class PrivateGatewayApp : Application() {
         entry.background().start()
         entry.access().start()
         entry.account().start()
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            entry.account().state.filterNotNull().collect {
+                if (!it.signedIn) {
+                    entry.latencyWorker().cancel()
+                    entry.blockedSites().clear()
+                }
+            }
+        }
         // Новая версия — и без окна: раз в 12 часов при сети, уведомлением (решение 731).
         UpdateWork.schedule(this)
     }

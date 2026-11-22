@@ -31,7 +31,7 @@ public sealed partial class Gateway
             return new DelayBreakdown(null, null, null, _time.GetUtcNow());
         }
 
-        var toServer = await ToServerAsync(request.Server, cancellationToken).ConfigureAwait(false);
+        var toServer = request.LocalSiteFilter ? null : await ToServerAsync(request.Server, cancellationToken).ConfigureAwait(false);
         var through = await ThroughServerAsync(link, warm: true, cancellationToken).ConfigureAwait(false);
         var fresh = await ThroughServerAsync(link, warm: false, cancellationToken).ConfigureAwait(false);
         return new DelayBreakdown(toServer, through, fresh, _time.GetUtcNow());

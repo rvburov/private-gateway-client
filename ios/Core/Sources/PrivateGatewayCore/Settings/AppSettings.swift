@@ -34,6 +34,8 @@ public struct AppSettings: Equatable, Sendable {
     /// «Подключаться при запуске» (доска 04, `ConnectOnLaunch` десктопа): открыли приложение, а защита выключена — подключиться
     /// к выбранному серверу. Расширению туннеля не нужна; по умолчанию выключена, как на десктопе.
     public var connectOnLaunch: Bool
+    /// Выход/стоп требует нового явного запуска. Расширение не принимает старый системный On Demand даже после нового входа.
+    public var manualActivationRequired: Bool
     /// «Подключение и ядро» (доска 06): журнал ядра, MTU, определение домена, отпечаток TLS, Mux, фрагментация, таймаут.
     public var connection: ConnectionSettings
     /// «Маршрутизация» (доска 13): весь трафик или раздельный режим и правила для сайтов.
@@ -42,7 +44,8 @@ public struct AppSettings: Equatable, Sendable {
     public init(
         selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = false,
         subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds,
-        alwaysOn: Bool = false, connectOnLaunch: Bool = false, connection: ConnectionSettings = ConnectionSettings(), routing: RoutingSettings = RoutingSettings()
+        alwaysOn: Bool = false, connectOnLaunch: Bool = false, connection: ConnectionSettings = ConnectionSettings(), routing: RoutingSettings = RoutingSettings(),
+        manualActivationRequired: Bool = false
     ) {
         self.selectedServerId = selectedServerId
         self.tunnel = tunnel
@@ -52,6 +55,7 @@ public struct AppSettings: Equatable, Sendable {
         self.reconnect = reconnect
         self.alwaysOn = alwaysOn
         self.connectOnLaunch = connectOnLaunch
+        self.manualActivationRequired = manualActivationRequired
         self.connection = connection
         self.routing = routing
     }
@@ -89,6 +93,7 @@ extension AppSettings: Codable {
         case reconnect = "reconnect_policy"
         case alwaysOn = "always_on"
         case connectOnLaunch = "connect_on_launch"
+        case manualActivationRequired = "manual_activation_required"
         case coreLog = "core_log"
         case mtu = "tunnel_mtu"
         case sniffing = "tunnel_sniffing"
@@ -157,7 +162,7 @@ extension AppSettings: Codable {
             ),
             notifications: NotificationLevel.read(read(.notifications)), reconnect: ReconnectPolicy.read(read(.reconnect)),
             alwaysOn: read(.alwaysOn) ?? defaults.alwaysOn, connectOnLaunch: read(.connectOnLaunch) ?? defaults.connectOnLaunch, connection: connection,
-            routing: routing
+            routing: routing, manualActivationRequired: read(.manualActivationRequired) ?? defaults.manualActivationRequired
         )
     }
 
@@ -178,6 +183,7 @@ extension AppSettings: Codable {
         try values.encode(reconnect.rawValue, forKey: .reconnect)
         try values.encode(alwaysOn, forKey: .alwaysOn)
         try values.encode(connectOnLaunch, forKey: .connectOnLaunch)
+        try values.encode(manualActivationRequired, forKey: .manualActivationRequired)
         try values.encode(connection.coreLog.rawValue, forKey: .coreLog)
         try values.encodeIfPresent(connection.mtu, forKey: .mtu)
         try values.encode(connection.sniffing, forKey: .sniffing)
@@ -220,6 +226,20 @@ public actor SettingsStore {
 
     public func select(_ id: String?) throws {
         try change { $0.selectedServerId = id }
+    }
+
+    public func setManualActivationRequired(_ required: Bool) throws {
+        try change { $0.manualActivationRequired = required }
+    }
+
+    /// Сбрасывается одной записью до ожидания iOS; правила сайтов и PIN не затрагиваются.
+    public func resetAccessProtection() throws {
+        try change {
+            $0.manualActivationRequired = true
+            $0.killSwitch = false
+            $0.alwaysOn = false
+            $0.connectOnLaunch = false
+        }
     }
 
     /// Свой DNS — без пробелов по краям; пустой не хранится, как у Android.

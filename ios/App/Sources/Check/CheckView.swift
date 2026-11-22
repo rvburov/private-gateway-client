@@ -9,12 +9,14 @@ enum CheckPage: Hashable {
     case main
     case network
     case probe
+    case lab(MobileLabPage)
 }
 
 /// «Проверка» (доска 07, CheckPage десктопа): шапка стоит на месте, прокручиваются «Проверить» и «Экспорт отчета» с пояснением,
 /// результаты проверки, «Задержка», «Что может мешать», инспектор строками-ссылками и журнал туннеля (новые записи сверху,
 /// секреты скрыты). Подстраницы инспектора — те, данные для которых телефон получает сам: сеть iPhone с внешним IP и
-/// провайдером и проверка узла (DNS, TCP, TLS). «Соединений и трафика», «До и после VPN» и «Лаборатории» на iPhone нет.
+/// провайдером и проверка узла (DNS, TCP, TLS). «Лаборатория» показывает только возможности iOS; неизвестные шлюзы,
+/// промежуточные узлы и чужие пакеты не подставляются вместо измерений.
 struct CheckView: View {
     /// Место блока «Задержка» — сюда прокручивает плитка «Пинг» главной.
     static let delayAnchor = "check.delay"
@@ -51,6 +53,8 @@ struct CheckView: View {
             CheckNetworkPage(texts: texts, networks: networks, ip: input.ip, onMeasure: onMeasure, onDescribe: onDescribe) { page = .main }
         case .probe:
             CheckProbePage(texts: texts, probe: $probe, protected: input.state == .connected, onRun: onProbe) { page = .main }
+        case let .lab(selected):
+            MobileLabView(texts: texts, page: selected, input: input, networks: networks, log: log) { page = .main }
         case .main:
             main
         }
@@ -59,7 +63,7 @@ struct CheckView: View {
     private var main: some View {
         let rows = CheckRows.of(input, texts)
         let hinder = HinderRows.of(findings.proxy, state: input.state, blocked: input.blocked, texts)
-        let delay = input.state == .connected ? findings.delay : nil
+        let delay = input.state == .connected && !input.localSiteFilter ? findings.delay : nil
         // «Отчет сохранен» — подсказкой слоев окна: в ответ системы на сохранение передаются только слои и текст.
         let toast = layers
         let exported = texts.diagExported
@@ -88,6 +92,7 @@ struct CheckView: View {
                             CheckCard(rows: hinder, top: true, identifier: "check.hinder")
                         }
                         inspector
+                        laboratory
                         journal
                     }
                     .padding(.horizontal, PgSpace.windowSideMobile)
@@ -139,7 +144,7 @@ struct CheckView: View {
     /// «Задержка» (решение 509): рубрика с «Обновить», три числа, почему чисел нет, откуда число нового соединения, когда
     /// обновлено. Под защитой замер входит в проверку: пока она идет, здесь уже «Меряем…».
     private func delaySection(_ delay: DelayBreakdown?) -> some View {
-        let measuring = findings.measuringDelay || (input.running && input.state == .connected)
+        let measuring = findings.measuringDelay || (input.running && input.state == .connected && !input.localSiteFilter)
         return VStack(alignment: .leading, spacing: PgSpace.s) {
             HStack(spacing: PgSpace.s) {
                 Overline(text: texts.diagDelayTitle)
@@ -160,7 +165,7 @@ struct CheckView: View {
             .padding(.top, PgSpace.xs)
 
             DelayCard(
-                rows: DelayLook.rows(delay, texts), hint: DelayLook.hint(input.state, measuring: measuring, texts),
+                rows: DelayLook.rows(delay, texts), hint: DelayLook.hint(input.localSiteFilter ? .off : input.state, measuring: measuring, texts),
                 why: measuring ? nil : DelayLook.why(delay, server: server, texts), updated: DelayLook.updated(delay, measuring: measuring, texts)
             )
         }
@@ -197,6 +202,19 @@ struct CheckView: View {
             }
             .padding(.horizontal, PgSpace.xs)
             JournalCard(lines: JournalLook.lines(log), empty: texts.diagJournalEmpty)
+        }
+    }
+
+    private var laboratory: some View {
+        section(texts.diagLab) {
+            VStack(spacing: 0) {
+                ForEach(MobileLabPage.allCases, id: \.self) { selected in
+                    if selected != MobileLabPage.allCases.first { PgDivider().padding(.horizontal, PgSpace.card) }
+                    PgLinkRow(icon: selected.icon, title: texts.text(key: selected.titleKey) ?? "", large: true,
+                              identifier: "check.lab.\(selected.rawValue)") { page = .lab(selected) }
+                }
+            }
+            .pgCard(padding: 0)
         }
     }
 
@@ -289,14 +307,7 @@ struct CheckRowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(row.chip)
-                .pgText(PgTextStyle(size: PgType.overline.size, weight: 600))
-                .foregroundStyle(Color(row.look.text))
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(row.look.tint)))
+            PgBadge(text: row.chip, ink: row.look.text, tint: row.look.tint, kind: .result)
         }
         .padding(.vertical, 11)
         .accessibilityElement(children: .combine)
@@ -645,7 +656,7 @@ private struct ProbeField: View {
 }
 
 /// Итог замера строкой и ход по шагам: «1. 203.0.113.10 ответил 12 мс».
-private struct ProbeResultView: View {
+struct ProbeResultView: View {
     let texts: PgTexts
     let result: ProbeResult
 

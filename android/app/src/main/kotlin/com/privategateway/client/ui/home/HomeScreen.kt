@@ -43,7 +43,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -85,6 +84,8 @@ import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgBadge
+import com.privategateway.client.ui.theme.PgIconButton
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
@@ -150,9 +151,6 @@ fun HomeScreen(
     }
 }
 
-/** Бейдж (.badge): размер overline, полужирный, без разрядки и заглавных. */
-private val BadgeText = PgType.Caption.copy(fontSize = PgType.Overline.fontSize, fontWeight = FontWeight.SemiBold)
-
 /** Надпись-кнопка (.btn-link): small, полужирный. */
 private val LinkText = PgType.Small.copy(fontWeight = FontWeight.SemiBold)
 
@@ -177,16 +175,7 @@ private fun Header(onAdd: () -> Unit) {
         Spacer(Modifier.width(PgSpace.M))
         Text(stringResource(R.string.app_title), style = PgType.Brand)
         Spacer(Modifier.width(PgSpace.S))
-        Text(
-            BuildConfig.VERSION_NAME,
-            Modifier
-                .clip(RoundedCornerShape(PgRadius.Chip))
-                .background(PgColor.Accent.Tint)
-                .padding(horizontal = PgSpace.Xs, vertical = 2.dp)
-                .testTag("version"),
-            color = PgColor.Accent.Text,
-            style = BadgeText,
-        )
+        PgBadge(BuildConfig.VERSION_NAME, Modifier.testTag("version"))
 
         Spacer(Modifier.weight(1f))
         val add = stringResource(R.string.header_add)
@@ -207,7 +196,7 @@ private fun Header(onAdd: () -> Unit) {
 @Composable
 private fun StatusCard(ui: MainUi, actions: HomeActions) {
     val view = ui.view
-    val look = StateLook.of(view).let { if (ui.offline != null) StateLook.offline(it) else it }
+    val look = StateLook.of(view).let { if (ui.status.localOnly) StateLook.localFilter(it) else if (ui.offline != null) StateLook.offline(it) else it }
     PgCard(Modifier.fillMaxWidth().testTag("status"), contentPadding = PaddingValues(start = PgSpace.Card, top = 14.dp, end = 14.dp, bottom = PgSpace.L)) {
         Column(verticalArrangement = Arrangement.spacedBy(PgSpace.L)) {
             Row {
@@ -244,7 +233,7 @@ private fun StatusCard(ui: MainUi, actions: HomeActions) {
                 }
             }
 
-            Chips(ProtectionChips.of(ui.status.state, ui.status.lockdown, ui.closedWithoutTunnel, ui.leak))
+            if (!ui.status.localOnly) Chips(ProtectionChips.of(ui.status.state, ui.status.lockdown, ui.closedWithoutTunnel, ui.leak))
             CheckedLine(ui, view, actions)
         }
     }
@@ -255,6 +244,7 @@ private fun StatusCard(ui: MainUi, actions: HomeActions) {
 private fun subtitle(ui: MainUi, view: ProtectionView): String {
     // Кода нет — общий код службы, как у десктопа.
     val code = ui.status.error ?: "PGC-SVC"
+    if (ui.status.localOnly) return stringResource(R.string.block_local_active)
     // «Нет сети» — что делать, по фазе: подключено без сети, ждет сеть, остановлено (status.offline.* десктопа).
     when (ui.offline) {
         OfflinePhase.Active -> return stringResource(R.string.status_offline_active)
@@ -569,29 +559,15 @@ private fun IpCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelec
         }
 
         HorizontalDivider(Modifier.padding(horizontal = PgSpace.Card), color = PgColor.Line.Divider)
-        ServerRow(ui, onServers, onAdd, onSelect, onRefresh)
+        if (ui.status.localOnly) Text(stringResource(R.string.block_local_active), Modifier.padding(PgSpace.Card), style = PgType.Small, color = PgColor.Text.Secondary)
+        else ServerRow(ui, onServers, onAdd, onSelect, onRefresh)
     }
 }
 
 /** Кнопка-значок (.btn-icon, 44): недоступная — прозрачность 0,35. */
 @Composable
-private fun IconAction(icon: String, label: String, tag: String, enabled: Boolean = true, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    Box(
-        Modifier
-            .size(PgLayout.TouchTarget)
-            .alpha(if (enabled) 1f else 0.35f)
-            .scale(if (pressed && enabled) 0.98f else 1f)
-            .clip(RoundedCornerShape(PgRadius.Button))
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClickLabel = label, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = label }
-            .testTag(tag),
-        contentAlignment = Alignment.Center,
-    ) {
-        PgIcon(icon, null, color = if (pressed && enabled) PgColor.Accent.Base else PgColor.Text.Primary, size = 18.dp, strokeWidth = 2f)
-    }
-}
+private fun IconAction(icon: String, label: String, tag: String, enabled: Boolean = true, onClick: () -> Unit) =
+    PgIconButton(icon, label, tag, onClick, enabled = enabled)
 
 /**
  * Строка сервера внутри карточки IP (доска 01): слева «Обновить серверы» — синяя плашка, пока идет замер, крутится только

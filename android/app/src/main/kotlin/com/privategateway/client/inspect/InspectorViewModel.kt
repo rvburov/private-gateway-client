@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -109,6 +113,7 @@ data class InspectorUi(
     val networks: List<PhoneNetwork> = emptyList(),
     val publicIp: PublicIpUi = PublicIpUi(),
     val probe: ProbeUi = ProbeUi(),
+    val lab: LabUi = LabUi(),
 )
 
 /**
@@ -125,13 +130,24 @@ class InspectorViewModel @Inject constructor(
 ) : ViewModel() {
     private val publicIp = MutableStateFlow(PublicIpUi())
     private val probe = MutableStateFlow(ProbeUi())
+    private val lab = MutableStateFlow(LabUi())
 
-    val ui: StateFlow<InspectorUi> = combine(networks.networks, publicIp, probe) { list, ip, measure ->
-        InspectorUi(PhoneNetworks.order(list), ip, measure)
+    val ui: StateFlow<InspectorUi> = combine(networks.networks, publicIp, probe, lab) { list, ip, measure, laboratory ->
+        InspectorUi(PhoneNetworks.order(list), ip, measure, laboratory)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, InspectorUi())
 
     init {
         networks.start()
+        viewModelScope.launch {
+            monitor.status.map { listOf(it.state, it.serverId, it.since, it.offline, it.localOnly) }.distinctUntilChanged().drop(1).collect {
+                lab.update { current -> if (current.results.isEmpty()) current else current.copy(results = emptyList(), changed = true) }
+            }
+        }
+        viewModelScope.launch {
+            networks.networks.map { networkIdentity() }.distinctUntilChanged().drop(1).collect {
+                lab.update { current -> if (current.results.isEmpty()) current else current.copy(results = emptyList(), changed = true) }
+            }
+        }
     }
 
     /** Внешний IP — тот, что видят сайты: под защитой — адрес выхода сервера, без нее — провайдера. */
@@ -217,5 +233,66 @@ class InspectorViewModel @Inject constructor(
         }
     }
 
-    private fun protected() = monitor.status.value.state == TunnelState.Connected
+    private fun protected() = monitor.status.value.let { it.state == TunnelState.Connected && !it.localOnly }
+
+    fun labTarget(text: String) = lab.update { it.copy(target = text, invalid = false) }
+
+    /** DNS, TCP и TLS публикуются после каждого этапа. Изменение туннеля делает все результаты старого пути недействительными. */
+    fun runLab() {
+        val current = lab.value
+        if (current.running) return
+        val target = ProbeTarget.normalize(current.target)
+        if (target == null) {
+            lab.update { it.copy(invalid = true) }
+            return
+        }
+        val session = monitor.status.value
+        val network = networkIdentity()
+        lab.update { it.copy(running = true, invalid = false, failed = false, changed = false, results = emptyList()) }
+        viewModelScope.launch {
+            try {
+                for (kind in listOf(ProbeKind.Dns, ProbeKind.Tcp, ProbeKind.Tls)) {
+                    val result = withContext(Dispatchers.IO) {
+                        when (kind) {
+                            ProbeKind.Dns -> runner.dns(target)
+                            ProbeKind.Tcp -> runner.tcp(target, 443)
+                            ProbeKind.Tls -> runner.tls(target, 443)
+                        }
+                    }
+                    val now = monitor.status.value
+                    if (now.state != session.state || now.serverId != session.serverId || now.since != session.since || now.offline != session.offline || networkIdentity() != network) {
+                        lab.update { it.copy(results = emptyList(), changed = true) }
+                        return@launch
+                    }
+                    lab.update { it.copy(results = it.results + result) }
+                    if (result.steps.none { it.outcome == com.privategateway.client.core.inspect.ProbeOutcome.Ok }) break
+                }
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (_: Exception) {
+                lab.update { it.copy(failed = true) }
+            } finally {
+                lab.update { it.copy(running = false) }
+            }
+        }
+    }
+
+    /** Приложение не отключает защиту: пользователь сам выбирает, в каких двух состояниях снять измерения. */
+    fun captureLab() {
+        viewModelScope.launch {
+            val session = monitor.status.value
+            val snapshot = networks.networks.first()
+            val network = networkIdentity()
+            val address = PublicAddress.traceIp(web.get(PublicAddress.TRACE))
+            val now = monitor.status.value
+            if (now.state != session.state || now.serverId != session.serverId || now.since != session.since || networkIdentity() != network) {
+                lab.update { it.copy(changed = true) }
+                return@launch
+            }
+            lab.update { it.copy(snapshots = (it.snapshots + LabSnapshot(System.currentTimeMillis(), session.state, snapshot, address, session.localOnly)).takeLast(2), changed = false) }
+        }
+    }
+
+    private fun networkIdentity(): List<String> = networks.networks.value.filter { it.kind != com.privategateway.client.core.inspect.PhoneNetworkKind.Vpn }
+        .map { "${it.kind}:${it.name}:${it.addresses.sorted()}:${it.dns.sorted()}" }.sorted()
 }

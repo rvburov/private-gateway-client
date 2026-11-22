@@ -72,16 +72,23 @@ public static partial class ContractMapping
     public static V1.LatencyResult ToContract(this CoreLatency result, string id)
     {
         ArgumentNullException.ThrowIfNull(result);
-        return result.Milliseconds is { } ms
+        var reply = result.Milliseconds is { } ms
             ? new V1.LatencyResult { Id = id, Reachable = true, LatencyMs = ms }
             : new V1.LatencyResult { Id = id, Reachable = false, Failure = result.Failure!.Value.ToContract(), Diagnostic = result.Diagnostic ?? string.Empty };
+        reply.CheckedAtUnixMs = result.CheckedAt?.ToUnixTimeMilliseconds() ?? 0;
+        reply.Route = result.Route is "direct" or "vpn" ? result.Route : string.Empty;
+        return reply;
     }
 
     /// <summary>Результат из ответа службы; недоступный без причины — ошибка отправителя.</summary>
     public static CoreLatency ToCore(this V1.LatencyResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        return result.Reachable ? new CoreLatency(result.LatencyMs, null) : new CoreLatency(null, result.Failure.ToCore(), result.Diagnostic is "Timeout" or "NameResolution" or "Tls" or "Connection" or "Proxy" or "ProtectionBlocked" ? result.Diagnostic : null);
+        DateTimeOffset? at = result.CheckedAtUnixMs is > 0 and <= 253402300799999
+            ? DateTimeOffset.FromUnixTimeMilliseconds(result.CheckedAtUnixMs) : null;
+        var route = result.Route is "direct" or "vpn" ? result.Route : null;
+        return result.Reachable ? new CoreLatency(result.LatencyMs, null, CheckedAt: at, Route: route)
+            : new CoreLatency(null, result.Failure.ToCore(), result.Diagnostic is "Timeout" or "NameResolution" or "Tls" or "Connection" or "Proxy" or "ProtectionBlocked" or "ProtectedProbeUnavailable" or "NetworkUnavailable" ? result.Diagnostic : null, at, route);
     }
 
     public static V1.UpdateChannel ToContract(this CoreUpdateChannel channel) => channel switch

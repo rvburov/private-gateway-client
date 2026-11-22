@@ -22,6 +22,11 @@ struct RoutingView: View {
     /// «Локальная сеть» настраивается на одном экране — «Защита и утечки».
     let onLan: () -> Void
     let onBack: () -> Void
+    let blockedSites: [BlockedSiteEvent]
+    let historyAvailable: Bool
+    let localSiteFilter: Bool
+    let onRefreshBlocked: () async -> Void
+    let onLocalSiteFilter: (Bool) -> Void
 
     /// Правило в листе (nil — новое) и открыт ли лист: правило остается, пока лист уезжает вниз, — лист не пустеет на ходу.
     @State private var editing: SiteRule?
@@ -36,6 +41,8 @@ struct RoutingView: View {
     init(
         texts: PgTexts, routing: RoutingSettings, allowLan: Bool, editing: SiteRule? = nil, sheetOpen: Bool = false,
         pinControl: BlockPinControl = .none, pinStep: PinStep? = nil,
+        blockedSites: [BlockedSiteEvent] = [], historyAvailable: Bool = false, localSiteFilter: Bool = false,
+        onRefreshBlocked: @escaping () async -> Void = {}, onLocalSiteFilter: @escaping (Bool) -> Void = { _ in },
         onRouting: @escaping (RoutingSettings) -> Void, onLan: @escaping () -> Void, onBack: @escaping () -> Void
     ) {
         self.texts = texts
@@ -45,6 +52,11 @@ struct RoutingView: View {
         self.onRouting = onRouting
         self.onLan = onLan
         self.onBack = onBack
+        self.blockedSites = blockedSites
+        self.historyAvailable = historyAvailable
+        self.localSiteFilter = localSiteFilter
+        self.onRefreshBlocked = onRefreshBlocked
+        self.onLocalSiteFilter = onLocalSiteFilter
         _editing = State(initialValue: editing)
         _sheetOpen = State(initialValue: sheetOpen)
         _pinStep = State(initialValue: pinStep)
@@ -62,6 +74,8 @@ struct RoutingView: View {
 
                     rulesSection
                     blockSection
+                    localFilterSection
+                    historySection
                     if routing.blockOthers {
                         allowedSection
                     }
@@ -83,7 +97,7 @@ struct RoutingView: View {
                 texts: texts, original: editing, split: routing.isSplit, blockOthers: routing.blockOthers,
                 onSave: { rule in
                     let original = editing
-                    guarded(BlockGuard.forSave(original: original, rule: rule, blockOthers: routing.blockOthers)) {
+                    guarded(BlockGuard.forSave(original: original, rule: rule, routing: routing)) {
                         onRouting(routing.saving(rule, replacing: original))
                     }
                     sheetOpen = false
@@ -102,6 +116,12 @@ struct RoutingView: View {
             BlockPinSheet(texts: texts, control: pinControl, step: $pinStep)
         }
         .accessibilityIdentifier("routing")
+        .task {
+            while !Task.isCancelled {
+                await onRefreshBlocked()
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
     }
 
     /// «Что идет через VPN» (.card с сегментами): заголовок, сегменты и подпись по режиму.
@@ -114,7 +134,9 @@ struct RoutingView: View {
                 onSelect: { mode in
                     var next = routing
                     next.mode = mode
-                    onRouting(next)
+                    let opensRules = mode != routing.mode && mode == .split
+                        && routing.rules.contains { $0.action == .direct } && routing.rules.contains { $0.action == .block }
+                    guarded(opensRules ? .routing : nil) { onRouting(next) }
                 }
             )
             Text(RoutingLook.modeNote(routing.mode, texts))
@@ -212,7 +234,7 @@ struct RoutingView: View {
             Overline(text: texts.blockTitle)
                 .padding(.horizontal, PgSpace.xs)
                 .accessibilityAddTraits(.isHeader)
-            Text(texts.blockScope)
+            Text(localSiteFilter ? (texts.text(key: "block.local.active") ?? "") : texts.blockScope)
                 .pgText(PgType.caption)
                 .foregroundStyle(Color(PgColor.Text.muted))
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,6 +266,64 @@ struct RoutingView: View {
         } else {
             pinStep = .prompt(ask)
         }
+    }
+
+    private var localFilterSection: some View {
+        VStack(alignment: .leading, spacing: PgSpace.m) {
+            Text(texts.text(key: "block.local.title") ?? "").pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+            Text(texts.text(key: localSiteFilter ? "block.local.active" : "block.local.note") ?? "")
+                .pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted)).fixedSize(horizontal: false, vertical: true)
+            PgActionButton(label: texts.text(key: localSiteFilter ? "block.local.stop" : "block.local.start") ?? "", kind: .secondary,
+                           identifier: "block.local.toggle") {
+                if localSiteFilter, pinControl.pin != nil {
+                    pinStep = .prompt(PinAsk(title: texts.text(key: "block.local.stop") ?? "",
+                                            text: texts.text(key: "block.local.stop.guard") ?? "") { onLocalSiteFilter(false) })
+                } else {
+                    onLocalSiteFilter(!localSiteFilter)
+                }
+            }
+        }
+        .pgCard()
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: PgSpace.m) {
+            Overline(text: texts.text(key: "block.history.title") ?? "")
+            Text(texts.text(key: "block.history.note") ?? "").pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+            if !historyAvailable {
+                Text(texts.text(key: "block.history.unavailable") ?? "").pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+            }
+            if blockedSites.isEmpty {
+                Text(texts.text(key: "block.history.empty") ?? "").pgText(PgType.body).foregroundStyle(Color(PgColor.Text.muted))
+            }
+            ForEach(blockedSites) { event in
+                VStack(alignment: .leading, spacing: PgSpace.s) {
+                    HStack(spacing: PgSpace.m) {
+                        Text(event.target).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+                            .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                        if event.canAllow {
+                            Button(texts.text(key: "block.history.allow") ?? "") {
+                                guarded(.allow(event.target)) {
+                                    let rule = SiteRule(pattern: event.target, action: .proxy, exact: true)
+                                    onRouting(routing.saving(rule))
+                                }
+                            }
+                            .buttonStyle(PgPressStyle())
+                            .pgText(PgType.bodyStrong)
+                            .foregroundStyle(Color(PgColor.Accent.text))
+                            .accessibilityIdentifier("block.history.allow.\(event.target)")
+                        }
+                    }
+                    Text(texts.text(key: "block.history.count", [String(event.count), GroupHeader.clock(event.lastSeen)]) ?? "")
+                        .pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+                    if !event.canAllow {
+                        Text(texts.text(key: "block.history.ip") ?? "").pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+                    }
+                }
+                .pgCard()
+            }
+        }
+        .accessibilityIdentifier("block.history")
     }
 
     /// «Пропускается всегда» (решение 740) — только при «Остальные сайты: Блокировать»: что программа пропускает сама.
@@ -442,22 +522,12 @@ private struct RoutingWarning: View {
     var identifier = "routing.warning"
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        HStack(alignment: .top, spacing: PgSpace.m) {
-            PgIcon(data: PgIcons.warning, color: Color(PgColor.Status.Warning.badge), size: 18, lineWidth: 2)
-                .padding(.top, 1)
+        PgBanner(icon: PgIcons.warning, identifier: identifier) {
             Text(text)
                 .pgText(PgType.small)
                 .foregroundStyle(Color(PgColor.Status.Warning.badge))
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, PgSpace.l)
-        .padding(.horizontal, 14)
-        .background(shape.fill(Color(PgColor.Status.Warning.tint)))
-        .overlay(shape.strokeBorder(Color(PgColor.Status.Warning.line), lineWidth: 1))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(identifier)
     }
 }
 

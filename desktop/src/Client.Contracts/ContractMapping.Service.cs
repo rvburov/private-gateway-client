@@ -123,6 +123,7 @@ public static partial class ContractMapping
                 Host = server.Transport.Host ?? string.Empty,
                 ServiceName = server.Transport.ServiceName ?? string.Empty,
                 Mode = server.Transport.Mode ?? string.Empty,
+                ExtraJson = server.Transport.ExtraJson ?? string.Empty,
             },
             Security = security,
         };
@@ -131,7 +132,7 @@ public static partial class ContractMapping
         switch (server.Protocol)
         {
             case ProxyProtocol.Vless:
-                endpoint.Vless = new V1.VlessSettings { Uuid = c.Uuid ?? string.Empty, Flow = o.Flow ?? string.Empty };
+                endpoint.Vless = new V1.VlessSettings { Uuid = c.Uuid ?? string.Empty, Flow = o.Flow ?? string.Empty, Encryption = o.Encryption ?? string.Empty };
                 break;
             case ProxyProtocol.Vmess:
                 endpoint.Vmess = new V1.VmessSettings { Uuid = c.Uuid ?? string.Empty, Cipher = o.Cipher ?? string.Empty };
@@ -205,7 +206,11 @@ public static partial class ContractMapping
         switch (endpoint.SettingsCase)
         {
             case V1.ServerEndpoint.SettingsOneofCase.Vless:
-                options = options with { Flow = Empty(endpoint.Vless.Flow) };
+                options = options with { Flow = Empty(endpoint.Vless.Flow), Encryption = Empty(endpoint.Vless.Encryption) };
+                if (!TransportParameterRules.ValidEncryption(options.Encryption))
+                {
+                    throw new ArgumentException("Неподдерживаемое шифрование VLESS", nameof(endpoint));
+                }
                 credentials = new ServerCredentials(Uuid: Empty(endpoint.Vless.Uuid));
                 break;
             case V1.ServerEndpoint.SettingsOneofCase.Vmess:
@@ -254,6 +259,11 @@ public static partial class ContractMapping
         }
 
         var kind = transport.Type.ToCore();
+        if (!TransportParameterRules.TryXhttpExtra(Empty(transport.ExtraJson), out var extra)
+            || extra is not null && kind != TransportKind.Xhttp)
+        {
+            throw new ArgumentException("Неподдерживаемые параметры XHTTP", nameof(endpoint));
+        }
         if (ForwardProxyRules.IsForwardProxy(protocol) && !ForwardProxyRules.AcceptsTransport(protocol, kind, security.Type.ToCore()))
         {
             throw new ArgumentException("Неверный транспорт внешнего прокси", nameof(endpoint));
@@ -271,7 +281,7 @@ public static partial class ContractMapping
                 TransportKind.Quic => TransportOptions.Quic,
                 TransportKind.Udp => TransportOptions.Udp,
                 _ => new TransportOptions(kind, Empty(transport.Path), Empty(transport.Host), Empty(transport.ServiceName),
-                    kind == TransportKind.Xhttp && TransportOptions.XhttpModes.Contains(transport.Mode) ? transport.Mode : null),
+                    kind == TransportKind.Xhttp && TransportOptions.XhttpModes.Contains(transport.Mode) ? transport.Mode : null, extra),
             },
             security.Type.ToCore() is var securityKind && securityKind == TransportSecurity.None
                 ? SecurityOptions.None
@@ -396,6 +406,7 @@ public static partial class ContractMapping
             LocalProxyPort = (uint)(status.LocalProxyPort ?? 0),
             UserProxyManagedByWindow = status.UserProxyManagedByWindow,
             NetworkUnavailable = status.NetworkUnavailable,
+            LocalSiteFilter = status.LocalSiteFilter,
             VirtualMachines = status.VirtualMachines is { } vm
                 ? new V1.VirtualMachineProtection { State = vm.State.ToContract(), Reason = vm.Reason }
                 : null,
@@ -436,6 +447,7 @@ public static partial class ContractMapping
             status.UserProxyManagedByWindow)
         {
             NetworkUnavailable = status.NetworkUnavailable,
+            LocalSiteFilter = status.LocalSiteFilter,
         };
     }
 

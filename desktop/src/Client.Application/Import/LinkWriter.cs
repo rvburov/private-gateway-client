@@ -24,7 +24,7 @@ public static class LinkWriter
         {
             case ProxyProtocol.Vless:
                 var vless = Stream(server);
-                vless.Insert(0, ("encryption", "none"));
+                vless.Insert(0, ("encryption", server.Options.Encryption ?? "none"));
                 vless.Insert(1, ("flow", server.Options.Flow));
                 return $"vless://{Escape(credentials.Uuid)}@{address}{Query(vless)}{name}";
             case ProxyProtocol.Vmess:
@@ -91,6 +91,7 @@ public static class LinkWriter
             ("host", transport.Host),
             ("serviceName", transport.ServiceName),
             ("mode", transport.Mode),
+            ("extra", transport.ExtraJson),
             ("security", server.Security.Kind.ToString().ToLowerInvariant()),
         ];
         query.AddRange(Tls(server));
@@ -146,6 +147,16 @@ public static class LinkWriter
             ["fp"] = security.Fingerprint ?? string.Empty,
             ["alpn"] = security.Alpn is { Count: > 0 } alpn ? string.Join(',', alpn) : string.Empty,
         };
+        if (transport.Mode is { } mode)
+        {
+            json["mode"] = mode;
+        }
+
+        if (transport.ExtraJson is { } extra)
+        {
+            json["extra"] = extra;
+        }
+
         // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
         if (security.PinnedPeerCertSha256 is { Count: > 0 } pinned)
         {

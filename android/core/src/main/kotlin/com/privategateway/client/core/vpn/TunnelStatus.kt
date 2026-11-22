@@ -45,6 +45,8 @@ data class TunnelStatus(
      * переподключения ждут сеть, а не тратятся впустую.
      */
     val offline: Boolean = false,
+    /** Локальный фильтр сайтов: карта и ядро работают, удаленного VPN нет, публичный IP остается видимым. */
+    val localOnly: Boolean = false,
 ) {
     /** Пауза идет — на главной «Защита на паузе» с отсчетом и «Вернуть защиту», а не «Выключено». */
     val paused: Boolean get() = state == TunnelState.Off && pausedUntil != null

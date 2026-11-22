@@ -310,7 +310,7 @@ public sealed class VpnTunnel : IAsyncDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 var ready = 0;
                 var tun = new TunRequest(link, serverAddresses, request.Server.Port, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
-                    DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
+                    DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet, request.TransportEndpoints);
                 if (OperatingSystem.IsWindows() && netns is null)
                 {
                     RemoveLeftoverAdapter(output);
@@ -456,7 +456,8 @@ public sealed class VpnTunnel : IAsyncDisposable
     public static IReadOnlyList<string> DirectPrograms(CoreRequest request, string xray)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray).Select(p => RealPath(p)).Distinct(StringComparer.Ordinal)];
+        return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray)
+            .Concat(request.LocalSiteFilter ? [xray] : []).Select(p => RealPath(p)).Distinct(StringComparer.Ordinal)];
     }
 
     /// <summary>Программы мимо туннеля, чьи соединения с адресами FakeDNS ведет Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>), — настоящими путями.</summary>

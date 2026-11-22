@@ -23,7 +23,7 @@ public sealed partial class Gateway
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Status is not { State: ConnectionState.Connected, IsPaused: false }
+            if (Status is not { State: ConnectionState.Connected, IsPaused: false, LocalSiteFilter: false }
                 || (_tunnel is null && _core is null) || _probe is null)
             {
                 return SubscriptionDownload.Failed(DownloadFailure.Connection);
@@ -88,7 +88,7 @@ public sealed partial class Gateway
         try
         {
             return _session != session || _probe != link
-                || Status is not { State: ConnectionState.Connected, IsPaused: false }
+                || Status is not { State: ConnectionState.Connected, IsPaused: false, LocalSiteFilter: false }
                 ? SubscriptionDownload.Failed(DownloadFailure.Connection) : result;
         }
         finally

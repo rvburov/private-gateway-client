@@ -99,6 +99,10 @@ fun SettingsScreen(
     account: AccountInfo? = null,
     onSignOut: () -> Unit = {},
     pinControl: BlockPinControl = BlockPinControl.None,
+    blockedHistory: List<com.privategateway.client.data.BlockedSite> = emptyList(),
+    localFilter: Boolean = false,
+    onFilter: () -> Unit = {},
+    onStopFilter: () -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -136,6 +140,10 @@ fun SettingsScreen(
                 onProtection = { page = SettingsPage.Protection },
                 installedApps = installedApps,
                 pinControl = pinControl,
+                blockedHistory = blockedHistory,
+                localFilter = localFilter,
+                onFilter = onFilter,
+                onStopFilter = onStopFilter,
             )
         }
 

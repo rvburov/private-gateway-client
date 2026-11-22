@@ -144,6 +144,8 @@ public enum BlockGuard: Equatable, Sendable {
     case allow(String)
     /// Восстановление копии с настройками: в ней блок может быть слабее.
     case restore
+    /// Раздельный режим начинает применять ранее молчавшие разрешения «Напрямую».
+    case routing
 
     /// Заголовок и текст листа «Снять блок…».
     public var titleKey: String {
@@ -152,6 +154,7 @@ public enum BlockGuard: Equatable, Sendable {
         case .rule: return "block.guard.rule.title"
         case .allow: return "block.guard.allow.title"
         case .restore: return "block.guard.restore.title"
+        case .routing: return "block.guard.routing.title"
         }
     }
 
@@ -161,6 +164,7 @@ public enum BlockGuard: Equatable, Sendable {
         case .rule: return "block.guard.rule.text"
         case .allow: return "block.guard.allow.text"
         case .restore: return "block.guard.restore.text"
+        case .routing: return "block.guard.routing.text"
         }
     }
 
@@ -182,6 +186,15 @@ public enum BlockGuard: Equatable, Sendable {
         let allowsMore = blockOthers && rule.action != .block
             && (original == nil || original?.action == .block || original?.pattern != rule.pattern || original?.isExact != rule.isExact)
         return allowsMore ? .allow(rule.pattern) : nil
+    }
+
+    /// Учитывает замену через «Добавить» и более точное разрешение внутри широкой блокировки. Консервативно спрашивает
+    /// код для нового разрешения при любой сохраненной блокировке; иначе разные представления шаблона обходили бы PIN.
+    public static func forSave(original: SiteRule?, rule: SiteRule, routing: RoutingSettings) -> BlockGuard? {
+        let existing = original ?? routing.rules.first { $0.pattern == rule.pattern && $0.isExact == rule.isExact }
+        if existing == rule { return nil }
+        return forSave(original: existing, rule: rule, blockOthers: routing.blockOthers)
+            ?? (rule.action != .block && routing.rules.contains { $0.action == .block } ? .allow(rule.pattern) : nil)
     }
 
     /// Удаление правила: только «Блокировать» спрашивает код.

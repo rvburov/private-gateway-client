@@ -362,6 +362,42 @@ class AdvancedSettingsTest {
      * при блоке остальных; неверный код не снимает блок, пять неверных — пауза; добавить блок можно без кода.
      */
     @Test
+    fun `adding a colliding or more specific allow cannot bypass the block pin`() {
+        var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(rules = listOf(SiteRule("example.com", RuleAction.Block)))))
+        val pin = BlockPin.create("1234")
+        val attempts = BlockPinAttempts()
+        compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }, BlockPinControl(pin, {}, { attempts.check(it, pin) })) } }
+        compose.onNodeWithTag("routing.rules.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.rule.pattern").performTextInput("sub.example.com")
+        compose.onNodeWithTag("routing.rule.action.Proxy").performClick()
+        compose.onNodeWithTag("routing.rule.save").performClick()
+        assertEquals(listOf(SiteRule("example.com", RuleAction.Block)), tunnel.routing.rules)
+        compose.onNodeWithTag("block.pin.field").performTextInput("1234")
+        compose.onNodeWithTag("block.pin.confirm").performClick()
+        assertEquals(2, tunnel.routing.rules.size)
+    }
+
+    @Test
+    fun `enabling or adding an excluded app requires the site block pin`() {
+        val disabled = BypassApp("org.example.bank", "Банк", enabled = false)
+        var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(RoutingMode.Split,
+            apps = listOf(disabled), rules = listOf(SiteRule("example.com", RuleAction.Block)))))
+        val pin = BlockPin.create("1234")
+        val attempts = BlockPinAttempts()
+        compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {},
+            { listOf(PhoneApp("org.example.game", "Игра")) }, BlockPinControl(pin, {}, { attempts.check(it, pin) })) } }
+        compose.onNodeWithTag("routing.app.org.example.bank").performScrollTo().performClick()
+        assertEquals(listOf(disabled), tunnel.routing.apps)
+        compose.onNodeWithTag("block.pin.keep").performClick()
+        compose.onNodeWithTag("routing.apps.add").performScrollTo().performClick()
+        compose.onNodeWithTag("routing.apps.pick.org.example.game").performClick()
+        assertEquals(listOf(disabled), tunnel.routing.apps)
+        compose.onNodeWithTag("block.pin.field").performTextInput("1234")
+        compose.onNodeWithTag("block.pin.confirm").performClick()
+        assertEquals(listOf(disabled, BypassApp("org.example.game", "Игра")), tunnel.routing.apps)
+    }
+
+    @Test
     fun `pin guards everything that weakens the block`() {
         val casino = SiteRule("casino.example", RuleAction.Block)
         var tunnel by mutableStateOf(TunnelSettings(routing = RoutingSettings(rules = listOf(casino), blockOthers = true)))

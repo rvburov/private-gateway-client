@@ -134,6 +134,34 @@ class InspectorTest {
     }
 
     @Test
+    fun `laboratory keeps two measured snapshots without changing protection`() {
+        answers = { "ip=203.0.113.24\n" }
+        model.captureLab()
+        val first = waitFor({ model.ui.value.lab.snapshots }) { it.size == 1 }.single()
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+        assertEquals(TunnelState.Off, first.state)
+        assertEquals(listOf(wifi), first.networks)
+        assertEquals("203.0.113.24", first.address)
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 8))
+        answers = { "ip=198.51.100.24\n" }
+        model.captureLab()
+        val snapshots = waitFor({ model.ui.value.lab.snapshots }) { it.size == 2 }
+        assertEquals(TunnelState.Connected, monitor.status.value.state)
+        assertEquals("198.51.100.24", snapshots.last().address)
+        model.captureLab()
+        assertEquals(2, waitFor({ model.ui.value.lab.snapshots }) { it.last().at >= snapshots.last().at }.size)
+    }
+
+    @Test
+    fun `laboratory stops at failed dns instead of inventing later stages`() {
+        model.labTarget("missing.example.com")
+        model.runLab()
+        val laboratory = waitFor({ model.ui.value.lab }) { !it.running && it.results.isNotEmpty() }
+        assertEquals(listOf(ProbeKind.Dns), laboratory.results.map { it.kind })
+        assertEquals(ProbeOutcome.NotFound, laboratory.results.single().steps.single().outcome)
+    }
+
+    @Test
     fun `networks are read once and ordered`() {
         val ui = waitFor({ model.ui.value }) { it.networks.isNotEmpty() }
         assertEquals(listOf(wifi), ui.networks)

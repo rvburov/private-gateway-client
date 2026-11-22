@@ -48,6 +48,11 @@ struct SettingsView<Subscriptions: View>: View {
     var onSignOut: () -> Void = {}
     /// PIN-код блока сайтов для «Маршрутизации» (решение 742).
     var pinControl = BlockPinControl.none
+    var blockedSites: [BlockedSiteEvent] = []
+    var historyAvailable = false
+    var localSiteFilter = false
+    var onRefreshBlocked: () async -> Void = {}
+    var onLocalSiteFilter: (Bool) -> Void = { _ in }
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -67,7 +72,9 @@ struct SettingsView<Subscriptions: View>: View {
             )
         case .routing:
             RoutingView(
-                texts: texts, routing: settings.routing, allowLan: settings.tunnel.allowLan, pinControl: pinControl, onRouting: onRouting,
+                texts: texts, routing: settings.routing, allowLan: settings.tunnel.allowLan, pinControl: pinControl,
+                blockedSites: blockedSites, historyAvailable: historyAvailable, localSiteFilter: localSiteFilter,
+                onRefreshBlocked: onRefreshBlocked, onLocalSiteFilter: onLocalSiteFilter, onRouting: onRouting,
                 onLan: { page = .protection }, onBack: { page = .main }
             )
         case .subscriptions:

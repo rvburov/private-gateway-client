@@ -32,17 +32,23 @@ public struct TunnelStatus: Equatable, Codable, Sendable {
     public var attempt: Int
     /// Сети под туннелем нет (`NWPathMonitor` расширения) — «Нет сети», как у десктопа и Android: попытки ждут сеть.
     public var offline: Bool
+    /// Включен только местный фильтр: удаленного VPN нет, реальный IP открыт.
+    public var localSiteFilter: Bool
 
-    public init(state: TunnelState = .off, serverId: String? = nil, since: Date? = nil, error: String? = nil, attempt: Int = 0, offline: Bool = false) {
+    public init(
+        state: TunnelState = .off, serverId: String? = nil, since: Date? = nil, error: String? = nil, attempt: Int = 0,
+        offline: Bool = false, localSiteFilter: Bool = false
+    ) {
         self.state = state
         self.serverId = serverId
         self.since = since
         self.error = error
         self.attempt = attempt
         self.offline = offline
+        self.localSiteFilter = localSiteFilter
     }
 
-    private enum CodingKeys: String, CodingKey { case state, serverId, since, error, attempt, offline }
+    private enum CodingKeys: String, CodingKey { case state, serverId, since, error, attempt, offline, localSiteFilter }
 
     /// Файл прежней версии без `offline` читается как «сеть есть».
     public init(from decoder: any Decoder) throws {
@@ -53,6 +59,7 @@ public struct TunnelStatus: Equatable, Codable, Sendable {
         error = try values.decodeIfPresent(String.self, forKey: .error)
         attempt = try values.decodeIfPresent(Int.self, forKey: .attempt) ?? 0
         offline = try values.decodeIfPresent(Bool.self, forKey: .offline) ?? false
+        localSiteFilter = try values.decodeIfPresent(Bool.self, forKey: .localSiteFilter) ?? false
     }
 }
 

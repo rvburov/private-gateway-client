@@ -54,6 +54,7 @@
     error: { label: "Ошибка", mark: "Mark.Alert" },
     off: { label: "Выключено", mark: "Mark.Off" },
     proxy: { label: "Прокси", mark: "Mark.Alert" },
+    filter: { label: "Фильтр сайтов", mark: "Mark.Alert" },
     paused: { label: "Пауза", mark: "Mark.Alert" },
     leak: { label: "Утечка IP", mark: "Mark.Alert" },
   };
@@ -225,7 +226,7 @@
       holder.appendChild(icon("Shield", info.mark, "1.9"));
     });
     root.querySelectorAll("[data-web-ip]").forEach(function (ip) {
-      var measured = ["connected", "proxy", "off", "paused"].indexOf(state) >= 0;
+      var measured = ["connected", "proxy", "filter", "off", "paused"].indexOf(state) >= 0;
       var scope = ip.closest("[data-reveal-scope]");
       var reveal = scope.querySelector("[data-reveal]");
       var visible = !reveal || reveal.dataset.revealed === "1";

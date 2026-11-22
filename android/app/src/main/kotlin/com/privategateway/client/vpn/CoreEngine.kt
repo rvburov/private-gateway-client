@@ -9,7 +9,7 @@ import org.json.JSONObject
 import javax.inject.Inject
 
 /** Ядро в процессе приложения: запуск с готовым конфигом, остановка, версия. */
-interface CoreEngine {
+interface CoreEngine : LatencyWorker {
     /**
      * Запустить ядро. [protect] выводит сокет ядра из туннеля (VpnService.protect), [dns] — сервер DNS для адреса самого
      * сервера («ip:53»). Запустилось — null, иначе текст ошибки ядра (в журнал, не пользователю).
@@ -25,7 +25,10 @@ interface CoreEngine {
      * Замер задержки (`pingBatch` libXray) — только без туннеля: сокеты замера идут напрямую, [dns] — DNS сети для адресов
      * серверов. Ответ libXray как есть (разбирает PingBatch); сбой вызова — null.
      */
-    fun ping(request: String, dns: String): String?
+    override fun ping(request: String, dns: String): String?
+
+    /** Дескриптор отдельного процесса замера: защищает только действующая служба VPN. */
+    fun protectSocket(fd: Int): Boolean = false
 
     fun version(): String?
 }
@@ -84,6 +87,8 @@ class LibXrayEngine @Inject constructor() : CoreEngine {
     } catch (_: JSONException) {
         null
     }
+
+    override fun protectSocket(fd: Int): Boolean = Dialer.protectFd(fd.toLong())
 
     /**
      * Контроллер сокетов — один на процесс: Xray хранит каждый зарегистрированный до конца процесса и снять его не дает.

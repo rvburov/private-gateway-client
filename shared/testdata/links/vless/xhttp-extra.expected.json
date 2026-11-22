@@ -1,0 +1,22 @@
+{
+  "protocol": "vless",
+  "name": "Extra",
+  "host": "192.0.2.1",
+  "port": 443,
+  "transport": {
+    "kind": "xhttp",
+    "path": "/upload",
+    "mode": "packet-up",
+    "extraJson": "{\"downloadSettings\":{\"address\":\"download.example.com\",\"network\":\"xhttp\",\"port\":443,\"security\":\"tls\",\"tlsSettings\":{\"alpn\":[\"h3\"],\"serverName\":\"example.com\"},\"xhttpSettings\":{\"mode\":\"stream-one\",\"path\":\"/download\"}},\"noGRPCHeader\":true,\"xmux\":{\"maxConcurrency\":\"4-8\",\"maxConnections\":0}}"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com",
+    "alpn": [
+      "h3"
+    ]
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

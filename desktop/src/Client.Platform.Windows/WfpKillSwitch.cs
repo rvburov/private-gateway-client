@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Microsoft.Win32.SafeHandles;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
 
@@ -17,6 +18,8 @@ namespace PrivateGateway.Client.Platform.Windows;
 /// служба фильтрации Windows ставит их при загрузке, еще до старта нашей службы. Провайдер и подслой —
 /// постоянные всегда (на них ссылаются постоянные фильтры) и снимаются вместе с блоком.
 /// Замена — в одной транзакции: прежние фильтры удаляются, новые ставятся, щели нет.
+/// Временные разрешения службы — в отдельной динамической сессии: закрытие процесса убирает их,
+/// сохраняя основной блок. Непостоянный фильтр в обычной сессии этого свойства не дает.
 /// Ключи фильтров — по порядку от своего базового GUID: найти и снять их можно и после падения
 /// службы. Наш block чужим permit не отменить, наш permit не отменяет чужой block (брандмауэр Windows).
 /// Структуры WFP пишутся по смещениям 64-битной Windows (fwpmtypes.h).
@@ -27,7 +30,7 @@ namespace PrivateGateway.Client.Platform.Windows;
 /// машину: саму машину они не трогают. null — вся машина.
 /// </param>
 [SupportedOSPlatform("windows")]
-public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
+public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch, IDisposable
 {
     private const uint RpcAuthnWinNt = 10;
     private const uint AlreadyExists = 0x80320009;
@@ -94,7 +97,10 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 
     // Сколько фильтров поставил последний Enable: сторож блока проверяет, что на месте все.
     private int _filters;
+    private int _baseFilters;
     private int _expectVirtualMachineRules;
+    private readonly Lock _policyGate = new();
+    private EngineSession? _lookupSession;
 
     public bool IsEnabled => ReadFilters().Count > 0;
 
@@ -104,9 +110,18 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     /// </summary>
     public bool IsIntact => FiltersIntact && VirtualMachineRulesIntact();
 
-    public bool FiltersIntact => Volatile.Read(ref _filters) is var count and > 0
-        ? WithEngine(engine => Enumerable.Range(0, count).All(index => FilterExists(engine, index)))
-        : IsEnabled;
+    public bool FiltersIntact
+    {
+        get
+        {
+            lock (_policyGate)
+            {
+                return Volatile.Read(ref _filters) is var count and > 0
+                    ? WithEngine(engine => Enumerable.Range(0, count).All(index => FilterExists(engine, index)))
+                    : IsEnabled;
+            }
+        }
+    }
 
     private bool VirtualMachineRulesIntact()
     {
@@ -124,10 +139,19 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 
     public void Enable(KillSwitchPolicy policy)
     {
+        lock (_policyGate)
+        {
+            EnableCore(policy);
+        }
+    }
+
+    private void EnableCore(KillSwitchPolicy policy)
+    {
         ArgumentNullException.ThrowIfNull(policy);
         Volatile.Write(ref _expectVirtualMachineRules, 0);
         ulong? luid = policy.TunnelInterface is { } name && ConvertInterfaceAliasToLuid(name, out var found) == 0 ? found : null;
         var rules = WfpRules.For(policy, luid);
+        CloseLookupSession();
         WithEngine(engine => Transaction(engine, () =>
         {
             DeleteFilters(engine);
@@ -135,7 +159,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             using var memory = new NativeMemory();
             var app = onlyProgram is null ? IntPtr.Zero : memory.AppId(onlyProgram);
             var index = 0;
-            foreach (var rule in rules)
+            foreach (var rule in rules.Where(rule => !rule.SessionScoped))
             {
                 foreach (var layer in Layers(rule))
                 {
@@ -148,8 +172,36 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
                 }
             }
 
+            Volatile.Write(ref _baseFilters, index);
             Volatile.Write(ref _filters, index);
         }));
+        if (rules.Any(rule => rule.SessionScoped))
+        {
+            var dynamic = OpenDynamicSession();
+            try
+            {
+                var index = Volatile.Read(ref _filters);
+                Transaction(dynamic.DangerousGetHandle(), () =>
+                {
+                    using var memory = new NativeMemory();
+                    foreach (var rule in rules.Where(rule => rule.SessionScoped))
+                    {
+                        foreach (var layer in Layers(rule))
+                        {
+                            Check(FwpmFilterAdd0(dynamic.DangerousGetHandle(), Filter(memory, WfpRules.FilterKey(index++), layer,
+                                rule, IntPtr.Zero, persistent: false), IntPtr.Zero, out _), "временный фильтр " + rule.Name);
+                        }
+                    }
+                });
+                _lookupSession = dynamic;
+                Volatile.Write(ref _filters, index);
+            }
+            catch
+            {
+                dynamic.Dispose();
+                throw;
+            }
+        }
 
         // ВМ (WSL, Hyper-V) — брандмауэром Hyper-V, пока туннеля нет: их трафик через NAT может идти мимо слоев IP. В
         // тестовом режиме машину не трогаем.
@@ -199,6 +251,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     public void EnableProbe(IReadOnlyList<WfpRule> rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
+        CloseLookupSession();
         WithEngine(engine => Transaction(engine, () =>
         {
             DeleteFilters(engine);
@@ -214,17 +267,28 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
                 }
             }
 
+            Volatile.Write(ref _baseFilters, index);
             Volatile.Write(ref _filters, index);
         }));
     }
 
     public void Disable()
     {
+        lock (_policyGate)
+        {
+            DisableCore();
+        }
+    }
+
+    private void DisableCore()
+    {
+        CloseLookupSession();
         Volatile.Write(ref _expectVirtualMachineRules, 0);
         WithEngine(engine => Transaction(engine, () =>
         {
             DeleteFilters(engine);
             DeleteBase(engine);
+            Volatile.Write(ref _baseFilters, 0);
             Volatile.Write(ref _filters, 0);
         }));
         if (onlyProgram is null)
@@ -238,6 +302,38 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
                 throw new IOException("Не удалось снять блок виртуальных машин: " + Warning);
             }
         }
+    }
+
+    /// <summary>Закрывает только временные разрешения службы; основной fail-closed блок остается в WFP.</summary>
+    public void Dispose()
+    {
+        lock (_policyGate)
+        {
+            CloseLookupSession();
+            Volatile.Write(ref _filters, Volatile.Read(ref _baseFilters));
+        }
+    }
+
+    private void CloseLookupSession()
+    {
+        _lookupSession?.Dispose();
+        _lookupSession = null;
+    }
+
+    private static EngineSession OpenDynamicSession()
+    {
+        using var memory = new NativeMemory();
+        // FWPM_SESSION0 x64: flags после GUID и FWPM_DISPLAY_DATA0 (32); FLAG_DYNAMIC=1.
+        var session = memory.Zeroed(72);
+        Marshal.WriteInt32(session, 32, 1);
+        Check(FwpmEngineOpen0(IntPtr.Zero, RpcAuthnWinNt, IntPtr.Zero, session, out var engine), "динамическая сессия WFP");
+        return new EngineSession(engine);
+    }
+
+    private sealed class EngineSession : SafeHandleZeroOrMinusOneIsInvalid
+    {
+        public EngineSession(IntPtr engine) : base(ownsHandle: true) => SetHandle(engine);
+        protected override bool ReleaseHandle() => FwpmEngineClose0(handle) == 0;
     }
 
     /// <summary>Актуальный снимок своих фильтров, даже если первый или большая часть ключей уже удалены.</summary>

@@ -46,7 +46,7 @@ public struct SettingsActions: Sendable {
         let after = try await settings.load()
         let running = state == .connecting || state == .connected || state == .reconnecting
         if running, before.needsReconnect(after) || VpnProfile.of(before) != VpnProfile.of(after) {
-            try await control.connect()
+            try await control.refresh()
         }
     }
 }

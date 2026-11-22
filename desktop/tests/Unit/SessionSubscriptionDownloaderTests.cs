@@ -95,6 +95,33 @@ public sealed class SessionSubscriptionDownloaderTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Local_filter_never_counts_as_a_remote_vpn_for_subscription_downloads(bool requireVpn)
+    {
+        var gateway = new Gateway();
+        gateway.UseLocalFilter();
+        gateway.Download = _ =>
+        {
+            gateway.Calls++;
+            return Task.FromResult(new SubscriptionDownload("through-core"u8.ToArray()));
+        };
+        var direct = new Direct();
+        var downloader = new SessionSubscriptionDownloader(direct, gateway, TimeProvider.System, requireVpn);
+        if (requireVpn)
+        {
+            (await Should.ThrowAsync<SubscriptionDownloadException>(() => downloader.DownloadAsync(Url, Ct))).Failure.ShouldBe(DownloadFailure.Connection);
+            direct.Calls.ShouldBe(0, "обновление только через VPN не должно выйти напрямую");
+        }
+        else
+        {
+            (await downloader.DownloadAsync(Url, Ct)).Text.ShouldBe("direct", "ручной импорт с явно разрешенным прямым путем сохраняет прежний контракт");
+            direct.Calls.ShouldBe(1);
+        }
+        gateway.Calls.ShouldBe(0, "локальный freedom-выход никогда не выглядит защищенной загрузкой через сервер");
+    }
+
     private sealed class Gateway : IGatewayClient
     {
         public int Calls { get; set; }
@@ -106,6 +133,7 @@ public sealed class SessionSubscriptionDownloaderTests
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<JournalEntry>? JournalAdded { add { } remove { } }
         public void Change(ConnectionState state) { Status = Status with { State = state }; StatusChanged?.Invoke(this, Status); }
+        public void UseLocalFilter() { Status = Status with { Mode = ConnectionMode.Vpn, LocalSiteFilter = true }; StatusChanged?.Invoke(this, Status); }
         public void ReportSubscriptionAttempt(DownloadFailure? failure, int? statusCode, int attempt, TimeSpan elapsed, bool throughCore) => Attempts.Add(failure);
         public Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) => Download(cancellationToken);
         public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default) => Task.CompletedTask;

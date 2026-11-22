@@ -22,6 +22,10 @@ import com.privategateway.client.core.subscriptions.UnreadableServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -60,6 +64,18 @@ data class GroupItem(
 /** Итог обновления подписки: сколько серверов пришло и ушло, что стало с выбранным и его название для уведомления. */
 data class UpdateResult(val added: Int, val removed: Int, val selected: SelectedChange, val selectedName: String?)
 
+/** Время и актуальность замера этого запуска; прямой путь изолированного ядра не равен пути работающего VPN. */
+data class LatencyCheck(
+    val at: Long,
+    val stale: Boolean = false,
+    val lastSuccessMs: Int? = null,
+    val lastSuccessAt: Long? = null,
+    val networkId: String? = null,
+    val connectionId: String? = null,
+) {
+    fun isStale(now: Long): Boolean = stale || now < at || now - at >= 5 * 60_000
+}
+
 /**
  * Серверы пользователя и их группы. В базе сервер — ссылка, запечатанная ключом Android Keystore ([SecretBox]); открытыми
  * лежат только подписи для списка. Адрес подписки (в нем токен доступа) — тоже только запечатанный, открыто — маска.
@@ -74,6 +90,24 @@ class ServerRepository @Inject constructor(
 ) {
     private val dao = database.servers()
     private val subscriptions = database.subscriptions()
+    private val checks = MutableStateFlow<Map<String, LatencyCheck>>(emptyMap())
+    private val latencyLock = Any()
+    private var currentNetwork: String? = null
+    private var currentConnection: String? = null
+    val latencyChecks: StateFlow<Map<String, LatencyCheck>> = checks.asStateFlow()
+
+    fun markLatencyStale(networkId: String? = null, connectionId: String? = null) = synchronized(latencyLock) {
+        if (networkId != null) currentNetwork = networkId
+        if (connectionId != null) currentConnection = connectionId
+        updateChecks { current -> current.mapValues {
+            val check = it.value
+            if (networkId == null && connectionId == null || networkId != null && check.networkId != networkId || connectionId != null && check.connectionId != connectionId) check.copy(stale = true) else check
+        } }
+    }
+
+    private fun updateChecks(change: (Map<String, LatencyCheck>) -> Map<String, LatencyCheck>) = synchronized(latencyLock) {
+        checks.value = change(checks.value)
+    }
 
     val servers: Flow<List<ServerItem>> = dao.observeAll().map { list -> list.mapNotNull { item(it) } }
 
@@ -191,6 +225,7 @@ class ServerRepository @Inject constructor(
 
             dao.insertAll(fresh)
         }
+        updateChecks { current -> current.mapValues { if (it.key in renewed) it.value.copy(stale = true) else it.value } }
 
         return AddResult(fresh.size, duplicates, renewed.size)
     }
@@ -355,6 +390,9 @@ class ServerRepository @Inject constructor(
                 merge.missing?.let { dao.markMissing(it, now) }
                 subscriptions.update(subscription.copy(updatedAt = now, lastAttemptAt = now, lastFailure = null, lastStatus = null))
             }
+            val previous = own.associate { it.id to it.server }
+            val changed = kept.filter { previous[it.id] != it.server }.map { it.id }.toSet()
+            updateChecks { current -> current.filterKeys { it !in merge.removed }.mapValues { if (it.key in changed) it.value.copy(stale = true) else it.value } }
 
             val missing = merge.missing?.let { byId[it] }
             UpdateResult(added.size, merge.removed.size, merge.selected, missing?.let { it.customName ?: it.name })
@@ -416,11 +454,28 @@ class ServerRepository @Inject constructor(
     suspend fun markUsed(id: String, at: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) { dao.markUsed(id, at) }
 
     /** Итоги замера задержки — одной транзакцией: список обновляется порцией, а не по строке. */
-    suspend fun setLatency(results: Map<String, Latency>) = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            for ((id, latency) in results) {
-                dao.setLatency(id, latency.ms, latency.stored)
+    suspend fun setLatency(
+        results: Map<String, Latency>,
+        networkId: String? = null,
+        connectionId: String? = null,
+        expected: Map<String, ServerDefinition>? = null,
+    ) = withContext(Dispatchers.IO) {
+        val at = System.currentTimeMillis()
+        writes.withLock {
+            val currentResults = results.filter { (id, _) ->
+                expected == null || dao.byId(id)?.let { open(it) } == expected[id]
             }
+            database.withTransaction {
+                for ((id, latency) in currentResults) {
+                    dao.setLatency(id, latency.ms, latency.stored)
+                }
+            }
+            updateChecks { current -> current + currentResults.mapValues { (id, latency) ->
+                val outdated = networkId != null && currentNetwork != null && networkId != currentNetwork ||
+                    connectionId != null && currentConnection != null && connectionId != currentConnection
+                LatencyCheck(at, stale = outdated, lastSuccessMs = latency.ms ?: current[id]?.lastSuccessMs,
+                    lastSuccessAt = if (latency.ms != null) at else current[id]?.lastSuccessAt, networkId = networkId, connectionId = connectionId)
+            } }
         }
     }
 

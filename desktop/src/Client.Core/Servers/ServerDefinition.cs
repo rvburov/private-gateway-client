@@ -18,10 +18,12 @@ public enum TransportKind
 /// Транспорт: путь и заголовок Host для WS/HTTPUpgrade/XHTTP, имя сервиса для gRPC; <paramref name="Mode"/> — режим XHTTP
 /// (<see cref="XhttpModes"/>: auto, packet-up, stream-up, stream-one); не задан — выбирает ядро (auto).
 /// </summary>
-public sealed record TransportOptions(TransportKind Kind, string? Path = null, string? Host = null, string? ServiceName = null, string? Mode = null)
+public sealed record TransportOptions(TransportKind Kind, string? Path = null, string? Host = null, string? ServiceName = null, string? Mode = null, string? ExtraJson = null)
 {
     /// <summary>Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны, без лишних запросов на каждое соединение.</summary>
     public static IReadOnlySet<string> XhttpModes { get; } = new HashSet<string>(StringComparer.Ordinal) { "auto", "packet-up", "stream-up", "stream-one" };
+
+    public override string ToString() => $"TransportOptions {{ Kind = {Kind}, Extra = *** }}";
 
     public static TransportOptions Tcp { get; } = new(TransportKind.Tcp);
 
@@ -60,7 +62,8 @@ public sealed record ProtocolOptions(
     string? CongestionControl = null,
     string? PeerPublicKey = null,
     IReadOnlyList<string>? Addresses = null,
-    int? Mtu = null)
+    int? Mtu = null,
+    string? Encryption = null)
 {
     public static ProtocolOptions Empty { get; } = new();
 }
@@ -75,7 +78,8 @@ public sealed record ServerCredentials(
     string? ObfsPassword = null,
     string? PrivateKey = null,
     string? PresharedKey = null,
-    string? Username = null)
+    string? Username = null,
+    string? TransportExtraJson = null)
 {
     public override string ToString() => "ServerCredentials { *** }";
 }

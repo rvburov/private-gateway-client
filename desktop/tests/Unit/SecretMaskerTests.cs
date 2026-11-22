@@ -5,6 +5,18 @@ namespace PrivateGateway.Client.Tests.Unit;
 // Значения в тестах заведомо ненастоящие: адреса из документационных диапазонов, example.com.
 public class SecretMaskerTests
 {
+    [Fact]
+    public void Known_custom_headers_are_hidden_in_raw_json_and_url_forms_without_erasing_ordinary_text()
+    {
+        const string value = "demo/token\" space";
+        string[] secrets = [value, "Bearer demo-bearer", "xy"];
+        var json = System.Text.Json.JsonSerializer.Serialize(value)[1..^1];
+        var url = Uri.EscapeDataString(value);
+        var line = $"ordinary text raw={value}; json={json}; url={url}; form={url.Replace("%20", "+", StringComparison.Ordinal)}; auth=demo-bearer; xy; xylophone";
+        var masked = SecretMasker.Mask(line, secrets);
+        masked.ShouldBe($"ordinary text raw={Hidden}; json={Hidden}; url={Hidden}; form={Hidden}; auth={Hidden}; {Hidden}; xylophone");
+    }
+
     private const string Hidden = SecretMasker.Hidden;
 
     [Theory]

@@ -235,7 +235,11 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     public partial bool IsMeasuringDelay { get; private set; }
 
     /// <summary>Три строки: до сервера, через сервер, новое соединение.</summary>
-    public IReadOnlyList<DelayRowViewModel> DelayRows =>
+    public IReadOnlyList<DelayRowViewModel> DelayRows => Protection.Status.LocalSiteFilter ?
+    [
+        new(Loc.Instance["diag.delay.local"], Loc.Instance["diag.delay.local.text"], Ms(Delay?.ThroughServerMs)),
+        new(Loc.Instance["diag.delay.fresh"], Loc.Instance["diag.delay.local.fresh"], Ms(Delay?.NewConnectionMs)),
+    ] :
     [
         new(Loc.Instance["diag.delay.toServer"], Loc.Instance["diag.delay.toServer.text"], Ms(Delay?.ToServerMs)),
         new(Loc.Instance["diag.delay.through"], Loc.Instance["diag.delay.through.text"], Ms(Delay?.ThroughServerMs)),

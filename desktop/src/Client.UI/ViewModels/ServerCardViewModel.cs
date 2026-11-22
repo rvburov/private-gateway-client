@@ -116,9 +116,9 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 
     public string LatencyText => ServerLatencyText.Of(_server, card: true);
 
-    public bool IsSlow => _server.LatencyMs > ServersPageViewModel.SlowLatencyMs;
+    public bool IsSlow => !_server.IsLatencyStale && _server.LatencyMs > ServersPageViewModel.SlowLatencyMs;
 
-    public bool IsDown => !_server.IsMeasuringLatency && _server.LatencyFailure is not null;
+    public bool IsDown => !_server.IsMeasuringLatency && !_server.IsLatencyStale && !ServerLatencyText.IsUnconfirmed(_server) && _server.LatencyFailure is not null;
 
     // ── Сведения ─────────────────────────────────────────────────────────────
 
@@ -144,6 +144,12 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
             if (_server.LatencyCheckedAt is { } at)
             {
                 details.Add(new(Loc.Instance["card.latency.checked"], at.ToLocalTime().ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)));
+            }
+            if (_server.LastSuccessfulLatencyMs is { } success && _server.LastSuccessfulLatencyAt is { } succeededAt
+                && (_server.LatencyFailure is not null || _server.IsLatencyStale))
+            {
+                details.Add(new(Loc.Instance["card.latency.lastSuccess"], success.ToString(CultureInfo.InvariantCulture)
+                    + " " + Loc.Instance["unit.ms"] + " · " + succeededAt.ToLocalTime().ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)));
             }
 
             return details;

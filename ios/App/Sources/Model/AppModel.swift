@@ -38,6 +38,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var blocked = false
     /// Список серверов прочитан: до этого пустой список не значит «серверов нет» (первый запуск, доска 10).
     @Published private(set) var serversLoaded = false
+    /// Свежесть относится к пути текущего запуска: старые сохраненные числа не обещают доступность сейчас.
+    @Published private(set) var latencyUpdated: [String: Date] = [:]
+    @Published private(set) var latencyViaVpn = false
+    @Published private(set) var blockedSites: [BlockedSiteEvent] = []
+    @Published private(set) var blockedHistoryAvailable = false
     /// Первый запуск пройден (доска 10): появился первый сервер или выбрано «Позже». Только окну — в UserDefaults приложения.
     @Published private(set) var onboardingDone = UserDefaults.standard.bool(forKey: AppModel.onboardingKey)
 
@@ -70,18 +75,20 @@ final class AppModel: ObservableObject {
     private var launchHandled = false
     /// Геобаза для флагов уже открыта за этот запуск (`Countries`).
     private var countriesOpened = false
+    private var latencyEpoch: UInt64 = 0
+    private var historyGeneration: UInt64 = 0
 
-    /// Замер задержки серверов через ядро в процессе приложения — только без защиты (решения 430 и 468).
+    /// Ядро замера в процессе приложения отделено от ядра расширения. Под VPN меряется путь через активный туннель.
     private lazy var meter = LatencyMeter(
         servers: container.servers, settings: container.settings, off: { [weak self] in await self?.protectionOff ?? false },
-        ping: { await LatencyEngine.ping($0) }
+        ping: { await LatencyEngine.ping($0) }, context: { [weak self] in await self?.latencyContext }
     )
 
     init(container: SharedContainer = .current(), texts: PgTexts = .current, source: (any SubscriptionSource)? = nil) {
         self.container = container
         self.texts = texts
         bundleInfo = .of(core: nil)
-        let tunnel = TunnelController(settings: container.settings)
+        let tunnel = TunnelController(settings: container.settings, account: container.account)
         self.tunnel = tunnel
         actions = ServerActions(servers: container.servers, settings: container.settings, control: tunnel)
         settingsActions = SettingsActions(settings: container.settings, control: tunnel)
@@ -189,6 +196,7 @@ final class AppModel: ObservableObject {
         }
 
         if let loaded = try? await container.settings.load() {
+            if settings != loaded { invalidateLatency() }
             settings = loaded
             home.selectedId = loaded.selectedServerId
         }
@@ -291,14 +299,55 @@ final class AppModel: ObservableObject {
         await tunnel.serverDelay()
     }
 
+    func refreshBlockedSites() async {
+        guard container.account.read().allowed(now: Date()) else {
+            blockedSites = []
+            blockedHistoryAvailable = false
+            return
+        }
+        let generation = historyGeneration
+        blockedSites = blockedSites.filter { Calendar.current.isDateInToday($0.lastSeen) }
+        let snapshot = await tunnel.blockedSites()
+        guard generation == historyGeneration, !Task.isCancelled, container.account.read().allowed(now: Date()) else { return }
+        if let snapshot {
+            blockedSites = snapshot.events
+            blockedHistoryAvailable = snapshot.available
+        } else {
+            blockedHistoryAvailable = false
+        }
+    }
+
     func refreshStatus() {
         if tunnel.system == .connected || tunnel.system == .connecting {
             appError = nil
         }
 
-        let before = home.status.state
+        let beforeStatus = home.status
+        let before = beforeStatus.state
         systemVpn = tunnel.system
         home.status = TunnelView.status(system: tunnel.system, report: container.status.read(), appError: appError)
+        if beforeStatus != home.status {
+            invalidateLatency()
+            if home.status.state == .error, let id = home.status.serverId, home.status.error == TunnelErrors.serverNotResponding {
+                let epoch = latencyEpoch
+                Task {
+                    guard epoch == latencyEpoch else { return }
+                    try? await container.servers.setLatency([id: .failed(.noResponse)])
+                    if epoch == latencyEpoch, let items = try? await container.servers.servers() {
+                        home.servers = items
+                        latencyUpdated[id] = Date()
+                    }
+                }
+            } else if home.status.state == .connected, !home.status.localSiteFilter, let id = home.status.serverId,
+                      home.servers.first(where: { $0.id == id })?.latency?.failure != nil {
+                let epoch = latencyEpoch
+                Task {
+                    guard epoch == latencyEpoch else { return }
+                    try? await container.servers.setLatency([id: Latency(ms: nil, failure: nil)])
+                    if epoch == latencyEpoch, let items = try? await container.servers.servers() { home.servers = items }
+                }
+            }
+        }
         // «Ошибка» при поднятом туннеле — расширение оставило его без ядра (TunnelView): трафик закрыт, а не идет напрямую.
         // При блоке при обрыве это проверяет проба сети (п. 10): ее итог важнее догадки по состоянию туннеля.
         let tunnelUp = home.status.state == .error && (tunnel.system == .connected || tunnel.system == .reasserting)
@@ -350,19 +399,41 @@ final class AppModel: ObservableObject {
         await ProbeRunner.tcp(host, port).steps.first?.outcome == .ok
     }
 
-    private var connected: Bool { home.status.state == .connected }
+    private var connected: Bool { Self.subscriptionProtected(home.status) }
+
+    nonisolated static func subscriptionProtected(_ status: TunnelStatus) -> Bool {
+        status.state == .connected && !status.localSiteFilter
+    }
 
     private var protectionOff: Bool { home.status.state == .off }
 
-    /// «Обновить серверы» на главной и в «Серверах»: список заново и задержка всех серверов через ядро — только без защиты.
+    /// Поднятый туннель живет в другом процессе. Замер приложения идет через него и не меняет его маршруты или ядро.
+    private var latencyContext: String? {
+        guard !blocked, [.off, .connected].contains(home.status.state), !home.status.offline else { return nil }
+        return "\(home.status.state.rawValue):\(latencyEpoch)"
+    }
+
+    func invalidateLatency() {
+        latencyEpoch &+= 1
+        latencyUpdated = [:]
+    }
+
+    /// Перерисовка возраста замеров, пока список виден. Сетевых запросов этот такт не создает.
+    func refreshLatencyFreshness() { objectWillChange.send() }
+
+    /// «Обновить серверы» на главной и в «Серверах»: список заново и задержка всех серверов через отдельное ядро приложения.
     /// Замер уже идет — нажатие не считается (кнопка не гаснет, крутится только стрелка); замерили — «Серверы обновлены · пинг
-    /// проверен», как у десктопа; защита включена или включилась во время замера — сообщение, почему не мерили. Список
-    /// перечитывается после каждой порции.
+    /// проверен», как у десктопа; путь сменился во время замера — сообщение, почему итог отброшен. Список перечитывается
+    /// после каждой порции; время и вид пути показываются отдельно от старых результатов.
     func refreshLatency() async {
+        guard !home.measuring else { return }
         home.measuring = true
-        let result = await meter.measure { [weak self] in
-            await self?.reload()
-        }
+        latencyUpdated = [:]
+        latencyViaVpn = connected
+        let epoch = latencyEpoch
+        let result = await meter.measure(results: { [weak self] measured in
+            await self?.measuredLatency(measured, epoch: epoch)
+        }, chunk: { [weak self] in await self?.reload() })
         if result != .running {
             home.measuring = false
         }
@@ -373,6 +444,12 @@ final class AppModel: ObservableObject {
         case .busy: post(texts.androidServersPingBusy)
         case .running: break
         }
+    }
+
+    private func measuredLatency(_ results: [String: Latency], epoch: UInt64) {
+        guard epoch == latencyEpoch else { return }
+        let now = Date()
+        for id in results.keys { latencyUpdated[id] = now }
     }
 
     /// Не пора ли обновить подписки — окно открыто, защита подключилась, раз в 10 минут, пока окно на экране.
@@ -473,13 +550,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setLocalSiteFilter(_ on: Bool) async {
+        if on {
+            guard settings.routing.blockOthers || settings.routing.rules.contains(where: { $0.action == .block }) else {
+                post(texts.text(key: "block.local.noRules"))
+                return
+            }
+            await run { try await self.tunnel.connectLocalFilter() }
+        } else {
+            await tunnel.disconnect()
+            await reload()
+        }
+    }
+
     /// Доступ к аккаунту сайта кончился — выход, отзыв или срок (решение 619): пауза снимается, защита выключается вместе с
     /// подключением по требованию — иначе iOS сразу подняла бы туннель снова, а расширение отказало бы с PGC-ACC-001.
-    func accessLost() async {
+    @discardableResult
+    func accessLost() async -> Bool {
+        tunnel.requireManualActivation()
+        historyGeneration &+= 1
+        blockedSites = []
+        blockedHistoryAvailable = false
+        invalidateLatency()
         setPause(nil)
         Notifications.cancelPauseEnd()
-        await tunnel.disconnect()
+        // Следующий вход не включает прежние ограничения или подключение автоматически. Правила сайтов и PIN остаются.
+        let defaultsSaved = (try? await container.settings.resetAccessProtection()) != nil
+        let confirmed = await tunnel.disconnectConfirmed()
         await reload()
+        return defaultsSaved && confirmed
     }
 
     /// «Подключаться при запуске» (доска 04, ConnectOnLaunch десктопа): приложение открыли — защита включается к выбранному
@@ -499,7 +598,7 @@ final class AppModel: ObservableObject {
     /// Подключиться ли при запуске: настройка включена, защита выключена (не «Блокировка» — там кнопка снимает защиту) и
     /// есть выбранный сервер — подключаться есть к чему.
     nonisolated static func connectsOnLaunch(_ settings: AppSettings, home: HomeState, blocked: Bool) -> Bool {
-        settings.connectOnLaunch && home.off && !blocked && home.power == .toggle
+        settings.connectOnLaunch && !settings.manualActivationRequired && home.off && !blocked && home.power == .toggle
     }
 
     /// «Повторить» в «Ошибке» и «Блокировке», «Повторить» и «Подключить» в уведомлении: подключиться снова — туннель

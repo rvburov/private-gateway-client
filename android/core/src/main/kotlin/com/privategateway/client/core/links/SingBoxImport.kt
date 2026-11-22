@@ -8,6 +8,7 @@ import com.privategateway.client.core.links.ConfigTree.put
 import com.privategateway.client.core.links.ConfigTree.server
 import com.privategateway.client.core.links.ConfigTree.text
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.TransportParameterRules
 import java.util.Locale
 
 /**
@@ -59,6 +60,7 @@ internal object SingBoxImport {
             "direct", "block", "dns", "selector", "urltest" -> null
             "vless" -> {
                 put(query, "flow", text(node, "flow"))
+                put(query, "encryption", text(node, "encryption"))
                 server(ProxyProtocol.Vless, listOf(text(node, "uuid")), host, port, query, name)
             }
 
@@ -144,5 +146,6 @@ internal object SingBoxImport {
         put(query, "host", header(obj(transport, "headers"), "Host") ?: text(transport, "host"))
         put(query, "serviceName", text(transport, "service_name"))
         put(query, "mode", text(transport, "mode"))
+        if (transport.containsKey("extra")) query["extra"] = TransportParameterRules.encodeExtra(transport["extra"]) ?: "null"
     }
 }

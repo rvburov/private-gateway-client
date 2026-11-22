@@ -60,6 +60,20 @@ struct LoginView: View {
                     if let notice = account.state?.notice {
                         noticeView(notice).padding(.top, PgSpace.card)
                     }
+                    if account.cleanupPending {
+                        PgBanner(icon: PgIcons.warning, identifier: "login.cleanup.pending") {
+                            Text(texts.text(key: "account.cleanupPending") ?? "")
+                                .pgText(PgType.small).foregroundStyle(Color(PgColor.Status.Warning.badge))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, PgSpace.card)
+                        PgActionButton(
+                            label: texts.text(key: account.restoringNetwork ? "account.restoringNetwork" : "account.cleanupRetry") ?? "",
+                            kind: .secondary, enabled: !account.signingOut && !account.restoringNetwork,
+                            identifier: "login.cleanup.retry", action: account.retryCleanup
+                        )
+                        .padding(.top, PgSpace.m)
+                    }
 
                     Group {
                         if form.codeStep {
@@ -70,7 +84,7 @@ struct LoginView: View {
                     }
                     .padding(.top, 20)
 
-                    if let error = form.error {
+                    if let error = form.error, !account.cleanupPending {
                         Text(LoginLook.error(error, minutes: form.retryMinutes, texts))
                             .pgText(PgType.small)
                             .foregroundStyle(Color(PgColor.Status.Danger.text))
@@ -80,7 +94,9 @@ struct LoginView: View {
                     }
 
                     PgActionButton(
-                        label: form.busy ? texts.accountSigningIn : texts.accountSignIn, enabled: form.canSubmit, identifier: "login.submit", height: 50,
+                        label: account.signingOut ? (texts.text(key: "account.signingOut") ?? "") : account.restoringNetwork
+                            ? (texts.text(key: "account.restoringNetwork") ?? "") : form.busy ? texts.accountSigningIn : texts.accountSignIn,
+                        enabled: form.canSubmit && !account.signingOut && !account.restoringNetwork, identifier: "login.submit", height: 50,
                         action: account.submit
                     )
                     .padding(.top, PgSpace.l)

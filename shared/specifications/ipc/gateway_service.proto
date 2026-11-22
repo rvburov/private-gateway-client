@@ -35,6 +35,10 @@ service GatewayService {
 
   rpc Connect(ConnectRequest) returns (ConnectReply);
   rpc Disconnect(DisconnectRequest) returns (DisconnectReply);
+  // Отдельный RPC: старая служба явно откажет, а не примет локальный фильтр за подключение к серверу.
+  rpc StartSiteFilter(ConnectRequest) returns (ConnectReply);
+  // Личные заблокированные адреса только в памяти службы; не входят в WatchLog и диагностический экспорт.
+  rpc GetBlockedSites(GetBlockedSitesRequest) returns (BlockedSitesReply);
 
   // Не используется: настройки на ходу окно применяет повторным Connect к тому же серверу
   // (служба меняет подключение без щели). Служба принимает вызов и ничего не меняет.
@@ -53,6 +57,8 @@ service GatewayService {
 
   // Пинг серверов меряет служба: в интерфейсе сеть запрещена.
   rpc MeasureLatency(MeasureLatencyRequest) returns (MeasureLatencyReply);
+  // Добавочный вызов: каждый готовый профиль сразу, без ожидания остальных. Старый вызов сохранен.
+  rpc MeasureLatencyProgress(MeasureLatencyRequest) returns (stream LatencyResult);
 
   // Обновление программы ищет служба по ленте сайта Private Gateway Web канала окна: ленту окно берет своим входом в
   // аккаунт (GET /api/app/updates, у службы токена нет) и передает как есть (site_feed). Сайт — не источник доверия:
@@ -218,6 +224,20 @@ message Status {
   // Служба подтвердила отсутствие доступной внешней сети. false также бывает у старой службы
   // или при неизвестном состоянии адаптеров: само по себе это не подтверждение доступа в интернет.
   bool network_unavailable = 18;
+  // Локальный фильтр сайтов: TUN без удаленного VPN, реальный IP остается видимым.
+  bool local_site_filter = 19;
+}
+
+message GetBlockedSitesRequest {}
+
+message BlockedSite {
+  string host = 1;
+  uint32 count = 2;
+  google.protobuf.Timestamp last_seen = 3;
+}
+
+message BlockedSitesReply {
+  repeated BlockedSite sites = 1;
 }
 
 message VirtualMachineProtection {
@@ -456,6 +476,8 @@ message Transport {
   string service_name = 4;
   // Режим XHTTP: auto, packet-up, stream-up, stream-one; пусто — выбирает ядро.
   string mode = 5;
+  // Ограниченный объект дополнительных параметров XHTTP; служба проверяет поля и размер.
+  string extra_json = 6;
 }
 
 enum SecurityType {
@@ -485,6 +507,8 @@ message VlessSettings {
   string uuid = 1;
   // Например xtls-rprx-vision.
   string flow = 2;
+  // Пусто/none либо поддерживаемый Xray ML-KEM Encryption.
+  string encryption = 3;
 }
 
 message VmessSettings {
@@ -685,6 +709,10 @@ message LatencyResult {
   LatencyFailure failure = 4;
   // Только категория отказа, без адреса и текста исключения.
   string diagnostic = 5;
+  // Время окончания именно этой пробы, Unix milliseconds; 0 у старой службы.
+  int64 checked_at_unix_ms = 6;
+  // direct или vpn: путь пробы, не обещание доступности по другому маршруту.
+  string route = 7;
 }
 
 message MeasureLatencyReply {

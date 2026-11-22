@@ -477,8 +477,13 @@
         <!-- Блок сайтов: PIN-код снятия блока (решение 742) -->
         <div class="pg-stack pg-gap-8">
           <span class="t-overline" style="margin: 0 6px">Блок сайтов</span>
-          <!-- Решение 743: без VPN правила ядра не действуют — так и сказано -->
-          <span class="t-caption t-wrap" style="margin: 0 6px">Блок действует, пока VPN подключен</span>
+          <!-- Решение 755: без удаленного VPN правила работают только при явном запуске локального фильтра -->
+          <span class="t-caption t-wrap" style="margin: 0 6px">Правила действуют при подключенном VPN или явно включенном локальном фильтре</span>
+          <div class="card pg-stack pg-gap-8" style="padding: 12px 16px">
+            <span class="t-strong">Блок сайтов без VPN-сервера</span>
+            <span class="t-caption t-wrap">Правила действуют через локальный адаптер без удаленного сервера. IP остается видимым, интернет идет напрямую. Включается только этой кнопкой; система может показывать значок туннеля.</span>
+            <button class="btn-secondary" data-toast="Локальный фильтр: IP виден, удаленный VPN не подключен">Включить фильтр</button>
+          </div>
           <div class="card pg-row" style="padding: 12px 16px; gap: 10px">
             <span class="pg-stack pg-grow" style="gap: 3px">
               <span class="t-strong">PIN-код</span>
@@ -813,6 +818,22 @@
         <button class="btn-primary" data-close data-ui-text="dialog.blockOthers.keep">Отмена</button>
         <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.blockOthers.block">Блокировать остальное</button>
       </div>
+    </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+  <section class="pg-screen" data-state="connected" data-caption="Не пустили сегодня: реальные события и PIN">
+    <div class="pg-page">
+      <div class="pg-header"><span class="t-h1 pg-grow">Маршрутизация</span></div>
+      <div class="pg-stack pg-gap-12" style="margin: 0 var(--side)">
+        <span class="t-overline">Не пустили сегодня</span>
+        <span class="t-caption t-wrap">Только наблюдавшиеся блокировки за время работы приложения. Имена сайтов остаются на устройстве и не входят в отчет проверки.</span>
+        <div class="card pg-stack pg-gap-12" style="padding: 12px 16px">
+          <div class="pg-row pg-gap-8"><span class="pg-stack pg-grow"><span class="t-strong">example.org</span><span class="t-caption">3 обращения · последнее 00:40</span></span><button class="btn-secondary" data-toast="Для снятия блока нужен PIN-код">Разрешить</button></div>
+          <div class="pg-row pg-gap-8"><span class="pg-stack pg-grow"><span class="t-mono">198.51.100.17</span><span class="t-caption t-wrap">Имя сайта неизвестно; разрешение по общему IP недоступно</span></span></div>
+        </div>
+        <span class="t-caption t-wrap">Новое разрешающее правило тоже требует PIN, если оно ослабляет действующий блок. Отсутствие событий не доказывает отсутствие блокировок.</span>
+      </div>
+      <div class="pg-page-end"></div>
     </div>
     <div class="pg-island" data-active="settings"></div>
   </section>

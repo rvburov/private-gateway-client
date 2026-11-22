@@ -101,6 +101,30 @@ public sealed class ServerCatalogStorageTests : IDisposable
     }
 
     [Fact]
+    public void Xhttp_headers_are_kept_in_the_secret_envelope_and_survive_reopening()
+    {
+        const string extra = """{"headers":{"Authorization":"Bearer xhttp-secret-marker"},"noGRPCHeader":true}""";
+        var link = $"vless://{Uuid}@192.0.2.1:443?security=tls&type=xhttp&extra=" + Uri.EscapeDataString(extra) + "#Extra";
+        var catalog = Catalog();
+        catalog.Add(Parse(link), null);
+        var id = catalog.Servers.ShouldHaveSingleItem().Id;
+
+        var restored = Catalog().Definition(id).ShouldNotBeNull();
+        restored.Transport.ExtraJson.ShouldNotBeNull().ShouldContain("xhttp-secret-marker");
+        restored.ToString().ShouldNotContain("xhttp-secret-marker");
+        restored.Credentials.TransportExtraJson.ShouldBeNull("служебный конверт не меняет описание доступа в памяти");
+        Catalog().Snapshot()[0].Servers[0].Definition.Transport.ExtraJson.ShouldBe(restored.Transport.ExtraJson);
+        _secrets.Values.Values.ShouldContain(value => value.Contains("xhttp-secret-marker", StringComparison.Ordinal));
+        using var connection = new SqliteDatabase(_paths).Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT definition FROM servers WHERE id = $id";
+        command.Parameters.AddWithValue("$id", id);
+        var metadata = (string)command.ExecuteScalar()!;
+        metadata.ShouldNotContain("xhttp-secret-marker");
+        metadata.ShouldNotContain("Authorization");
+    }
+
+    [Fact]
     public void Full_definition_with_secrets_comes_back_for_connecting()
     {
         var catalog = Catalog();
@@ -307,7 +331,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
     public void Demo_servers_show_until_the_first_import()
     {
         var user = Catalog();
-        var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
+        using var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
         var changes = 0;
         catalog.Changed += (_, _) => changes++;
 
@@ -326,7 +350,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
     [Fact]
     public void With_the_real_service_there_are_no_demo_servers()
     {
-        var catalog = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new LatencyGateway(new Dictionary<string, LatencyResult>()));
+        using var catalog = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new LatencyGateway(new Dictionary<string, LatencyResult>()));
 
         catalog.IsDemo.ShouldBeFalse("к демо-серверам служба не подключится");
         catalog.Servers.ShouldBeEmpty();
@@ -344,7 +368,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
             [ids["A"]] = new(42, null),
             [ids["B"]] = new(null, LatencyFailure.NoResponse, "Timeout"),
         });
-        var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway);
+        using var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway);
 
         (await catalog.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
 
@@ -360,7 +384,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
         reopened["C"].LatencyCheckedAt.ShouldBeNull();
         reopened.Values.ShouldAllBe(s => !s.IsMeasuringLatency);
 
-        var silent = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
+        using var silent = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
         (await silent.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeFalse("службы нет — пинг не мерился");
         silent.Servers.Single(s => s.Name == "A").LatencyMs.ShouldBe(42, "прежнее значение не стирается");
     }

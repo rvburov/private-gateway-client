@@ -79,7 +79,8 @@ public static class NotificationPolicy
             ConnectionState.Connected when !moved && after.OtherClients is { Items.Count: > 0 } && before.OtherClients is null =>
                 new(NoticeKind.OtherClient, "notify.other.text", [NoticeAction.Open]),
             ConnectionState.Connected when moved =>
-                new(NoticeKind.Connected, before.State == ConnectionState.Reconnecting ? "notify.on.back" : after.IsProxy ? "notify.on.proxy" : "notify.on.text", []),
+                new(NoticeKind.Connected, after.LocalSiteFilter ? "notify.on.filter"
+                    : before.State == ConnectionState.Reconnecting ? "notify.on.back" : after.IsProxy ? "notify.on.proxy" : "notify.on.text", []),
             ConnectionState.Off when moved =>
                 new(NoticeKind.Disconnected, "notify.off.text", [NoticeAction.Connect]),
             _ => null,

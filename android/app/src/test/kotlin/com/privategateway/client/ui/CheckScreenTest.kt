@@ -80,6 +80,20 @@ class CheckScreenTest {
     }
 
     @Test
+    fun `local filter does not claim protected or hidden ip`() {
+        val status = connected.copy(serverId = null, localOnly = true)
+        val ui = mainUi(status, WebIp(exit = "198.51.100.7", direct = "198.51.100.7", session = 1))
+        assertEquals(ProtectionView.Off, ui.view)
+        assertEquals(false, ui.leak)
+        val rows = CheckRows.of(ui, "26.10.21", PhoneHints(), TunnelSettings(), false)
+        assertEquals(text(R.string.block_local_title), rows.first().chip.resolve(context))
+        val exit = rows.single { it.id == "exit_ip" }
+        assertEquals(text(R.string.diag_exit_ip_off_chip), exit.chip.resolve(context))
+        assertEquals("198.51.100.7", ui.webAddress)
+        assertEquals(null, ui.serverExit)
+    }
+
+    @Test
     fun `protected results follow the board in its order`() {
         val ui = mainUi(connected, WebIp(exit = "203.0.113.24", direct = "198.51.100.7", session = 1L))
         compose.setContent { PgTheme { CheckScreen(ui, "26.10.21", {}, CheckUi(hints = PhoneHints())) } }

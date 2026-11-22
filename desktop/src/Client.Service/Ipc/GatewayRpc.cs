@@ -38,7 +38,31 @@ public sealed class GatewayRpc(
     }
 
     public override Task<V1.Status> GetStatus(V1.GetStatusRequest request, ServerCallContext context) =>
-        Task.FromResult(gateway.Status.ToContract());
+        Task.FromResult(StatusForClient(gateway.Status, SupportsLocalFilter(context)));
+
+    /// <summary>Старое окно видит отсутствие VPN-защиты, а не ложное зеленое состояние фильтра.</summary>
+    public static V1.Status StatusForClient(ConnectionStatus status, bool supportsLocalFilter)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return status.LocalSiteFilter && !supportsLocalFilter && status.State != ConnectionState.Off
+            ? (status with
+            {
+                State = ConnectionState.Error,
+                Mode = ConnectionMode.Proxy,
+                LocalSiteFilter = false,
+                ErrorCode = ErrorCodes.LocalFilterClientUnsupported,
+                ServerId = null,
+                StrictBlock = false,
+                CaptivePauseUntil = null,
+                LocalProxyPort = null,
+                UserProxyManagedByWindow = false,
+                Protection = ProtectionChecks.For(ConnectionState.Off, ConnectionMode.Proxy),
+            }).ToContract()
+            : status.ToContract();
+    }
+
+    private static bool SupportsLocalFilter(ServerCallContext context) => context?.RequestHeaders.Any(header =>
+        header.Key == GatewayCapabilities.Header && header.Value == GatewayCapabilities.LocalSiteFilter) == true;
 
     /// <summary>Сначала текущее состояние, потом каждое новое — пока интерфейс слушает.</summary>
     public override async Task WatchStatus(V1.WatchStatusRequest request, IServerStreamWriter<V1.Status> responseStream, ServerCallContext context)
@@ -49,10 +73,10 @@ public sealed class GatewayRpc(
         var (current, updates) = gateway.Watch(stop.Token);
         try
         {
-            await responseStream.WriteAsync(current.ToContract(), stop.Token).ConfigureAwait(false);
+            await responseStream.WriteAsync(StatusForClient(current, SupportsLocalFilter(context)), stop.Token).ConfigureAwait(false);
             await foreach (var status in updates.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
-                await responseStream.WriteAsync(status.ToContract(), stop.Token).ConfigureAwait(false);
+                await responseStream.WriteAsync(StatusForClient(status, SupportsLocalFilter(context)), stop.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -69,6 +93,21 @@ public sealed class GatewayRpc(
     public override Task<V1.ConnectReply> Connect(V1.ConnectRequest request, ServerCallContext context) =>
         gateway.ConnectAsync(request, context?.CancellationToken ?? default);
 
+    public override Task<V1.ConnectReply> StartSiteFilter(V1.ConnectRequest request, ServerCallContext context) =>
+        gateway.StartSiteFilterAsync(request, context?.CancellationToken ?? default);
+
+    public override Task<V1.BlockedSitesReply> GetBlockedSites(V1.GetBlockedSitesRequest request, ServerCallContext context)
+    {
+        var reply = new V1.BlockedSitesReply();
+        reply.Sites.AddRange(gateway.GetBlockedSites().Select(site => new V1.BlockedSite
+        {
+            Host = site.Host,
+            Count = (uint)site.Count,
+            LastSeen = Timestamp.FromDateTimeOffset(site.LastSeen),
+        }));
+        return Task.FromResult(reply);
+    }
+
     public override async Task<V1.DisconnectReply> Disconnect(V1.DisconnectRequest request, ServerCallContext context)
     {
         await gateway.DisconnectAsync(request?.KeepBlock == true, context?.CancellationToken ?? default).ConfigureAwait(false);
@@ -77,6 +116,18 @@ public sealed class GatewayRpc(
 
     public override Task<V1.MeasureLatencyReply> MeasureLatency(V1.MeasureLatencyRequest request, ServerCallContext context) =>
         gateway.MeasureLatencyAsync(request, context?.CancellationToken ?? default);
+
+    public override async Task MeasureLatencyProgress(V1.MeasureLatencyRequest request, IServerStreamWriter<V1.LatencyResult> responseStream,
+        ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(responseStream);
+        ArgumentNullException.ThrowIfNull(context);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
+        await foreach (var result in gateway.MeasureLatencyProgressAsync(request, stop.Token).ConfigureAwait(false))
+        {
+            await responseStream.WriteAsync(result, stop.Token).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Лента сайта — данные окна, которые служба проверяет сама (подписи манифестов, адрес файлов). Канал не задан —

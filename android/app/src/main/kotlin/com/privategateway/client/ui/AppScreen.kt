@@ -22,6 +22,10 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.R
@@ -53,6 +57,8 @@ import com.privategateway.client.ui.servers.importDone
 import com.privategateway.client.ui.settings.BackupPage
 import com.privategateway.client.ui.settings.BackupViewModel
 import com.privategateway.client.ui.settings.BlockPinControl
+import com.privategateway.client.ui.settings.BlockPinPromptSheet
+import com.privategateway.client.ui.settings.PinAsk
 import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.settings.SettingsViewModel
@@ -95,6 +101,7 @@ class AppActions(
     val pause: () -> Unit = {},
     /** События о защите при открытом окне — «Заголовок · текст» (доска 19). */
     val events: Flow<String> = emptyFlow(),
+    val filter: () -> Unit = {},
 )
 
 @Composable
@@ -127,6 +134,8 @@ fun AppScreen(
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val globalPin by settings.blockPin.collectAsStateWithLifecycle()
+    var stoppingFilter by remember { mutableStateOf(false) }
     // Сообщения окна — своей подсказкой сверху (.toast макета), а не системным Toast: 1,8 с после действия, 6 с о событии.
     val toast = remember { PgToastState() }
     LaunchedEffect(viewModel, subscriptions, checks) {
@@ -286,7 +295,7 @@ fun AppScreen(
 
                 val power: () -> Unit = {
                     when (ui.power) {
-                        PowerAction.Toggle -> actions.power()
+                        PowerAction.Toggle -> if (ui.status.localOnly && globalPin != null) stoppingFilter = true else actions.power()
                         PowerAction.Add -> adding = true
                         PowerAction.Choose -> tab = Tab.Servers
                     }
@@ -337,6 +346,8 @@ fun AppScreen(
                     }
 
                     Tab.Servers -> {
+                        val latencyChecks by viewModel.latencyChecks.collectAsStateWithLifecycle()
+                        val latencyProgress by viewModel.latencyProgress.collectAsStateWithLifecycle()
                         ServersScreen(
                             ui,
                             query,
@@ -351,6 +362,8 @@ fun AppScreen(
                                 sort = servers::sort,
                                 reset = servers::reset,
                             ),
+                            latencyChecks = latencyChecks,
+                            latencyProgress = latencyProgress,
                         )
                         // Карточка — нижний лист поверх списка (доска 11); «Сервер удален» говорит модель после удаления.
                         if (open != null) {
@@ -370,6 +383,7 @@ fun AppScreen(
                                     share = viewModel::shareLink,
                                     copy = actions.copySecret,
                                     exit = viewModel::exit,
+                                    latencyCheck = { latencyChecks[it] },
                                 ),
                             )
                         }
@@ -401,7 +415,7 @@ fun AppScreen(
                                 delayShown = checks::delayShown,
                             ),
                             inspect,
-                            InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run),
+                            InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run, inspector::labTarget, inspector::runLab, inspector::captureLab),
                             tunnel,
                         )
                     }
@@ -412,6 +426,16 @@ fun AppScreen(
                         val system by settings.systemVpn.collectAsStateWithLifecycle()
                         val updates by settings.updates.collectAsStateWithLifecycle()
                         val blockPin by settings.blockPin.collectAsStateWithLifecycle()
+                        val blockedHistory by settings.blockedHistory.collectAsStateWithLifecycle()
+                        val lifecycle = LocalLifecycleOwner.current.lifecycle
+                        LaunchedEffect(lifecycle) {
+                            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                                while (true) {
+                                    settings.refreshBlockedHistory()
+                                    delay(30_000)
+                                }
+                            }
+                        }
                         // PIN-код блока сайтов (решение 742): «Маршрутизация» и восстановление копии.
                         val pinControl = BlockPinControl(
                             blockPin,
@@ -448,6 +472,10 @@ fun AppScreen(
                             account = if (account != null) signedInState.info else null,
                             onSignOut = { account?.logout() },
                             pinControl = pinControl,
+                            blockedHistory = blockedHistory,
+                            localFilter = ui.status.localOnly,
+                            onFilter = actions.filter,
+                            onStopFilter = actions.disconnect,
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(
@@ -482,7 +510,16 @@ fun AppScreen(
                     onTab = select,
                     onPower = power,
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    look = StateLook.of(ui.view).let { if (ui.offline != null) StateLook.offline(it) else it },
+                    look = StateLook.of(ui.view).let { if (ui.status.localOnly) StateLook.localFilter(it) else if (ui.offline != null) StateLook.offline(it) else it },
+                )
+            }
+
+            if (stoppingFilter) {
+                val ask = PinAsk(context.getString(R.string.block_local_stop), context.getString(R.string.block_local_stop_guard), actions.disconnect)
+                BlockPinPromptSheet(ask, BlockPinControl(globalPin, settings::setBlockPin, settings::checkPin),
+                    onAllowed = { stoppingFilter = false; actions.disconnect() },
+                    onForgot = { stoppingFilter = false; tab = Tab.Settings; settings.request(SettingsPage.Routing) },
+                    onClose = { stoppingFilter = false },
                 )
             }
 

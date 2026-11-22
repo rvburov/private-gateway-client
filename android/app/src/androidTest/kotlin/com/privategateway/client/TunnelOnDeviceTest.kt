@@ -2,6 +2,7 @@ package com.privategateway.client
 
 import android.Manifest
 import android.app.Notification
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.net.ConnectivityManager
 import android.net.Network
@@ -19,6 +20,15 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.xray.XrayConfig
+import com.privategateway.client.core.xray.PingBatch
+import com.privategateway.client.core.xray.PingTarget
+import com.privategateway.client.vpn.SystemNetworkDns
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import java.net.ServerSocket
+import java.net.InetAddress
 import java.net.URI
 import com.privategateway.client.di.AppEntryPoint
 import com.privategateway.client.vpn.GatewayVpnService
@@ -39,6 +49,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 /**
  * Настоящий туннель на эмуляторе (пункт 9.4): VpnService, ядро libXray и сервер Xray на машине CI
@@ -65,6 +76,108 @@ class TunnelOnDeviceTest {
         }
         if (failureObserved) diagnostics("after-vpn-removed")
         app.settings().setTunnel(TunnelSettings())
+    }
+
+    @Test
+    fun cancelling_the_probe_process_keeps_the_main_vpn_and_closes_probe_sockets() = networkTest {
+        prepare()
+        connect()
+        val before = app.monitor().status.value
+        val source = assertNotNull(LinkParser.parse(LINK).server)
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { sink ->
+            sink.soTimeout = 10_000
+            val stalled = source.copy(host = "127.0.0.1", port = sink.localPort)
+            val request = PingBatch.plan(listOf(PingTarget("stalled", stalled)), app.settings().tunnel.first().core(), timeoutSeconds = 30).chunks.single().request
+            coroutineScope {
+                val accepted = async(Dispatchers.IO) { sink.accept() }
+                val measurement = async(Dispatchers.IO) { app.latencyWorker().ping(request, "1.1.1.1:53") }
+                accepted.await().use { socket ->
+                    app.latencyWorker().cancel()
+                    assertFailsWith<kotlinx.coroutines.CancellationException> { withTimeout(5_000) { measurement.await() } }
+                    socket.soTimeout = 5_000
+                    val buffer = ByteArray(4096)
+                    while (socket.getInputStream().read(buffer) >= 0) { /* После остановки отдельного процесса приходит EOF. */ }
+                }
+            }
+        }
+        assertEquals(before.since, app.monitor().status.value.since)
+        assertEquals(TunnelState.Connected, app.monitor().status.value.state)
+        assertEquals("pg-tunnel-ok", fetch().trim())
+    }
+
+    @Test
+    fun local_filter_blocks_real_requests_records_history_and_is_not_a_protected_subscription_path() = networkTest {
+        prepare()
+        app.settings().setTunnel(TunnelSettings(fakeDns = true, routing = com.privategateway.client.core.settings.RoutingSettings(
+            rules = listOf(
+                com.privategateway.client.core.settings.SiteRule(HOST, com.privategateway.client.core.settings.RuleAction.Block),
+                com.privategateway.client.core.settings.SiteRule("blocked.example.com", com.privategateway.client.core.settings.RuleAction.Block),
+            ),
+        )))
+        app.blockedSites().clear()
+        GatewayVpnService.filter(context)
+        val status = withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Connected || it.state == TunnelState.Error } }
+        assertTrue(status.localOnly, "локальный фильтр не запустился: $status")
+        assertNull(status.serverId, "фильтр не должен выдавать выбранный удаленный сервер за подключенный")
+        assertFailsWith<IOException> { app.subscriptionTransport().download(URI("http://$HOST:18080/"), onlyViaVpn = true) }
+        runCatching {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(HOST, 18080), 3_000)
+                socket.soTimeout = 3_000
+                socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: $HOST\r\nConnection: close\r\n\r\n".toByteArray())
+                assertFalse(socket.getInputStream().bufferedReader().readText().contains("pg-tunnel-ok"))
+            }
+        }.onFailure { if (it !is IOException) throw it }
+        withTimeout(5_000) { app.blockedSites().entries.first { entries -> entries.any { it.host == HOST } } }
+        withTimeout(10_000) {
+            while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) != true) delay(20)
+        }
+        // Имя не обязано существовать в публичном DNS: его выдал FakeDNS. История должна содержать восстановленный домен,
+        // а не синтетический адрес 198.18/15 и не угадывание по реальному IP сервиса.
+        withContext(Dispatchers.IO) {
+            runCatching {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress("blocked.example.com", 443), 3_000)
+                    socket.soTimeout = 3_000
+                    socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n".toByteArray())
+                    socket.getInputStream().read()
+                }
+            }.onFailure { if (it !is IOException) throw it }
+        }
+        withTimeout(5_000) { app.blockedSites().entries.first { entries -> entries.any { it.host == "blocked.example.com" && it.canAllow } } }
+        assertEquals("", app.subscriptionTransport().download(URI("https://cp.cloudflare.com/generate_204"), onlyViaVpn = false).text)
+        disconnectAndWait(offOnly = true)
+        assertFalse(app.monitor().status.value.localOnly)
+    }
+
+    @Test
+    fun isolated_latency_core_protects_its_sockets_and_keeps_strict_vpn_running() = networkTest {
+        prepare()
+        app.settings().setTunnel(TunnelSettings(connection = com.privategateway.client.core.settings.ConnectionSettings(strictRoutes = true)))
+        connect()
+        val before = app.monitor().status.value
+        assertEquals("pg-tunnel-ok", fetch().trim())
+        val server = assertNotNull(LinkParser.parse(LINK).server)
+        val plan = PingBatch.plan(listOf(PingTarget("isolated", server)), app.settings().tunnel.first().core(), url = "http://$PROBE:$PROBE_PORT/", timeoutSeconds = 10)
+        var workerPid: Int? = null
+        repeat(2) { index ->
+            val response = withContext(Dispatchers.IO) {
+                app.latencyWorker().ping(plan.chunks.single().request, com.privategateway.client.core.vpn.CoreDns.endpoint(SystemNetworkDns(context).current()))
+            }
+            val result = plan.chunks.single().results(response).getValue("isolated")
+            assertNotNull(result.ms, "порция $index: отдельное ядро не прошло через сервер; основной VPN нельзя останавливать ради замера")
+            val pid = assertNotNull(context.getSystemService(ActivityManager::class.java).runningAppProcesses
+                ?.firstOrNull { it.processName == "${context.packageName}:latency" }?.pid)
+            if (index == 0) workerPid = pid else assertEquals(workerPid, pid, "проверка пересоздания службы требует прежний Go-процесс")
+            // Следующая порция создает новый экземпляр bound-службы в том же Go-процессе. Старый native-контроллер не
+            // должен оставаться с пустым callback и отклонять ее сокеты.
+            withTimeout(10_000) {
+                while (shellOutput("dumpsys activity services ${context.packageName}").contains("LatencyProbeService")) delay(50)
+            }
+        }
+        assertEquals(before.since, app.monitor().status.value.since, "замер перезапустил основной VPN")
+        assertEquals(TunnelState.Connected, app.monitor().status.value.state)
+        assertEquals("pg-tunnel-ok", fetch().trim())
     }
 
     @Test

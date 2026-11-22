@@ -73,6 +73,9 @@ data class InspectorActions(
     val target: (String) -> Unit = {},
     val port: (String) -> Unit = {},
     val run: () -> Unit = {},
+    val labTarget: (String) -> Unit = {},
+    val runLab: () -> Unit = {},
+    val captureLab: () -> Unit = {},
 )
 
 /** Виды замера «Проверки узла» на телефоне: пинга и пути нет — ICMP приложениям Android недоступен (решение 448). */

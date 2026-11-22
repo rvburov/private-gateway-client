@@ -73,16 +73,19 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updates: AppUpdates
 
     private var requestedAutomaticConnection = false
+    private var requestedLocalFilter = false
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            if (requestedAutomaticConnection) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
+            if (requestedLocalFilter) GatewayVpnService.filter(this)
+            else if (requestedAutomaticConnection) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
         } else if (!viewModel.consentRefused()) {
             // VPN занят другим приложением — страница «Работает другой VPN» (DECISIONS.md, п. 4); иначе — просто отказ:
             // подсказкой окна сверху, как у остальных сообщений (не системным Toast).
             appWindow.toast(getString(R.string.android_permission_denied))
         }
         requestedAutomaticConnection = false
+        requestedLocalFilter = false
     }
 
     // Разрешение на уведомления — после первого удачного подключения, с пояснением (DECISIONS.md, п. 7): ответ ничего не
@@ -104,6 +107,7 @@ class MainActivity : ComponentActivity() {
             window.decorView.isForceDarkAllowed = false
         }
         requestedAutomaticConnection = savedInstanceState?.getBoolean("vpn.request.automatic") ?: false
+        requestedLocalFilter = savedInstanceState?.getBoolean("vpn.request.filter") ?: false
         val actions = AppActions(
             power = ::power,
             disconnect = { GatewayVpnService.disconnect(this) },
@@ -114,6 +118,7 @@ class MainActivity : ComponentActivity() {
             language = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ::setLanguage else null,
             pause = { GatewayVpnService.pause(this) },
             events = appWindow.toasts,
+            filter = { askVpn(automatic = false, localFilter = true) },
         )
         setContent {
             PgTheme {
@@ -209,6 +214,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("vpn.request.automatic", requestedAutomaticConnection)
+        outState.putBoolean("vpn.request.filter", requestedLocalFilter)
         super.onSaveInstanceState(outState)
     }
 
@@ -227,12 +233,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Разрешение на VPN спрашивается один раз; потом prepare возвращает null — подключаемся сразу. */
-    private fun askVpn(automatic: Boolean) {
+    private fun askVpn(automatic: Boolean, localFilter: Boolean = false) {
         requestedAutomaticConnection = automatic
+        requestedLocalFilter = localFilter
         val consent = VpnService.prepare(this)
         if (consent == null) {
-            if (automatic) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
+            if (localFilter) GatewayVpnService.filter(this)
+            else if (automatic) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
             requestedAutomaticConnection = false
+            requestedLocalFilter = false
         } else {
             vpnPermission.launch(consent)
         }

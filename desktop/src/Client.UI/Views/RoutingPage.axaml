@@ -227,6 +227,14 @@
           <!-- Решение 743: без VPN правила ядра не действуют — так и сказано -->
           <TextBlock x:Name="BlockScope" Classes="caption" Text="{l:L block.scope}" TextWrapping="Wrap" Margin="6,0" />
           <Border Classes="card" Padding="16,12">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="strong" Text="{l:L block.local.title}" TextWrapping="Wrap" />
+              <TextBlock Classes="caption" Text="{Binding SiteFilterNote}" TextWrapping="Wrap" />
+              <Button Classes="secondary" Command="{Binding ToggleSiteFilterCommand}" Content="{Binding SiteFilterButton}"
+                      HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+          <Border Classes="card" Padding="16,12">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="3" Margin="0,0,10,0" VerticalAlignment="Center">
                 <TextBlock Classes="strong" Text="{l:L block.pin.title}" />
@@ -236,6 +244,31 @@
                       VerticalAlignment="Center" Command="{Binding ChangePinCommand}" Content="{Binding PinButtonText}" />
             </Grid>
           </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="overline" Text="{l:L block.history.title, Upper=True}" Margin="6,0" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Classes="link" Command="{Binding RefreshBlockedCommand}" Content="{l:L network.refresh}" />
+          </Grid>
+          <TextBlock Classes="caption" Text="{Binding BlockedHistoryNote}" TextWrapping="Wrap" Margin="6,0" />
+          <Border Classes="card" Padding="16,12" IsVisible="{Binding HasBlockedToday}">
+            <ItemsControl ItemsSource="{Binding BlockedToday}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:BlockedSiteViewModel">
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,6">
+                    <StackPanel Spacing="3" Margin="0,0,10,0">
+                      <TextBlock Classes="strong" Text="{Binding Host}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Summary}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="secondary" Command="{Binding AllowCommand}" Content="{l:L block.history.allow}"
+                            IsVisible="{Binding CanAllow}" VerticalAlignment="Center" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <TextBlock Classes="small" Text="{l:L block.history.empty}" IsVisible="{Binding IsBlockedHistoryEmpty}" TextWrapping="Wrap" Margin="6,0" />
         </StackPanel>
 
         <!-- Пропускается всегда — только при «Остальные сайты: Блокировать» (решение 740) -->

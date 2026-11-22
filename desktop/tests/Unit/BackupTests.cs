@@ -17,6 +17,8 @@ public sealed class BackupTests : IDisposable
 {
     private const string Password = "correct horse battery";
     private const string Uuid = "11111111-2222-3333-4444-555555555555";
+    private static readonly string[] AccessMarkers = ["first-access-marker", "second-access-marker"];
+    private static readonly string[] Uuids = [Uuid, "22222222-3333-4444-5555-666666666666"];
     private static readonly Uri Subscription = new("https://example.com/sub/token-marker-123");
 
     private readonly List<AppPaths> _dirs = [];
@@ -68,6 +70,71 @@ public sealed class BackupTests : IDisposable
         reopened.Servers.Select(s => (s.Name, s.IsFavorite)).ShouldBe([("Mine", false), ("Мой NL", true), ("DE", false)], "и серверы — в базе");
         reopened.Selected!.Name.ShouldBe("Мой NL");
         reopened.Subscriptions.ShouldHaveSingleItem().UpdatedAt.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Xhttp_access_headers_follow_the_backup_keys_choice(bool includeKeys)
+    {
+        var home = Machine();
+        const string extra = """{"headers":{"Authorization":"Bearer xhttp-backup-marker"}}""";
+        home.Catalog.Add(Parse($"vless://{Uuid}@192.0.2.1:443?security=tls&type=xhttp&extra=" + Uri.EscapeDataString(extra)), null);
+        var file = home.Backup.Create(new BackupParts(Servers: true, Settings: false, Keys: includeKeys), Password);
+        file.ShouldNotContain("xhttp-backup-marker");
+        var content = BackupService.Read(file, Password);
+        content.HasKeys.ShouldBe(includeKeys);
+        if (includeKeys)
+        {
+            var away = Machine();
+            away.Backup.Restore(BackupService.Read(file, Password));
+            away.Catalog.Definition(away.Catalog.Servers[0].Id)!.Transport.ExtraJson.ShouldNotBeNull().ShouldContain("xhttp-backup-marker");
+        }
+        else
+        {
+            var away = Machine();
+            away.Backup.Restore(content).Servers.ShouldBe(new RestoreOutcome(0, 1));
+            away.Secrets.Values.Values.ShouldNotContain(value => value.Contains("xhttp-backup-marker", StringComparison.Ordinal));
+            home.Backup.Restore(BackupService.Read(file, Password));
+            home.Catalog.Definition(home.Catalog.Servers[0].Id)!.Transport.ExtraJson.ShouldNotBeNull().ShouldContain("xhttp-backup-marker");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Copy_without_keys_never_guesses_between_different_credentials_on_the_same_endpoint(bool accessHeaders)
+    {
+        var home = Machine();
+        var links = accessHeaders
+            ? AccessMarkers.Select(marker =>
+                $"vless://{Uuid}@192.0.2.1:443?security=tls&type=xhttp&extra="
+                + Uri.EscapeDataString("{\"headers\":{\"Authorization\":\"Bearer " + marker + "\"}}") + "#Same-name").ToArray()
+            : Uuids.Select(uuid =>
+                $"vless://{uuid}@192.0.2.1:443?security=tls&type=xhttp#Same-name").ToArray();
+        home.Catalog.Add(Parse(links), null).Added.ShouldBe(2);
+        var file = home.Backup.Create(new BackupParts(Servers: true, Settings: false, Keys: false), Password);
+        file.ShouldNotContain("first-access-marker");
+        file.ShouldNotContain("second-access-marker");
+
+        var result = home.Backup.Restore(BackupService.Read(file, Password));
+
+        result.Servers.ShouldBe(new RestoreOutcome(0, 2), "в копии нет идентификатора исходной записи: выбор учетных данных неоднозначен");
+    }
+
+    [Fact]
+    public void Copy_without_keys_matches_all_nonsecret_parameters_before_reusing_local_credentials()
+    {
+        var home = Machine();
+        home.Catalog.Add(Parse($"vless://{Uuid}@192.0.2.1:443?security=tls&sni=example.com&type=xhttp&mode=packet-up#First",
+            "vless://22222222-3333-4444-5555-666666666666@192.0.2.1:443?security=tls&sni=example.com&type=xhttp&mode=stream-up#Second"), null);
+        var file = home.Backup.Create(new BackupParts(Servers: true, Settings: false, Keys: false), Password);
+
+        home.Backup.Restore(BackupService.Read(file, Password)).Servers.ShouldBe(new RestoreOutcome(2, 0));
+
+        var restored = home.Catalog.Servers.Select(profile => home.Catalog.Definition(profile.Id)!).ToDictionary(server => server.Transport.Mode!);
+        restored["packet-up"].Credentials.Uuid.ShouldBe(Uuid);
+        restored["stream-up"].Credentials.Uuid.ShouldBe("22222222-3333-4444-5555-666666666666");
     }
 
     [Fact]

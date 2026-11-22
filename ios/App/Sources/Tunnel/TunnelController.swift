@@ -8,13 +8,19 @@ import PrivateGatewayCore
 @MainActor
 final class TunnelController: TunnelControl {
     private let settings: SettingsStore
+    private let account: AccountStore
+    private let intents = TunnelIntentCoordinator()
     private var manager: NETunnelProviderManager?
+    /// Режим последнего явного действия: сохранение системного профиля может еще показывать прежний режим.
+    private var localFilterIntent: Bool?
+    private var restorationPending = false
 
     /// Состояние VPN в системе сменилось.
     var onChange: () -> Void = {}
 
-    init(settings: SettingsStore) {
+    init(settings: SettingsStore, account: AccountStore) {
         self.settings = settings
+        self.account = account
         _ = NotificationCenter.default.addObserver(forName: .NEVPNStatusDidChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.onChange()
@@ -40,7 +46,10 @@ final class TunnelController: TunnelControl {
 
     /// Профиль, который приложение уже сохраняло; нет — nil, разрешение спросит первое подключение.
     func load() async {
-        manager = try? await Self.managers().first
+        let ticket = intents.current
+        let loaded = try? await Self.managers().first
+        guard intents.isCurrent(ticket), manager == nil else { return }
+        manager = loaded
         onChange()
     }
 
@@ -50,52 +59,175 @@ final class TunnelController: TunnelControl {
     /// (VPN занят, профиль отклонен) — PGC-NET-010, «Запретить» в запросе — `VpnPermissionDenied`; расширение не перезапустило
     /// ядро — его код.
     func connect() async throws {
+        localFilterIntent = false
+        try await intents.perform({ ticket in
+            try await self.connect(ticket: ticket)
+        }, cleanup: { _ = await self.deactivate() })
+    }
+
+    private func requireCurrent(_ ticket: UInt64) throws {
+        try intents.requireCurrent(ticket)
+        guard account.read().allowed(now: Date()) else { throw TunnelFailure(TunnelErrors.noAccess) }
+    }
+
+    private func connect(ticket: UInt64) async throws {
+        try await prepareActivation(ticket)
         let profile = try await VpnProfile.of(settings.load())
-        if let manager, Self.running(manager), let saved = Self.profile(of: manager), saved.sameTunnel(profile) {
-            // «Постоянная защита» меняется на ходу: туннель не опускается.
+        try requireCurrent(ticket)
+        if let manager, Self.running(manager), !Self.localFilter(manager), let saved = Self.profile(of: manager), saved.sameTunnel(profile) {
             if saved.onDemand != profile.onDemand {
                 Self.onDemand(manager, profile.onDemand)
-                try? await Self.save(manager)
+                try await Self.save(manager)
+                try requireCurrent(ticket)
             }
-
+            try requireCurrent(ticket)
             try await reload(manager)
+            try requireCurrent(ticket)
             return
         }
 
         do {
             if let manager, Self.running(manager) {
+                Self.onDemand(manager, false)
+                try await Self.save(manager)
+                try requireCurrent(ticket)
                 manager.connection.stopVPNTunnel()
-                await Self.stopped(manager)
+                guard await Self.stopped(manager) else { throw TunnelFailure(TunnelErrors.coreFailed, detail: "native stop pending") }
+                try requireCurrent(ticket)
             }
-
-            let manager = try await prepared(profile)
-            // С подключением по требованию iOS могла поднять туннель сама, как только профиль сохранился.
+            let manager = try await prepared(profile, ticket: ticket)
+            try requireCurrent(ticket)
             do {
                 try manager.connection.startVPNTunnel()
             } catch {
-                if !Self.running(manager) {
-                    throw error
-                }
+                if !Self.running(manager) { throw error }
             }
+            try requireCurrent(ticket)
+            if profile.onDemand {
+                // До явного запуска On Demand выключен: запоздалое первое сохранение не поднимет VPN само.
+                Self.onDemand(manager, true)
+                try await Self.save(manager)
+                try requireCurrent(ticket)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let failure as TunnelFailure {
+            throw failure
         } catch {
-            // «Запретить» в системном запросе — «Выключено» с подсказкой, а не «Работает другой VPN» (DECISIONS.md, п. 5).
-            if VpnRefusal.permissionDenied(error) {
-                throw VpnPermissionDenied()
-            }
-
+            if VpnRefusal.permissionDenied(error) { throw VpnPermissionDenied() }
             throw TunnelFailure(TunnelErrors.otherVpn, detail: "\(error)")
         }
     }
 
-    /// Выключить защиту. С «Постоянной защитой» сначала выключается подключение по требованию — иначе iOS сразу подняла бы
-    /// туннель снова; следующее подключение включит его опять.
+    /// Стоп отменяет намерение до ожидания очереди и возвращается после завершения всех прежних saveToPreferences.
     func disconnect() async {
-        if let manager, manager.isOnDemandEnabled {
-            manager.isOnDemandEnabled = false
-            try? await Self.save(manager)
-        }
+        _ = await disconnectConfirmed()
+    }
 
-        manager?.connection.stopVPNTunnel()
+    /// Синхронная отмена до сохранения барьера доступа; не дает прежнему start продолжиться после начала выхода.
+    func requireManualActivation() {
+        localFilterIntent = false
+        restorationPending = true
+        intents.invalidate()
+    }
+
+    /// Для входа в новый аккаунт нужны оба подтверждения: выключенный сохраненный профиль и остановленный туннель.
+    func disconnectConfirmed() async -> Bool {
+        requireManualActivation()
+        var confirmed = false
+        await intents.stop { confirmed = await self.deactivate() }
+        return confirmed
+    }
+
+    private func prepareActivation(_ ticket: UInt64) async throws {
+        try requireCurrent(ticket)
+        if restorationPending {
+            guard await deactivate() else { throw TunnelFailure(TunnelErrors.coreFailed, detail: "native cleanup pending") }
+            try requireCurrent(ticket)
+        }
+        try await settings.setManualActivationRequired(false)
+        try requireCurrent(ticket)
+    }
+
+    /// Очистка выполняется внутри той же очереди, что запуск. Поэтому ответ старого save не отменит новый сеанс.
+    private func deactivate() async -> Bool {
+        restorationPending = true
+        let barrierSaved = (try? await settings.setManualActivationRequired(true)) != nil
+        // Перечитываем именно установленные профили: отказ в первом разрешении не создает профиль, который надо сохранять.
+        // Ошибка чтения не равна отсутствию профиля и не считается подтверждением очистки.
+        let previous = manager
+        do { manager = try await Self.managers().first } catch { return false }
+        guard let manager else {
+            // Профиль могли удалить отдельно, пока старое расширение еще завершает работу.
+            let ended: Bool
+            if let previous {
+                previous.connection.stopVPNTunnel()
+                ended = await Self.stopped(previous)
+                if !ended { self.manager = previous }
+            } else { ended = true }
+            restorationPending = !(barrierSaved && ended)
+            return !restorationPending
+        }
+        Self.onDemand(manager, false)
+        manager.isEnabled = false
+        if let tunnel = manager.protocolConfiguration as? NETunnelProviderProtocol {
+            tunnel.includeAllNetworks = false
+            tunnel.enforceRoutes = false
+            tunnel.providerConfiguration?["localSiteFilter"] = false
+            manager.protocolConfiguration = tunnel
+        }
+        manager.connection.stopVPNTunnel()
+        let confirmed = await TunnelCleanupConfirmation.perform(disable: {
+            try await Self.save(manager)
+            try await Self.load(manager)
+            guard let profile = Self.profile(of: manager) else { return false }
+            return !manager.isEnabled && !manager.isOnDemandEnabled && !profile.includeAllNetworks && !profile.enforceRoutes && !Self.localFilter(manager)
+        }, stopped: { await Self.stopped(manager) })
+        restorationPending = !(barrierSaved && confirmed)
+        return !restorationPending
+    }
+
+    /// Явный запуск местного фильтра. VPN-сервер не выбирается; профиль iOS не подключается по требованию.
+    func connectLocalFilter() async throws {
+        localFilterIntent = true
+        try await intents.perform({ ticket in
+            try await self.connectLocalFilter(ticket: ticket)
+        }, cleanup: { _ = await self.deactivate() })
+    }
+
+    private func connectLocalFilter(ticket: UInt64) async throws {
+        try await prepareActivation(ticket)
+        if let manager, Self.running(manager) {
+            manager.isOnDemandEnabled = false
+            try await Self.save(manager)
+            try requireCurrent(ticket)
+            manager.connection.stopVPNTunnel()
+            guard await Self.stopped(manager) else { throw TunnelFailure(TunnelErrors.coreFailed, detail: "native stop pending") }
+            try requireCurrent(ticket)
+        }
+        let profile = VpnProfile(includeAllNetworks: false, excludeLocalNetworks: true, enforceRoutes: false, onDemand: false)
+        let manager = try await prepared(profile, ticket: ticket, localFilter: true)
+        try requireCurrent(ticket)
+        try manager.connection.startVPNTunnel(options: ["localSiteFilter": NSNumber(value: true)])
+    }
+
+    func refresh() async throws {
+        let local = localFilterIntent ?? manager.map(Self.localFilter) ?? false
+        try await intents.perform({ ticket in
+            try await self.prepareActivation(ticket)
+            if local, let manager = self.manager, Self.running(manager), Self.localFilter(manager) {
+                try await self.reload(manager)
+                try self.requireCurrent(ticket)
+            } else if local {
+                try await self.connectLocalFilter(ticket: ticket)
+            } else {
+                try await self.connect(ticket: ticket)
+            }
+        }, cleanup: { _ = await self.deactivate() })
+    }
+
+    private static func localFilter(_ manager: NETunnelProviderManager) -> Bool {
+        (manager.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration?["localSiteFilter"] as? Bool ?? false
     }
 
     /// Подключение по требованию: правило одно — «подключаться всегда» на любой сети.
@@ -131,10 +263,14 @@ final class TunnelController: TunnelControl {
     }
 
     /// Ждать, пока туннель опустится, — не дольше 10 секунд.
-    private static func stopped(_ manager: NETunnelProviderManager) async {
+    private static func stopped(_ manager: NETunnelProviderManager) async -> Bool {
         for _ in 0..<100 where running(manager) || manager.connection.status == .disconnecting {
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            // Cleanup старого намерения выполняется и в отмененной Task: ее sleep вернулся бы сразу, не дождавшись iOS.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(100)) { continuation.resume() }
+            }
         }
+        return manager.connection.status == .disconnected || manager.connection.status == .invalid
     }
 
     /// «Перечитать сервер и настройки» — расширению; ответ — удалось или код ошибки.
@@ -152,27 +288,35 @@ final class TunnelController: TunnelControl {
     /// Вход для подписки — только у подключенного собственного профиля и только через сообщение расширению. Сохраненных
     /// учетных данных нет: каждое ядро выдает свой порт и пароль; нет ответа — загрузчик отказывает без прямого пути.
     func subscriptionProxy() async -> SubscriptionProxy? {
-        guard let manager else { return nil }
+        guard !restorationPending, let manager else { return nil }
         return await Self.subscriptionProxy(manager)
     }
 
     /// «До сервера» для «Задержки» на «Проверке» — меряет расширение туннеля (мимо туннеля), только у подключенного профиля;
     /// не измерено или расширение не ответило — nil.
     func serverDelay() async -> Int? {
-        guard let manager, manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession else {
+        guard let manager, !Self.localFilter(manager), manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession else {
             return nil
         }
 
         return TunnelMessages.delayMs(try? await Self.message(session, TunnelMessages.delay))
     }
 
+    func blockedSites() async -> BlockedSitesSnapshot? {
+        guard let manager, Self.running(manager), let session = manager.connection as? NETunnelProviderSession,
+              let data = try? await Self.message(session, TunnelMessages.blockedSites) else { return nil }
+        return try? JSONDecoder().decode(BlockedSitesSnapshot.self, from: data)
+    }
+
     static func protectedSubscriptionProxy() async -> SubscriptionProxy? {
+        let container = SharedContainer.current()
+        guard container.account.read().allowed(now: Date()), let settings = try? container.settings.loadNow(), !settings.manualActivationRequired else { return nil }
         guard let manager = try? await managers().first else { return nil }
         return await subscriptionProxy(manager)
     }
 
     private static func subscriptionProxy(_ manager: NETunnelProviderManager) async -> SubscriptionProxy? {
-        guard manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession,
+        guard !Self.localFilter(manager), manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession,
               let data = try? await message(session, TunnelMessages.subscriptionProxy),
               let proxy = try? JSONDecoder().decode(SubscriptionProxy.self, from: data), proxy.valid
         else { return nil }
@@ -202,8 +346,11 @@ final class TunnelController: TunnelControl {
 
     /// Профиль с нужными свойствами, сохраненный в настройках iOS. Сохранение нового профиля спрашивает разрешение; после
     /// сохранения профиль перечитывается — иначе первый запуск iOS отклоняет.
-    private func prepared(_ profile: VpnProfile) async throws -> NETunnelProviderManager {
+    private func prepared(_ profile: VpnProfile, ticket: UInt64, localFilter: Bool = false) async throws -> NETunnelProviderManager {
+        try requireCurrent(ticket)
         let manager = manager ?? NETunnelProviderManager()
+        // Публикуется до save/разрешения системы: отмена всегда знает, какой профиль предстоит очистить.
+        self.manager = manager
         let tunnel = manager.protocolConfiguration as? NETunnelProviderProtocol ?? NETunnelProviderProtocol()
         tunnel.providerBundleIdentifier = VpnProfile.providerBundleIdentifier
         tunnel.serverAddress = VpnProfile.serverAddress
@@ -211,19 +358,25 @@ final class TunnelController: TunnelControl {
         tunnel.excludeLocalNetworks = profile.excludeLocalNetworks
         tunnel.enforceRoutes = profile.enforceRoutes
         tunnel.disconnectOnSleep = false
+        tunnel.providerConfiguration = ["localSiteFilter": localFilter]
         manager.protocolConfiguration = tunnel
         manager.localizedDescription = VpnProfile.serverAddress
         manager.isEnabled = true
-        Self.onDemand(manager, profile.onDemand)
+        Self.onDemand(manager, false)
         // Обработчики — без изоляции главного потока: в каком потоке их вызовет система, не обещано.
         try await Self.save(manager)
+        try requireCurrent(ticket)
+        try await Self.load(manager)
+        try requireCurrent(ticket)
+        return manager
+    }
+
+    private static func load(_ manager: NETunnelProviderManager) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
             manager.loadFromPreferences { @Sendable error in
                 Self.resume(continuation, error)
             }
         }
-        self.manager = manager
-        return manager
     }
 
     private nonisolated static func resume(_ continuation: CheckedContinuation<Void, any Error>, _ error: (any Error)?) {
@@ -236,7 +389,10 @@ final class TunnelController: TunnelControl {
 
     /// Защита подключена — по профилю VPN в системе; для фоновой работы без окна, когда модели нет.
     static func systemConnected() async -> Bool {
-        (try? await managers().first)?.connection.status == .connected
+        let container = SharedContainer.current()
+        guard container.account.read().allowed(now: Date()), let settings = try? container.settings.loadNow(), !settings.manualActivationRequired else { return false }
+        guard let manager = try? await managers().first else { return false }
+        return manager.connection.status == .connected && !localFilter(manager)
     }
 
     /// Профили приложения в настройках iOS. Список уходит из обработчика завершения в главный поток целиком — его больше
@@ -247,7 +403,10 @@ final class TunnelController: TunnelControl {
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(returning: Handoff(value: managers ?? []))
+                    let own = (managers ?? []).filter {
+                        ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == VpnProfile.providerBundleIdentifier
+                    }
+                    continuation.resume(returning: Handoff(value: own))
                 }
             }
         }.value

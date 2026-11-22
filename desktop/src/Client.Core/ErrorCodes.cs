@@ -42,6 +42,12 @@ public static class ErrorCodes
     /// <summary>После отключения не удалось полностью восстановить сеть; требуется повторная попытка.</summary>
     public const string NetworkRestoreFailed = "PGC-SVC-012";
 
+    /// <summary>Установленная служба еще не поддерживает дополнительные параметры XHTTP/VLESS этого профиля.</summary>
+    public const string ExtendedTransportUnsupported = "PGC-SVC-013";
+
+    /// <summary>Окно не умеет отображать активный местный фильтр; требуется обновить клиент.</summary>
+    public const string LocalFilterClientUnsupported = "PGC-SVC-014";
+
     /// <summary>Сервер не отвечает.</summary>
     public const string ServerNotResponding = "PGC-NET-001";
 
