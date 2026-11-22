@@ -49,8 +49,13 @@ public actor LatencyMeter {
     public var measuring: Bool { running }
 
     /// Замер всех серверов; `chunk` — после записи каждой порции (окно перечитывает список).
+    public func measure(chunk: @Sendable () async -> Void = {}) async -> MeasureResult {
+        await measure(results: { _ in }, chunk: chunk)
+    }
+
+    /// Явный callback результата: отдельная перегрузка сохраняет прежнюю zero-argument trailing closure для `chunk`.
     public func measure(
-        results: @Sendable ([String: Latency]) async -> Void = { _ in }, chunk: @Sendable () async -> Void = {}
+        results: @Sendable ([String: Latency]) async -> Void, chunk: @Sendable () async -> Void = {}
     ) async -> MeasureResult {
         guard let started = await path() else {
             return .busy

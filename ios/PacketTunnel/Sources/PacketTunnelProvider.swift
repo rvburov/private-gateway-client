@@ -527,7 +527,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         do {
             try container.status.write(status)
         } catch {
-            log.error("status: \(maskNative("\(error)"), privacy: .public)")
+            log.error("status: \(self.maskNative("\(error)"), privacy: .public)")
         }
 
         let (before, name) = locked { () -> (TunnelStatus, String?) in
@@ -560,7 +560,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         do {
             try container.coreVersion.write(maskNative(version))
         } catch {
-            log.error("core version: \(maskNative("\(error)"), privacy: .public)")
+            log.error("core version: \(self.maskNative("\(error)"), privacy: .public)")
         }
     }
 
