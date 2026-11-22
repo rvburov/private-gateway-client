@@ -303,17 +303,20 @@ final class XrayConfigTests: XCTestCase {
             SiteRule(pattern: "ads.youtube.com", action: .block),
         ]
         let all = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(rules: list, blockOthers: true))))
-        let tail = Array(all.suffix(6))
+        let tail = Array(all.suffix(7))
         XCTAssertEqual(
             tail.prefix(3).map { ($0["domain"] as? [String])?.first ?? "" },
             ["domain:ads.youtube.com", "domain:youtube.com", "domain:example.com"]
         )
         XCTAssertEqual(tail.prefix(3).map { $0["outboundTag"] as? String }, ["block", "proxy", "proxy"])
-        XCTAssertEqual(tail[3]["domain"] as? [String], (AlwaysAllowed.domains + ["private-gateway.duckdns.org"]).map { "domain:" + $0 })
-        XCTAssertEqual(tail[3]["outboundTag"] as? String, "proxy")
-        XCTAssertEqual([tail[4]["network"], tail[4]["port"], tail[4]["outboundTag"]].map { $0 as? String }, ["udp", "123", "proxy"], "точное время (NTP)")
-        XCTAssertEqual(tail[5]["inboundTag"] as? [String], [XrayConfig.tunTag])
-        XCTAssertEqual([tail[5]["network"], tail[5]["outboundTag"]].map { $0 as? String }, ["tcp,udp", "block"])
+        XCTAssertEqual(tail[3]["ip"] as? [String], [TunnelProbe.host + "/32"])
+        XCTAssertEqual(tail[3]["inboundTag"] as? [String], [XrayConfig.tunTag])
+        XCTAssertEqual([tail[3]["network"], tail[3]["port"], tail[3]["outboundTag"]].map { $0 as? String }, ["tcp", String(TunnelProbe.port), "proxy"])
+        XCTAssertEqual(tail[4]["domain"] as? [String], (AlwaysAllowed.domains + ["private-gateway.duckdns.org"]).map { "domain:" + $0 })
+        XCTAssertEqual(tail[4]["outboundTag"] as? String, "proxy")
+        XCTAssertEqual([tail[5]["network"], tail[5]["port"], tail[5]["outboundTag"]].map { $0 as? String }, ["udp", "123", "proxy"], "точное время (NTP)")
+        XCTAssertEqual(tail[6]["inboundTag"] as? [String], [XrayConfig.tunTag])
+        XCTAssertEqual([tail[6]["network"], tail[6]["outboundTag"]].map { $0 as? String }, ["tcp,udp", "block"])
 
         let split = try rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .split, rules: list, blockOthers: true))))
         XCTAssertEqual(split.first { ($0["domain"] as? [String]) == ["domain:example.com"] }?["outboundTag"] as? String, "direct")

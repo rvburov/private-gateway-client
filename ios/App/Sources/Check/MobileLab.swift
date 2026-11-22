@@ -28,7 +28,7 @@ struct MobileLabSnapshot: Equatable {
         time = now
         connected = input.state == .connected && !input.localSiteFilter
         address = input.ip.viaServer == connected && !input.ip.measuring && !input.ip.failed ? input.ip.address : nil
-        interfaces = networks.filter(\.satisfied).map(\.name)
+        interfaces = networks.filter(\.satisfied).compactMap(\.name)
     }
 }
 
@@ -170,8 +170,8 @@ struct MobileLabView: View {
                 }
                 .pgCard()
             }
-            ForEach(networks, id: \.name) { network in
-                Text(network.name + " · " + (network.satisfied ? text("diag.state.ok.chip") : text("lab.notMeasured")))
+            ForEach(Array(networks.enumerated()), id: \.offset) { _, network in
+                Text(PhoneNetworkText.title(network, texts) + " · " + (network.satisfied ? text("diag.state.ok.chip") : text("lab.notMeasured")))
                     .pgText(PgType.mono).foregroundStyle(Color(PgColor.Text.secondary))
             }
         }
