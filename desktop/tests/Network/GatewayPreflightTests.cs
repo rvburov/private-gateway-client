@@ -45,7 +45,8 @@ public sealed class GatewayPreflightTests : IDisposable
         exported.Contains("demo%2F", StringComparison.Ordinal).ShouldBeFalse();
         exported.Contains("demo-download", StringComparison.Ordinal).ShouldBeFalse();
         exported.Contains("previous-profile-secret", StringComparison.Ordinal).ShouldBeFalse("старое ядро еще может писать во время подготовки нового");
-        var disk = File.ReadAllText(file.Current);
+        using var reader = new StreamReader(new FileStream(file.Current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+        var disk = reader.ReadToEnd();
         disk.ShouldContain("ordinary-text");
         disk.Contains("demo", StringComparison.Ordinal).ShouldBeFalse("на диск идет та же скрытая строка, что и в отчет");
     }

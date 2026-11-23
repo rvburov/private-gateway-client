@@ -84,9 +84,10 @@ class TunnelOnDeviceTest {
         connect()
         val before = app.monitor().status.value
         val source = assertNotNull(LinkParser.parse(LINK).server)
-        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { sink ->
+        // Android getLoopbackAddress() возвращает ::1; слушатель и профиль должны использовать одну семью адресов.
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { sink ->
             sink.soTimeout = 10_000
-            val stalled = source.copy(host = "127.0.0.1", port = sink.localPort)
+            val stalled = source.copy(host = assertNotNull(sink.inetAddress.hostAddress), port = sink.localPort)
             val request = PingBatch.plan(listOf(PingTarget("stalled", stalled)), app.settings().tunnel.first().core(), timeoutSeconds = 30).chunks.single().request
             coroutineScope {
                 val accepted = async(Dispatchers.IO) { sink.accept() }

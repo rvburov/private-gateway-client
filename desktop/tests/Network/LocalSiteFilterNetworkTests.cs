@@ -55,6 +55,6 @@ public sealed class LocalSiteFilterNetworkTests
         history.Snapshot().ShouldHaveSingleItem().Host.ShouldBe("blocked.example.com");
         journal.Tail(ServiceJournal.Capacity).ShouldAllBe(entry => !entry.Message.Contains("blocked.example.com", StringComparison.Ordinal)
             && !entry.Message.Contains(" accepted ", StringComparison.Ordinal));
-        VpnTunnel.DirectPrograms(request, "/tmp/test-xray").ShouldContain(Path.GetFullPath("/tmp/test-xray"));
+        VpnTunnel.DirectPrograms(request, "/tmp/test-xray").ShouldHaveSingleItem().ShouldBe(VpnTunnel.RealPath("/tmp/test-xray"));
     }
 }

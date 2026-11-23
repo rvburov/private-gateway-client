@@ -245,10 +245,21 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
         {
             Starts++;
             Started.TrySetResult();
-            using var registration = cancellationToken.Register(() => Cancelled.TrySetResult());
-            await foreach (var item in Results.Reader.ReadAllAsync(ignoreCancellation ? CancellationToken.None : cancellationToken))
+            try
             {
-                yield return item;
+                await foreach (var item in Results.Reader.ReadAllAsync(ignoreCancellation ? CancellationToken.None : cancellationToken))
+                {
+                    yield return item;
+                }
+            }
+            finally
+            {
+                // Завершение итератора — само подтверждение отмены. Регистрация могла бы быть снята его
+                // продолжением раньше, чем CTS вызовет ее после более нового callback канала.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    Cancelled.TrySetResult();
+                }
             }
         }
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
