@@ -157,7 +157,7 @@ class ServersScreenTest {
         val ms = text(R.string.unit_ms)
         compose.onNodeWithTag("latency.nl", useUnmergedTree = true).assertTextEquals("42 $ms")
         compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals("148 $ms")
-        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_none))
+        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals("—")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.servers_latency_noneHint))))
         compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("—")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.android_servers_latency_never))))
@@ -345,8 +345,8 @@ class ServersScreenTest {
         list(MainUi(servers = listOf(timeout, tls, core), subscriptions = listOf(provider)))
         compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_timeout))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.latency_timeout))))
-        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_tls))
-        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_coreFailed))
+        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("—")
     }
 
     @Test

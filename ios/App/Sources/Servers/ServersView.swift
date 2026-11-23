@@ -47,11 +47,7 @@ struct ServersView: View {
             VStack(spacing: PgSpace.m) {
                 searchRow
                 tabs
-                Text(measurementNote)
-                    .pgText(PgType.caption)
-                    .foregroundStyle(Color(PgColor.Text.muted))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("servers.measure.path")
+
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
 
@@ -387,8 +383,8 @@ struct ServerRow: View {
     var body: some View {
         let on = tag != nil
         let supported = ServersLook.supported(server)
-        let latency = LatencyLook.of(server.latency, texts)
         let fresh = !trackFreshness || LatencyFreshness.isFresh(measuredAt)
+        let latency = LatencyLook.list(server.latency, texts, fresh: fresh)
         let shape = RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous)
         ZStack(alignment: .trailing) {
             Button(action: onSelect) {
@@ -416,12 +412,7 @@ struct ServerRow: View {
                             .foregroundStyle(Color(fresh ? latency.color : PgColor.Text.muted))
                             .lineLimit(1)
                             .accessibilityLabel(latency.hint)
-                        if trackFreshness, server.latency != nil {
-                            Text(latencyStamp(fresh: fresh))
-                                .pgText(PgType.caption)
-                                .foregroundStyle(Color(PgColor.Text.muted))
-                                .lineLimit(1)
-                        }
+
                     }
                     .frame(minWidth: 52, alignment: .trailing)
                 }
@@ -453,11 +444,7 @@ struct ServerRow: View {
         }
     }
 
-    private func latencyStamp(fresh: Bool) -> String {
-        let stale = texts.text(key: "latency.stale.short") ?? ""
-        guard let measuredAt else { return stale }
-        return GroupHeader.clock(measuredAt) + (fresh ? "" : " · " + stale)
-    }
+
 }
 
 /// Звезда избранного: заливка и контур цветами favorite.* макета.

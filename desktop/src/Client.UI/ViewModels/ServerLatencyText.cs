@@ -10,29 +10,19 @@ public static class ServerLatencyText
     public static bool IsUnconfirmed(ServerProfile server) => server.LatencyFailure == LatencyFailure.CoreFailed
         && server.LatencyDiagnostic is "ProtectionBlocked" or "ProtectedProbeUnavailable" or "NetworkUnavailable";
 
-    public static string Of(ServerProfile server, bool card = false) => server.IsMeasuringLatency ? "…"
-        : server.IsLatencyStale ? Loc.Instance["latency.short.stale"]
-        : server.LatencyMs is { } ms ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]
-        : server.LatencyFailure is not null ? Loc.Instance[card ? "card.latency.none" : FailureLabel(server)]
-        : card ? Loc.Instance["latency.unchecked"] : "—";
-
-    private static string FailureLabel(ServerProfile server) => server.LatencyFailure switch
+    public static string Of(ServerProfile server, bool card = false)
     {
-        LatencyFailure.Unsupported => "latency.short.unsupported",
-        LatencyFailure.CoreFailed when server.LatencyDiagnostic == "ProtectionBlocked" => "latency.short.blocked",
-        LatencyFailure.CoreFailed when server.LatencyDiagnostic == "ProtectedProbeUnavailable" => "latency.short.protectedProbeUnavailable",
-        LatencyFailure.CoreFailed when server.LatencyDiagnostic == "NetworkUnavailable" => "latency.short.networkUnavailable",
-        LatencyFailure.CoreFailed => "latency.short.coreFailed",
-        LatencyFailure.NoResponse => server.LatencyDiagnostic switch
-        {
-            "Timeout" => "latency.short.timeout",
-            "NameResolution" => "latency.short.dns",
-            "Tls" => "latency.short.tls",
-            "Connection" or "Proxy" => "latency.short.connection",
-            _ => "servers.latency.none",
-        },
-        _ => "servers.latency.none",
-    };
+        if (server.IsMeasuringLatency)
+            return card ? "…" : "—";
+        if (server.IsLatencyStale)
+            return card ? Loc.Instance["latency.short.stale"] : "—";
+        if (server.LatencyMs is { } ms)
+            return ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"];
+        if (card)
+            return Loc.Instance[server.LatencyFailure is null ? "latency.unchecked" : "card.latency.none"];
+        return server.LatencyFailure == LatencyFailure.NoResponse && server.LatencyDiagnostic == "Timeout"
+            ? Loc.Instance["latency.short.timeout"] : "—";
+    }
 
     public static string? Reason(ServerProfile server) => server.IsLatencyStale ? Loc.Instance["latency.stale"]
         : server.LatencyFailure switch

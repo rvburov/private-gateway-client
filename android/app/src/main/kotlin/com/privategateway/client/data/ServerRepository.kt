@@ -270,17 +270,22 @@ class ServerRepository @Inject constructor(
 
     /**
      * Страны адресов сохраненных серверов для флагов: после новой геобазы (обновление приложения) — заново для всех, иначе —
-     * только еще не определенные (серверы до миграции 3 → 4). Ссылку открывает Keystore; адрес никуда не уходит.
+     * неизвестные страны, включая прежний пустой результат. Ссылку открывает Keystore; DNS имен идет через текущую сеть ОС.
      */
     suspend fun locate() = withContext(Dispatchers.IO) {
-        writes.withLock {
-            if (countries.renewed()) {
-                dao.forgetAddressCountries()
-            }
-
-            for (entity in dao.withoutAddressCountry()) {
-                val host = open(entity)?.host ?: continue
-                dao.setAddressCountry(entity.id, countries.country(host))
+        val pending = writes.withLock {
+            if (countries.renewed()) dao.forgetAddressCountries()
+            dao.withoutAddressCountry()
+        }
+        for (entity in pending) {
+            val host = open(entity)?.host ?: continue
+            // DNS не держит блокировку импорта и переключения серверов.
+            val code = countries.resolvedCountry(host)
+            writes.withLock {
+                val current = dao.byId(entity.id)
+                if (current != null && current.sealed.contentEquals(entity.sealed)) {
+                    dao.setAddressCountry(entity.id, code)
+                }
             }
         }
     }

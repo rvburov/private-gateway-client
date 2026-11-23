@@ -17,6 +17,15 @@ private struct EmptySource: SubscriptionSource {
 /// откуда сервер, чип состояния, «нет ответа», сведения, «Сохранить», удаление только после «да», «Ссылка скопирована» и
 /// «Сервер удален»; список с открытой панелью фильтра и каждая страница карточки рисуются на обоих языках.
 final class ServersTests: XCTestCase {
+    func testCompactLatencyDoesNotAdvertiseStaleOrFailedMeasurements() {
+        let texts = PgTexts(.russian)
+        XCTAssertEqual(LatencyLook.list(.of(42), texts, fresh: true).text, "42 мс")
+        XCTAssertEqual(LatencyLook.list(.of(42), texts, fresh: false).text, "—")
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .tls), texts, fresh: true).text, "—")
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: true).text, texts.latencyShortTimeout)
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: false).text, "—")
+    }
+
     private let texts = PgTexts(.russian)
 
     private let servers = [

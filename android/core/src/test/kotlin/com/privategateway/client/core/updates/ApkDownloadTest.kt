@@ -87,6 +87,54 @@ class ApkDownloadTest {
     }
 
     @Test
+    fun `interrupted transfer resumes with Range and checks the whole file`() {
+        var requests = 0
+        val split = apk.size / 2
+        server.createContext("/files/t1") { exchange ->
+            requests++
+            if (requests == 1) {
+                exchange.sendResponseHeaders(200, 0)
+                exchange.responseBody.use { it.write(apk, 0, split) }
+            } else {
+                assertEquals("bytes=$split-", exchange.requestHeaders.getFirst("Range"))
+                exchange.responseHeaders.add("Content-Range", "bytes $split-${apk.size - 1}/${apk.size}")
+                exchange.sendResponseHeaders(206, (apk.size - split).toLong())
+                exchange.responseBody.use { it.write(apk, split, apk.size - split) }
+            }
+        }
+        assertEquals(DownloadResult.Done, fetch())
+        assertEquals(2, requests)
+        assertContentEquals(apk, target.readBytes())
+    }
+
+    @Test
+    fun `server ignoring Range restarts rather than appending`() {
+        var requests = 0
+        server.createContext("/files/t1") { exchange ->
+            requests++
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { it.write(if (requests == 1) apk.copyOf(100) else apk) }
+        }
+        assertEquals(DownloadResult.Done, fetch())
+        assertEquals(2, requests)
+        assertContentEquals(apk, target.readBytes())
+    }
+
+    @Test
+    fun `incorrect resumed range cannot produce an installer`() {
+        var requests = 0
+        server.createContext("/files/t1") { exchange ->
+            requests++
+            if (requests > 1) exchange.responseHeaders.add("Content-Range", "bytes 0-99/${apk.size}")
+            exchange.sendResponseHeaders(if (requests == 1) 200 else 206, 0)
+            exchange.responseBody.use { it.write(apk, 0, 100) }
+        }
+        assertEquals(DownloadResult.BadFile("range"), fetch())
+        assertEquals(2, requests)
+        assertFalse(target.exists())
+    }
+
+    @Test
     fun `chunked answer without a length is checked the same way`() {
         serve("/files/t1", apk, length = null)
         assertEquals(DownloadResult.Done, fetch())

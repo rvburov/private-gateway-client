@@ -119,10 +119,6 @@
                        Content="{l:L servers.tab.recent}" />
         </UniformGrid>
       </Border>
-      <TextBlock Text="{Binding RefreshProgress}" IsVisible="{Binding IsMeasuring}" Classes="caption"
-                 Foreground="{StaticResource PgBrush.Text.Muted}" />
-      <TextBlock Text="{Binding MeasurementRouteHint}" IsVisible="{Binding HasMeasurementRouteHint}" Classes="caption" TextWrapping="Wrap"
-                 Foreground="{StaticResource PgBrush.Text.Muted}" />
     </StackPanel>
 
     <!-- Список: группы по подпискам, под островком запас для прокрутки -->
@@ -171,8 +167,7 @@
                                            Foreground="{StaticResource PgBrush.Status.Success.Badge}" />
                               </Border>
                               <TextBlock Grid.Column="3" Classes="latency" Classes.slow="{Binding IsSlow}" Classes.unchecked="{Binding IsUnchecked}"
-                                         Classes.down="{Binding IsDown}" Text="{Binding LatencyText}"
-                                         ToolTip.Tip="{Binding LatencyHint}" />
+                                         Classes.down="{Binding IsDown}" Text="{Binding LatencyText}" />
                             </Grid>
                           </Button>
                           <Button Classes="icon" Width="34" Height="34" CornerRadius="{StaticResource PgRadius.Input}"

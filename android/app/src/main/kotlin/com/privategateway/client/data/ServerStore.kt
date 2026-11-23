@@ -158,8 +158,8 @@ interface ServerDao {
         addressCountry: String?,
     )
 
-    /** Серверы, у которых страну адреса еще не определяли (после миграции 3 → 4 и обновления геобазы). */
-    @Query("SELECT * FROM servers WHERE addressCountry IS NULL")
+    /** Серверы без известной страны: прежний пустой результат можно повторить. */
+    @Query("SELECT * FROM servers WHERE addressCountry IS NULL OR addressCountry = ''")
     suspend fun withoutAddressCountry(): List<ServerEntity>
 
     @Query("UPDATE servers SET addressCountry = :code WHERE id = :id")

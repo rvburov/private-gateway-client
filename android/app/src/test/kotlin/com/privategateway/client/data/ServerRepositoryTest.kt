@@ -128,6 +128,18 @@ class ServerRepositoryTest {
         assertEquals("SE", located.servers.first().single().countryCode, "новая геобаза — страны заново")
     }
 
+    @Test
+    fun `unknown country is retried without an application update`() = runBlocking<Unit> {
+        val countries = FakeCountries(mutableMapOf())
+        val located = ServerRepository(database, box, countries)
+        located.add(listOf(Fixtures.servers().first().copy(name = "A", host = "vpn.example.com", countryCode = "")))
+        located.locate()
+        assertEquals("", located.servers.first().single().countryCode)
+        countries.codes["vpn.example.com"] = "US"
+        located.locate()
+        assertEquals("US", located.servers.first().single().countryCode)
+    }
+
     /** Геобаза теста: адрес → код; [renewed] — как после обновления приложения. */
     private class FakeCountries(val codes: MutableMap<String, String>) : CountryLookup {
         val asked = mutableListOf<String>()

@@ -145,10 +145,6 @@ fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions, l
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         Column(Modifier.fillMaxSize().testTag("servers")) {
             Header(ui.measuring, actions)
-            if (latencyChecks != null) {
-                Text(stringResource(R.string.latency_route_directCandidate), Modifier.padding(horizontal = PgSpace.WindowSideMobile), style = PgType.Caption, color = PgColor.Text.Muted)
-                if (ui.measuring) Text(stringResource(R.string.latency_progress, latencyProgress.done.toString(), latencyProgress.total.toString()), Modifier.padding(horizontal = PgSpace.WindowSideMobile), style = PgType.Caption, color = PgColor.Accent.Base)
-            }
             Column(Modifier.padding(horizontal = PgSpace.WindowSideMobile), verticalArrangement = Arrangement.spacedBy(PgSpace.M)) {
                 SearchField(query.search, ServerList.filterCount(ui.servers, query), filterOpen, actions.search) { filterOpen = !filterOpen }
                 Tabs(query.tab, ui.servers.size, actions.tab)
@@ -553,13 +549,7 @@ private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean,
                 )
             }
 
-            Column(horizontalAlignment = Alignment.End) {
-                LatencyText(server, Modifier.widthIn(min = 52.dp), RowLatency, check, checkFreshness, now)
-                check?.let {
-                    val at = DateTimeFormatter.ofPattern("HH:mm:ss").format(Instant.ofEpochMilli(it.at).atZone(ZoneId.systemDefault()))
-                    Text(stringResource(R.string.latency_checkedAt, at), style = PgType.Caption, color = PgColor.Text.Muted, maxLines = 1)
-                }
-            }
+            LatencyText(server, Modifier.widthIn(min = 52.dp), RowLatency, check, checkFreshness, now)
         }
 
         MoreButton(server.title, Modifier.align(Alignment.CenterEnd).padding(end = PgSpace.Xs).testTag("more.${server.id}"), onMore)
@@ -588,7 +578,7 @@ private fun MoreButton(name: String, modifier: Modifier, onClick: () -> Unit) {
  * задержка меряется только по кнопке и только без защиты — решение 430, поэтому «не мерили» здесь бывает часто).
  */
 /**
- * Короткая метка отказа в списке — `ServerLatencyText.FailureLabel` десктопа: «нет замера», «сбой», «тайм-аут», «DNS», «TLS»,
+ * Короткая метка отказа для подробностей: «нет замера», «сбой», «тайм-аут», «DNS», «TLS»,
  * «нет связи»; причина неизвестна — «нет».
  */
 @StringRes
@@ -624,7 +614,7 @@ internal fun latencyReason(latency: Latency?): Int? = when (latency?.failure) {
 fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextStyle = PgType.Mono, check: LatencyCheck? = null, checkFreshness: Boolean = false, now: Long = System.currentTimeMillis()) {
     if (checkFreshness && server.latency != null && (check == null || check.isStale(now))) {
         val hint = stringResource(R.string.latency_stale_text)
-        Text(stringResource(R.string.latency_stale_short), color = PgColor.Text.Muted, style = style,
+        Text("—", color = PgColor.Text.Muted, style = style,
             modifier = modifier.semantics { contentDescription = hint }.testTag("latency.${server.id}"))
         return
     }
@@ -633,7 +623,7 @@ fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextSt
     val (text, color) = when (kind) {
         LatencyKind.Good -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Status.Success.Text
         LatencyKind.Slow -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Text.Muted
-        LatencyKind.NoAnswer -> stringResource(latencyShort(server.latency)) to PgColor.Status.Warning.Text
+        LatencyKind.NoAnswer -> if (server.latency?.failure == LatencyFailure.NoResponse && server.latency?.reason == LatencyReason.Timeout) stringResource(R.string.latency_short_timeout) to PgColor.Status.Warning.Text else "—" to PgColor.Text.Muted
         LatencyKind.Never -> "—" to PgColor.Text.Muted
     }
 

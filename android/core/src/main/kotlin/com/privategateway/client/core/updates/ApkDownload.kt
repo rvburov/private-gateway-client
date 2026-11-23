@@ -35,23 +35,33 @@ sealed interface DownloadResult {
  * сверяются по ходу — заголовкам сайта (длина, X-Checksum-SHA256) не верим на слово: не сошлись — [DownloadResult.BadFile],
  * оборвалось — [DownloadResult.Failed], билет истек — [DownloadResult.Expired]; во всех трех случаях файла [fetch] не
  * оставляет. Из тела ошибки 403 читается только код сайта ({"error":{"code":"…"}}). Ход — progress (получено, всего) примерно
- * по процентам. Сеть блокирующая: вызывать не в главном потоке.
+ * каждые 256 КБ. При обрыве до трех попыток с Range; ответ 200 начинает файл заново. Сеть блокирующая: вызывать не в главном потоке.
  */
 class ApkDownload(
     private val openConnection: (URI) -> HttpURLConnection = { it.toURL().openConnection() as HttpURLConnection },
-    private val timeoutMs: Int = AccountApi.TIMEOUT_MS,
+    private val timeoutMs: Int = 60_000,
     private val userAgent: String = AccountApi.USER_AGENT,
 ) {
     /** Скачать [url] в [target]; [sha256] (строчными) и [size] — из подписанного манифеста. */
     fun fetch(url: String, target: File, sha256: String, size: Long, progress: (received: Long, total: Long) -> Unit = { _, _ -> }): DownloadResult {
-        val result = try {
-            load(url, target, sha256, size, progress)
-        } catch (e: IOException) {
-            DownloadResult.Failed(e.javaClass.simpleName)
-        } catch (e: SecurityException) {
-            DownloadResult.Failed(e.javaClass.simpleName)
-        } catch (e: IllegalArgumentException) {
-            DownloadResult.Failed(e.javaClass.simpleName)
+        // Не используем файл от предыдущей попытки установки: билет и манифест могли смениться.
+        target.delete()
+        var result: DownloadResult = DownloadResult.Failed("network")
+        for (attempt in 0 until 3) {
+            val retryable = try {
+                result = load(url, target, sha256, size, progress)
+                result == DownloadResult.Failed("short")
+            } catch (e: IOException) {
+                result = DownloadResult.Failed(e.javaClass.simpleName)
+                true
+            } catch (e: SecurityException) {
+                result = DownloadResult.Failed(e.javaClass.simpleName)
+                false
+            } catch (e: IllegalArgumentException) {
+                result = DownloadResult.Failed(e.javaClass.simpleName)
+                false
+            }
+            if (!retryable || Thread.currentThread().isInterrupted) break
         }
 
         if (result != DownloadResult.Done) {
@@ -72,6 +82,7 @@ class ApkDownload(
             return DownloadResult.Failed("address")
         }
 
+        var offset = target.takeIf { it.exists() }?.length() ?: 0L
         val connection = openConnection(uri)
         try {
             connection.connectTimeout = timeoutMs
@@ -80,26 +91,46 @@ class ApkDownload(
             connection.useCaches = false
             connection.setRequestProperty("User-Agent", userAgent)
             connection.setRequestProperty("Accept", "application/vnd.android.package-archive, application/octet-stream")
+            if (offset > 0) connection.setRequestProperty("Range", "bytes=$offset-")
+            connection.setRequestProperty("Accept-Encoding", "identity")
             val code = connection.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
+            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
                 val error = if (code == HttpURLConnection.HTTP_FORBIDDEN) errorCode(connection) else null
                 return if (error == TICKET_EXPIRED) DownloadResult.Expired else DownloadResult.Failed("HTTP $code" + (error?.let { " $it" } ?: ""))
             }
 
+            if (code == HttpURLConnection.HTTP_PARTIAL) {
+                val expected = "bytes $offset-${size - 1}/$size"
+                if (offset <= 0 || connection.getHeaderField("Content-Range") != expected) {
+                    return DownloadResult.BadFile("range")
+                }
+            } else {
+                // Сервер не поддерживает Range: ответ 200 целиком заменяет частичный файл.
+                offset = 0
+            }
+
             // Сайт объявил другой размер — это другой файл: не качать.
             val length = connection.contentLengthLong
-            if (length >= 0 && length != size) {
+            if (length >= 0 && length != size - offset) {
                 return DownloadResult.BadFile("length")
             }
 
             target.parentFile?.mkdirs()
             val digest = MessageDigest.getInstance("SHA-256")
-            val step = maxOf(size / 100, MIN_STEP)
-            var received = 0L
-            var reported = 0L
-            progress(0, size)
+            if (offset > 0) target.inputStream().use { input ->
+                val buffer = ByteArray(BUFFER)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            val step = MIN_STEP
+            var received = offset
+            var reported = offset
+            progress(offset, size)
             connection.inputStream.use { input ->
-                FileOutputStream(target).use { output ->
+                FileOutputStream(target, offset > 0).use { output ->
                     val buffer = ByteArray(BUFFER)
                     while (true) {
                         val read = input.read(buffer)

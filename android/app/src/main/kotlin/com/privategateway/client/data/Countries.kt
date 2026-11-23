@@ -2,6 +2,10 @@ package com.privategateway.client.data
 
 import android.content.Context
 import com.privategateway.client.core.countries.CountryDatabase
+import com.privategateway.client.core.countries.IpLiteral
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeoutOrNull
+import java.net.InetAddress
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -13,10 +17,13 @@ import java.util.zip.GZIPInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Страна адреса сервера для флага — как CountryServerCatalog десктопа, но только для адреса цифрами: DNS телефон не спрашивает. */
+/** Страна адреса сервера для флага — как CountryServerCatalog десктопа, с локальной базой и фоновым разрешением имен через текущую сеть ОС. */
 interface CountryLookup {
     /** Код ISO 3166-1 («DE»); адрес не цифрами, частный, служебный или без записи — «». */
     suspend fun country(host: String): String
+
+    /** Фоновое определение, включая имя хоста через текущую сеть ОС, без обхода VPN. */
+    suspend fun resolvedCountry(host: String): String = country(host)
 
     /** Геобаза новая для этого запуска (поставили или обновили приложение) — страны сохраненных серверов устарели. */
     suspend fun renewed(): Boolean
@@ -47,6 +54,19 @@ class AssetCountries @Inject constructor(@ApplicationContext private val context
     private val revision: String = context.packageManager.getPackageInfo(context.packageName, 0).let { "${it.longVersionCode}-${it.lastUpdateTime}" }
 
     override suspend fun country(host: String): String = withContext(Dispatchers.IO) { database()?.lookup(host).orEmpty() }
+
+    override suspend fun resolvedCountry(host: String): String {
+        if (IpLiteral.parse(host) != null) return country(host)
+        val addresses = withTimeoutOrNull(3_000) {
+            runInterruptible(Dispatchers.IO) {
+                try { InetAddress.getAllByName(host).mapNotNull { it.hostAddress } }
+                catch (_: IOException) { emptyList() }
+                catch (_: SecurityException) { emptyList() }
+            }
+        }.orEmpty()
+        val codes = addresses.map { country(it) }.distinct()
+        return codes.singleOrNull().orEmpty()
+    }
 
     override suspend fun renewed(): Boolean = withContext(Dispatchers.IO) {
         database()
