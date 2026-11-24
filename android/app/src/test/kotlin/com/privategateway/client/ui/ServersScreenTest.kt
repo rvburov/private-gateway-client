@@ -157,9 +157,9 @@ class ServersScreenTest {
         val ms = text(R.string.unit_ms)
         compose.onNodeWithTag("latency.nl", useUnmergedTree = true).assertTextEquals("42 $ms")
         compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals("148 $ms")
-        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_unreachable))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.servers_latency_noneHint))))
-        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.android_servers_latency_never))))
     }
 
@@ -302,7 +302,7 @@ class ServersScreenTest {
         card(MainUi(servers = listOf(nl), subscriptions = listOf(provider)), "nl")
         compose.onNodeWithTag("card.title").assertTextEquals(nl.displayName)
         compose.onNodeWithTag("card.subtitle").assertTextEquals(text(R.string.card_from_subscription, "Провайдер"))
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals("42 " + text(R.string.unit_ms))
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card.status").assertDoesNotExist()
         compose.onNodeWithTag("card.address").assertTextEquals("[2001:db8::1]:443")
         compose.onNodeWithTag("card.exitIp").assertTextEquals(text(R.string.card_exitIp_unknown))
@@ -332,8 +332,8 @@ class ServersScreenTest {
     fun `card latency says no answer in words of the card`() {
         card(MainUi(servers = listOf(tr)), "tr")
         compose.onNodeWithTag("card.subtitle").assertTextEquals(text(R.string.card_from_link))
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.card_latency_none))
-        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_noResponse))
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("card.latencyReason").assertDoesNotExist()
     }
 
     /** Причина отказа замера — короткой меткой в списке и строкой в карточке, как у десктопа (тайм-аут, DNS, TLS, нет связи). */
@@ -343,38 +343,38 @@ class ServersScreenTest {
         val tls = us.copy(latency = Latency.failed(LatencyFailure.NoResponse, LatencyReason.Tls))
         val core = fi.copy(latency = Latency.failed(LatencyFailure.CoreFailed))
         list(MainUi(servers = listOf(timeout, tls, core), subscriptions = listOf(provider)))
-        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.latency_short_timeout))
+        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_unreachable))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.latency_timeout))))
-        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals("—")
-        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_unreachable))
+        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_unreachable))
     }
 
     @Test
     fun `card gives the network reason of no answer`() {
         card(MainUi(servers = listOf(tr.copy(latency = Latency.failed(LatencyFailure.NoResponse, LatencyReason.Dns)))), "tr")
-        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_dns))
+        compose.onNodeWithTag("card.latencyReason").assertDoesNotExist()
     }
 
     @Test
     fun `card says a server never measured is not checked`() {
         // Решение пользователя 2026-11-08 (как карточка десктопа): отсутствие замера — не отказ сервера.
         card(MainUi(servers = listOf(nl.copy(latency = null))), "nl")
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.latency_unchecked))
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card.latencyReason").assertDoesNotExist()
     }
 
     @Test
     fun `card gives the reason when the core cannot measure the server`() {
         card(MainUi(servers = listOf(fi.copy(latency = Latency.failed(LatencyFailure.Unsupported)))), "fi")
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.card_latency_none))
-        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_unsupported))
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("card.latencyReason").assertDoesNotExist()
     }
 
     @Test
     fun `card says the phone has no core for hysteria2 and does not connect to it`() {
         val card = card(MainUi(servers = listOf(fi)), "fi")
         compose.onNodeWithTag("card.core").assertTextEquals(text(R.string.android_card_core_none))
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.latency_unchecked))
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card.connect").assertIsNotEnabled().performClick()
         assertEquals(emptyList(), card.connected)
     }

@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -65,7 +64,7 @@ sealed interface SubscriptionNotice {
  * С «только через VPN» адрес подписки уходит в сеть только через туннель: пока защита не подключена, ничего не грузится
  * ([SubscriptionTransport] закрепляет запрос за аутентифицированным входом ядра, который отправляет его в сервер).
  *
- * Когда: переход в «Защищено», каждые 10 минут, пока защита идет (или пока жив процесс, если «только через VPN»
+ * Когда: каждые 10 минут, пока защита идет (или пока жив процесс, если «только через VPN»
  * выключено), смена настроек и открытие окна — по правилу «пора» (успех старше промежутка, неудача — не чаще раза в час).
  * Отказ по расписанию — сообщение «не обновились»; кнопкой — только итог на экране. В журнал — только числа и причина.
  */
@@ -87,7 +86,7 @@ class SubscriptionUpdater @Inject constructor(
     /** Сообщения для окна и уведомлений. */
     val notices: SharedFlow<SubscriptionNotice> = events.asSharedFlow()
 
-    /** Проверки по расписанию: на переходе в «Защищено», при смене настроек и каждые 10 минут. Повторный вызов — ничего. */
+    /** Проверки по расписанию: при смене настроек и каждые 10 минут. Повторный вызов — ничего. */
     @Synchronized
     fun start() {
         if (started) {
@@ -95,9 +94,8 @@ class SubscriptionUpdater @Inject constructor(
         }
 
         started = true
-        val connected = monitor.status.map { it.state == TunnelState.Connected && !it.localOnly }.distinctUntilChanged()
         scope.launch {
-            combine(connected, settings.subscriptions) { on, subs -> on to subs }.collectLatest {
+            settings.subscriptions.map { it.refresh to it.onlyViaVpn }.distinctUntilChanged().collectLatest {
                 while (true) {
                     updateDue()
                     delay(CHECK_EVERY_MS)

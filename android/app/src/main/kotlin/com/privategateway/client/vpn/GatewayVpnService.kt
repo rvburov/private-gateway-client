@@ -366,10 +366,6 @@ class GatewayVpnService : VpnService() {
 
     /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */
     private fun fail(error: String, startId: Int) {
-        val failedId = monitor.status.value.serverId
-        if (!localOnly && failedId != null) scope.launch {
-            servers.setLatency(mapOf(failedId to com.privategateway.client.core.servers.Latency.failed(com.privategateway.client.core.servers.LatencyFailure.NoResponse)))
-        }
         journal.error("stopped  error=$error")
         stopCore()
         up = null
@@ -416,8 +412,6 @@ class GatewayVpnService : VpnService() {
             online = { online },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
-                    val failedId = up?.id
-                    if (failedId != null) servers.setLatency(mapOf(failedId to com.privategateway.client.core.servers.Latency.failed(com.privategateway.client.core.servers.LatencyFailure.NoResponse)))
                     journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")
                     monitor.update { it.copy(state = TunnelState.Reconnecting, since = null, attempt = attempt) }
                     foreground(notification(getString(R.string.status_reconnecting_title), up?.name))

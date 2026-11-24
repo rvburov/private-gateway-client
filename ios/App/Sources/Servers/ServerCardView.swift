@@ -167,9 +167,8 @@ struct ServerCardView: View {
         .padding(.top, 2)
     }
 
-    /// Чипы (.sc-chip, высота 28): состояние с точкой — «Активен» зеленым или «Выбран» синим — и задержка моноширинным.
+    /// Состояние с точкой: «Активен» зеленым или «Выбран» синим.
     private func chips(_ server: ServerItem, status: CardStatus?) -> some View {
-        let latency = CardLook.latency(server.latency, texts)
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         return HStack(spacing: PgSpace.s) {
             if let status {
@@ -189,15 +188,7 @@ struct ServerCardView: View {
                 .accessibilityIdentifier("card.status")
             }
 
-            Text(latency.text)
-                .pgText(PgTextStyle(size: PgType.caption.size, weight: 600, mono: true))
-                .foregroundStyle(Color(latency.color))
-                .lineLimit(1)
-                .padding(.horizontal, PgSpace.m)
-                .frame(minHeight: 28)
-                .background(shape.fill(Color(PgColor.Control.segmentTrack)))
-                .accessibilityLabel(latency.hint)
-                .accessibilityIdentifier("card.latency")
+
         }
     }
 
@@ -452,7 +443,7 @@ enum CardLook {
     /// он не совпадает с адресом; решения 583 и пользователя 2026-11-08, как у десктопа; nil — «Не измерен»), протокол,
     /// транспорт, защита и ядро; Hysteria2 и TUIC ядру телефона не по силам — «нет: …».
     static func details(_ server: ServerItem, host: String, exit: String? = nil, _ texts: PgTexts) -> [CardDetail] {
-        var rows = [
+        let rows = [
             CardDetail(label: texts.cardAddress, value: host, identifier: "card.address"),
             CardDetail(label: texts.cardExitIp, value: exit ?? texts.cardExitIpUnknown, identifier: "card.exitIp"),
             CardDetail(label: texts.cardProtocol, value: ServerFacts.protocolName(server.protocol), identifier: "card.protocol"),
@@ -467,10 +458,6 @@ enum CardLook {
             ),
             CardDetail(label: texts.cardCore, value: ServerFacts.coreName(server.protocol) ?? texts.androidCardCoreNone, identifier: "card.core"),
         ]
-        if let reason = reason(server.latency, texts) {
-            rows.append(CardDetail(label: texts.cardLatencyReason, value: reason, identifier: "card.latencyReason"))
-        }
-
         return rows
     }
 

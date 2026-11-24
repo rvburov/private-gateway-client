@@ -387,7 +387,7 @@
   "ip.copied": "IP скопирован",
   "server.switch": "Сменить",
   "server.refresh": "Обновить серверы",
-  "server.refreshed": "Серверы обновлены · пинг проверен",
+  "server.refreshed": "Проверка серверов завершена",
   "server.refreshed.noPing": "Замер недоступен — проверьте службу",
   "server.quick": "Быстрая смена · вручную",
   "server.all": "Все серверы ›",
@@ -2133,5 +2133,6 @@
   "error.PGC-SVC-014": "Обновите клиент: эта версия окна не умеет отображать местный фильтр сайтов без VPN.",
   "account.cleanupPending": "Не удалось подтвердить выключение предыдущего VPN. Вход приостановлен. Повторите восстановление сети; если ошибка остается, выключите Private Gateway и подключение по требованию в настройках VPN iOS.",
   "account.cleanupRetry": "Повторить восстановление сети",
-  "account.restoringNetwork": "Восстанавливаем сеть…"
+  "account.restoringNetwork": "Восстанавливаем сеть…",
+  "servers.latency.unreachable": "Нет связи"
 }

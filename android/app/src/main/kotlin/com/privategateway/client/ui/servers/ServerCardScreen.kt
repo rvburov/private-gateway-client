@@ -318,9 +318,7 @@ private fun Chips(server: ServerItem, active: Boolean, selected: Boolean) {
             else -> Unit
         }
 
-        Chip(PgColor.Control.SegmentTrack, null, "card.latency.chip") {
-            CardLatency(server)
-        }
+
     }
 }
 
@@ -405,13 +403,7 @@ private fun Details(server: ServerItem, address: suspend (String) -> String?, ex
             ?: stringResource(if (server.encrypted) R.string.card_security_builtin else R.string.card_security_none)
         Detail(stringResource(R.string.card_security), security, "card.security")
         Detail(stringResource(R.string.card_core), ServerFacts.coreName(server.protocol) ?: stringResource(R.string.android_card_core_none), "card.core")
-        latencyReason(server.latency)?.let { Detail(stringResource(R.string.card_latency_reason), stringResource(it), "card.latencyReason", lines = 3) }
-        latency?.let {
-            val at = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss").format(java.time.Instant.ofEpochMilli(it.at).atZone(java.time.ZoneId.systemDefault()))
-            Detail(stringResource(R.string.card_latency_checked), at, "card.latency.checked")
-            if (it.isStale(System.currentTimeMillis())) Detail(stringResource(R.string.card_latency_reason), stringResource(R.string.latency_stale_text), "card.latency.stale", lines = 3)
-            if (server.latency?.ms == null && it.lastSuccessMs != null) Detail(stringResource(R.string.card_latency_lastSuccess), "${it.lastSuccessMs} ${stringResource(R.string.unit_ms)}", "card.latency.lastSuccess")
-        }
+
     }
 }
 

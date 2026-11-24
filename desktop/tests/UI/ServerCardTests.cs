@@ -135,8 +135,7 @@ public sealed class ServerCardTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         card.LatencyText.ShouldBe("нет ответа");
         card.Details.Single(d => d.Label == "Выходной IP").Value.ShouldBe("198.51.100.42");
-        card.Details.Single(d => d.Label == "Проверка").Value.ShouldBe("Время ожидания ответа истекло");
-        card.Details.ShouldContain(d => d.Label == "Измерено");
+        card.Details.ShouldNotContain(d => d.Label == "Проверка" || d.Label == "Измерено" || d.Label == "Последний успешный замер");
         Snapshot(window, "server-card-exit-and-failure");
         store.SetMeasuringLatency(true);
         Dispatcher.UIThread.RunJobs();

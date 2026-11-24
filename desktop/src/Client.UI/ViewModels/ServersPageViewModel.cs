@@ -358,9 +358,9 @@ public sealed partial class ServersPageViewModel : ObservableObject
         server.CountryCode,
         server.Name,
         Address(server) + " · " + ServerFacts.Summary(server),
-        isSelected ? Loc.Instance[connected ? "servers.tag.active" : _target.IsExternalProxy ? "externalProxy.vpn.selected" : "servers.tag.selected"] : null,
+        isSelected ? Loc.Instance[connected ? "servers.tag.active" : "servers.tag.selected"] : null,
         ServerLatencyText.Of(server),
-        server.IsMeasuringLatency || server.IsLatencyStale || ServerLatencyText.IsUnconfirmed(server) ? LatencyKind.Unchecked : server.LatencyMs switch
+        server.IsMeasuringLatency ? LatencyKind.Unchecked : server.LatencyMs switch
         {
             null => server.LatencyFailure is null ? LatencyKind.Unchecked : LatencyKind.None,
             > SlowLatencyMs => LatencyKind.Slow,

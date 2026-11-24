@@ -323,30 +323,10 @@ final class AppModel: ObservableObject {
         }
 
         let beforeStatus = home.status
-        let before = beforeStatus.state
         systemVpn = tunnel.system
         home.status = TunnelView.status(system: tunnel.system, report: container.status.read(), appError: appError)
         if beforeStatus != home.status {
             invalidateLatency()
-            if home.status.state == .error, let id = home.status.serverId, home.status.error == TunnelErrors.serverNotResponding {
-                let epoch = latencyEpoch
-                Task {
-                    guard epoch == latencyEpoch else { return }
-                    try? await container.servers.setLatency([id: .failed(.noResponse)])
-                    if epoch == latencyEpoch, let items = try? await container.servers.servers() {
-                        home.servers = items
-                        latencyUpdated[id] = Date()
-                    }
-                }
-            } else if home.status.state == .connected, !home.status.localSiteFilter, let id = home.status.serverId,
-                      home.servers.first(where: { $0.id == id })?.latency?.failure != nil {
-                let epoch = latencyEpoch
-                Task {
-                    guard epoch == latencyEpoch else { return }
-                    try? await container.servers.setLatency([id: Latency(ms: nil, failure: nil)])
-                    if epoch == latencyEpoch, let items = try? await container.servers.servers() { home.servers = items }
-                }
-            }
         }
         // «Ошибка» при поднятом туннеле — расширение оставило его без ядра (TunnelView): трафик закрыт, а не идет напрямую.
         // При блоке при обрыве это проверяет проба сети (п. 10): ее итог важнее догадки по состоянию туннеля.
@@ -362,10 +342,6 @@ final class AppModel: ObservableObject {
         }
 
         blocked = BlockProbe.blocked(home.status, answered: blockCheck?.answered, tunnelUp: tunnelUp)
-        // Защита подключилась — подпискам «только через VPN» теперь можно обновиться.
-        if before != .connected, home.status.state == .connected {
-            Task { await checkSubscriptions() }
-        }
     }
 
     /// Короткая проба сети без VPN (п. 10): соединения TCP с адресами `BlockProbe.targets`. Туннель без ядра их не пропустит —
@@ -415,16 +391,11 @@ final class AppModel: ObservableObject {
 
     func invalidateLatency() {
         latencyEpoch &+= 1
-        latencyUpdated = [:]
     }
 
-    /// Перерисовка возраста замеров, пока список виден. Сетевых запросов этот такт не создает.
-    func refreshLatencyFreshness() { objectWillChange.send() }
-
     /// «Обновить серверы» на главной и в «Серверах»: список заново и задержка всех серверов через отдельное ядро приложения.
-    /// Замер уже идет — нажатие не считается (кнопка не гаснет, крутится только стрелка); замерили — «Серверы обновлены · пинг
-    /// проверен», как у десктопа; путь сменился во время замера — сообщение, почему итог отброшен. Список перечитывается
-    /// после каждой порции; время и вид пути показываются отдельно от старых результатов.
+    /// Замер уже идет — повторное нажатие не запускает второй проход. Итог — «Проверка серверов завершена».
+    /// Результаты приходят порциями; при смене пути ответы старого прохода отбрасываются.
     func refreshLatency() async {
         guard !home.measuring else { return }
         home.measuring = true
@@ -452,7 +423,7 @@ final class AppModel: ObservableObject {
         for id in results.keys { latencyUpdated[id] = now }
     }
 
-    /// Не пора ли обновить подписки — окно открыто, защита подключилась, раз в 10 минут, пока окно на экране.
+    /// Не пора ли обновить подписки — окно открыто, раз в 10 минут, пока окно на экране.
     func checkSubscriptions() async {
         let notices = await subscriptionActions.updater.updateDue(connected: connected)
         await reload()

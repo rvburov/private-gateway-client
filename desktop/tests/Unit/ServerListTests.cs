@@ -33,6 +33,15 @@ public class ServerListTests
     private static readonly ServerProfile[] All = [Nl, Fi, De, Us, Tr];
 
     [Fact]
+    public void Context_age_does_not_reorder_manual_measurements()
+    {
+        var profiles = new[] { Nl, Fi with { IsLatencyStale = true } };
+        ServerList.Build(profiles, [Main], ServerListQuery.Default, Ru).Single().Servers.Select(s => s.Id).ShouldBe(["fi", "nl"]);
+        ServerList.Build(profiles.Select(s => s with { IsLatencyStale = true }), [Main], ServerListQuery.Default, Ru)
+            .Single().Servers.Select(s => s.Id).ShouldBe(["fi", "nl"]);
+    }
+
+    [Fact]
     public void All_tab_groups_by_subscription_in_their_order_and_manual_servers_last()
     {
         var groups = Build(ServerListQuery.Default);

@@ -507,7 +507,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
     }
 
     [Fact]
-    public void Schedule_runs_by_the_program_clock_and_after_protection_comes_up()
+    public void Schedule_uses_the_configured_clock_without_refreshing_on_connection_changes()
     {
         var context = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(null);
@@ -524,9 +524,11 @@ public sealed class SubscriptionUpdateTests : IDisposable
             _downloads.Requested.ShouldBeEmpty("защита выключена, а обновлять — только через VPN");
 
             _gateway.State = ConnectionState.Connected;
-            _downloads.Requested.ShouldHaveSingleItem("сразу после включения защиты");
+            _downloads.Requested.ShouldBeEmpty("само подключение не обновляет подписки");
+            Settings().Update(s => s with { NotifySelectedServerChange = false });
+            _downloads.Requested.ShouldBeEmpty("другие настройки не запускают загрузку");
             _time.Advance(SubscriptionUpdater.CheckPeriod);
-            _downloads.Requested.Count.ShouldBe(1, "следующий раз — через 12 часов");
+            _downloads.Requested.Count.ShouldBe(1, "настроенное расписание продолжает работать");
         }
         finally
         {

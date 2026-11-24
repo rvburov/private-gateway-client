@@ -27,19 +27,20 @@ namespace PrivateGateway.Client.Tests.UI;
 public sealed class ServersPageTests : WindowHarness
 {
     [AvaloniaFact]
-    public void Compact_latency_hides_stale_results_and_keeps_details_in_card()
+    public void Compact_latency_preserves_manual_history_and_has_no_placeholder()
     {
         var server = new ServerProfile("compact", "Проверка", "", ProxyProtocol.Trojan, TransportSecurity.Tls, "192.0.2.10", 443, "tcp", null);
+        ServerLatencyText.Of(server).ShouldBe(string.Empty);
         var stale = server with { LatencyMs = 42, IsLatencyStale = true };
-        ServerLatencyText.Of(stale).ShouldBe("—");
+        ServerLatencyText.Of(stale).ShouldBe("42 мс");
         ServerLatencyText.Of(stale, card: true).ShouldBe(Loc.Instance["latency.short.stale"]);
-        ServerLatencyText.Of(server with { IsMeasuringLatency = true }).ShouldBe("—");
+        ServerLatencyText.Of(server with { IsMeasuringLatency = true }).ShouldBe("…");
     }
 
     [AvaloniaTheory]
-    [InlineData("Timeout", "тайм-аут", "latency.timeout")]
-    [InlineData("Tls", "—", "latency.tls")]
-    [InlineData("NameResolution", "—", "latency.dns")]
+    [InlineData("Timeout", "Нет связи", "latency.timeout")]
+    [InlineData("Tls", "Нет связи", "latency.tls")]
+    [InlineData("NameResolution", "Нет связи", "latency.dns")]
     public void Saved_failed_probe_shows_its_reason_and_time_then_updates_when_measured(
         string diagnostic, string label, string detailKey)
     {
@@ -82,7 +83,7 @@ public sealed class ServersPageTests : WindowHarness
         nl.Address.ShouldBe("203.0.113.24 · VLESS · REALITY");
         nl.LatencyText.ShouldBe("42 мс");
         group.Rows[5].IsSlow.ShouldBeTrue("148 мс — медленно, серым");
-        group.Rows[6].LatencyText.ShouldBe("—");
+        group.Rows[6].LatencyText.ShouldBe("Нет связи");
         group.Rows[6].IsDown.ShouldBeTrue();
         page.AllTabText.ShouldBe("Все · 7");
         page.HasFilterCount.ShouldBeFalse();
@@ -307,7 +308,7 @@ public sealed class ServersPageTests : WindowHarness
         WaitFor(() => !page.IsRefreshing);
 
         icon.Classes.ShouldNotContain("spin");
-        shell.Toast.Text.ShouldBe("Серверы обновлены · пинг проверен");
+        shell.Toast.Text.ShouldBe("Проверка серверов завершена");
         WaitFor(() => page.Groups[0].UpdatedText == "обновлено " + LocalTime(Time.GetUtcNow()));
     }
 
@@ -330,7 +331,7 @@ public sealed class ServersPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         page.AllTabText.ShouldBe("All · 7");
-        page.Groups[0].Rows[^1].LatencyText.ShouldBe("—");
+        page.Groups[0].Rows[^1].LatencyText.ShouldBe("No connection");
         page.Groups[0].Rows[1].Tag.ShouldBe("selected");
         var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToArray();
         texts.ShouldContain("Servers");

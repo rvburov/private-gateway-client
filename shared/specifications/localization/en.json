@@ -387,7 +387,7 @@
   "ip.copied": "IP copied",
   "server.switch": "Change",
   "server.refresh": "Refresh servers",
-  "server.refreshed": "Servers refreshed · ping checked",
+  "server.refreshed": "Server check completed",
   "server.refreshed.noPing": "Measurement unavailable — check the service",
   "server.quick": "Quick switch · manual",
   "server.all": "All servers ›",
@@ -2133,5 +2133,6 @@
   "error.PGC-SVC-014": "Update the client: this window version cannot display local site filtering without VPN.",
   "account.cleanupPending": "The previous VPN could not be confirmed off. Sign-in is paused. Retry network restoration; if the problem persists, turn off Private Gateway and Connect On Demand in iOS VPN settings.",
   "account.cleanupRetry": "Retry network restoration",
-  "account.restoringNetwork": "Restoring network…"
+  "account.restoringNetwork": "Restoring network…",
+  "servers.latency.unreachable": "No connection"
 }

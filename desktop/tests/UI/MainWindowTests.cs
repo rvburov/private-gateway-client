@@ -712,7 +712,7 @@ public sealed class MainWindowTests : WindowHarness
         WaitFor(() => !main.IsRefreshing);
 
         icon.Classes.ShouldNotContain("spin");
-        shell.Toast.Text.ShouldStartWith("Серверы обновлены");
+        shell.Toast.Text.ShouldStartWith("Проверка серверов завершена");
     }
 
     [AvaloniaFact]

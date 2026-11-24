@@ -69,6 +69,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     private SynchronizationContext? _context;
     private ITimer? _timer;
     private bool _secretAccessBlocked;
+    private (Core.Settings.SubscriptionRefresh Refresh, bool OnlyVpn) _schedule;
 
     public SubscriptionUpdater(
         IServerStore store,
@@ -112,8 +113,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     }
 
     /// <summary>
-    /// Обновлять по расписанию. Работа идет в контексте вызова (окно), загрузка — в фоне. Еще одна
-    /// попытка — сразу после включения защиты и после смены настроек.
+    /// Обновлять по расписанию. Работа идет в контексте вызова (окно), загрузка — в фоне. Смена подключения не запускает загрузку; изменение настроек расписания применяется отдельно.
     /// </summary>
     public void Start()
     {
@@ -122,16 +122,15 @@ public sealed partial class SubscriptionUpdater : IDisposable
             return;
         }
 
+        _schedule = (_settings.Current.SubscriptionRefresh, _settings.Current.UpdateOnlyViaVpn);
         _context = SynchronizationContext.Current;
         _timer = _time.CreateTimer(_ => Post(), null, FirstCheck, CheckPeriod);
-        _gateway.StatusChanged += OnStatusChanged;
         _settings.Changed += OnSettingsChanged;
     }
 
     public void Dispose()
     {
         _timer?.Dispose();
-        _gateway.StatusChanged -= OnStatusChanged;
         _settings.Changed -= OnSettingsChanged;
         _store.Changed -= OnStoreChanged;
         lock (_operationGate)
@@ -326,15 +325,14 @@ public sealed partial class SubscriptionUpdater : IDisposable
         return new UpdateResult(null, failure, statusCode);
     }
 
-    private void OnStatusChanged(object? sender, ConnectionStatus status)
+    private void OnSettingsChanged(object? sender, Core.Settings.AppSettings settings)
     {
-        if (status.State == ConnectionState.Connected)
-        {
-            Post();
-        }
+        var schedule = (settings.SubscriptionRefresh, settings.UpdateOnlyViaVpn);
+        if (_schedule == schedule)
+            return;
+        _schedule = schedule;
+        Post();
     }
-
-    private void OnSettingsChanged(object? sender, Core.Settings.AppSettings settings) => Post();
 
     /// <summary>Проверка по расписанию — в контексте окна: список серверов меняется там же, где его показывают.</summary>
     private void Post()

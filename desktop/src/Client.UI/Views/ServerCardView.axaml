@@ -155,10 +155,7 @@
                        FontWeight="SemiBold" VerticalAlignment="Center" />
           </StackPanel>
         </Border>
-        <Border Classes="chip">
-          <TextBlock Classes="latency" Classes.slow="{Binding IsSlow}" Classes.down="{Binding IsDown}"
-                     Text="{Binding LatencyText}" VerticalAlignment="Center" />
-        </Border>
+
       </StackPanel>
 
       <!-- «Поделиться»: QR-код со ссылкой, предупреждение о ключе и копирование ссылки -->

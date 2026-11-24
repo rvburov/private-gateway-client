@@ -29,13 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -70,7 +65,6 @@ import com.privategateway.client.core.servers.ServerGroup
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.data.LatencyCheck
 import com.privategateway.client.vpn.LatencyProgress
-import kotlinx.coroutines.delay
 import com.privategateway.client.core.servers.ServerList
 import com.privategateway.client.core.servers.ServerListEmpty
 import com.privategateway.client.core.servers.ServerListQuery
@@ -128,16 +122,7 @@ private val FilterGap = 6.dp
  */
 @Composable
 fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions, latencyChecks: Map<String, LatencyCheck>? = null, latencyProgress: LatencyProgress = LatencyProgress()) {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, latencyChecks != null) {
-        if (latencyChecks != null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                now = System.currentTimeMillis()
-                delay(30_000)
-            }
-        }
-    }
+    val now = remember { System.currentTimeMillis() }
     var filterOpen by rememberSaveable { mutableStateOf(false) }
     val locale = LocalConfiguration.current.locales[0]
     val groups = remember(ui.servers, ui.subscriptions, query, locale) { ServerList.build(ui.servers, ui.subscriptions, query, locale) }
@@ -612,19 +597,13 @@ internal fun latencyReason(latency: Latency?): Int? = when (latency?.failure) {
 
 @Composable
 fun LatencyText(server: ServerItem, modifier: Modifier = Modifier, style: TextStyle = PgType.Mono, check: LatencyCheck? = null, checkFreshness: Boolean = false, now: Long = System.currentTimeMillis()) {
-    if (checkFreshness && server.latency != null && (check == null || check.isStale(now))) {
-        val hint = stringResource(R.string.latency_stale_text)
-        Text("—", color = PgColor.Text.Muted, style = style,
-            modifier = modifier.semantics { contentDescription = hint }.testTag("latency.${server.id}"))
-        return
-    }
     val kind = LatencyKind.of(server.latency)
     val ms = server.latency?.ms
     val (text, color) = when (kind) {
         LatencyKind.Good -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Status.Success.Text
         LatencyKind.Slow -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Text.Muted
-        LatencyKind.NoAnswer -> if (server.latency?.failure == LatencyFailure.NoResponse && server.latency?.reason == LatencyReason.Timeout) stringResource(R.string.latency_short_timeout) to PgColor.Status.Warning.Text else "—" to PgColor.Text.Muted
-        LatencyKind.Never -> "—" to PgColor.Text.Muted
+        LatencyKind.NoAnswer -> stringResource(R.string.servers_latency_unreachable) to PgColor.Status.Warning.Text
+        LatencyKind.Never -> "" to PgColor.Text.Muted
     }
 
     val hint = when (kind) {

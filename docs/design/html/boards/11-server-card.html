@@ -125,7 +125,7 @@
   спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или из списка серверов (у демо-серверов ключа нет):
   QR-код со ссылкой, предупреждение о ключе и «Копировать ссылку»; «Скрыть QR» возвращает сведения. Щелчок мимо листа и крестик
   закрывают его, «⋯» в списке открывает снова. У выбранного сервера метка и кнопка внизу идут за щитом: защита включена —
-  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления. Отдельный пример десктопа в режиме внешнего прокси показывает «Выбран для VPN» и «Подключить VPN»: выбор сохранен, а «Подключить VPN» просит подтвердить смену режима.</p>
+  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления. Отдельный пример десктопа в режиме внешнего прокси показывает «Выбран» и «Подключить VPN»: выбор сохранен, а «Подключить VPN» просит подтвердить смену режима.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Карточка · сервер в работе">
@@ -146,7 +146,6 @@
         <div class="sc-chips">
           <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked proxy paused"><span class="sc-dot"></span>Активен</span>
           <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
-          <span class="sc-chip"><span class="sc-ping ">42 мс</span></span>
         </div>
           <div class="sc-inset sc-details" data-page="details">
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
@@ -269,8 +268,7 @@
         <div class="sc-chips">
           <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked paused"><span class="sc-dot"></span>Активен</span>
           <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
-          <span class="sc-chip selected" data-show-state="proxy"><span class="sc-dot"></span><span data-ui-text="externalProxy.vpn.selected">Выбран для VPN</span></span>
-          <span class="sc-chip"><span class="sc-ping down">нет ответа</span></span>
+          <span class="sc-chip selected" data-show-state="proxy"><span class="sc-dot"></span><span data-ui-text="card.status.selected">Выбран</span></span>
         </div>
           <div class="sc-inset sc-details" data-page="details">
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
@@ -279,8 +277,6 @@
             <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
             <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">REALITY</span></div>
             <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">Xray-core</span></div>
-            <div class="sc-detail"><span class="t-small">Проверка</span><span class="sc-val">Время ожидания ответа истекло</span></div>
-            <div class="sc-detail"><span class="t-small">Измерено</span><span class="sc-val">08.11 23:08</span></div>
           </div>
           <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename" hidden>
             <span class="t-overline">Название</span>
@@ -403,7 +399,6 @@
       </div>
       <div class="sc-mid">
         <div class="sc-chips">
-          <span class="sc-chip"><span class="sc-ping ">64 мс</span></span>
         </div>
           <div class="sc-inset sc-details" data-page="details" hidden>
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">192.0.2.88:443</span></div>
@@ -523,7 +518,6 @@
         <div class="sc-chips">
           <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked proxy paused"><span class="sc-dot"></span>Активен</span>
           <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
-          <span class="sc-chip"><span class="sc-ping down">нет ответа</span></span>
         </div>
           <div class="sc-inset sc-details" data-page="details" hidden>
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.10:443</span></div>

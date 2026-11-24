@@ -137,7 +137,7 @@ public static class ServerList
         var names = StringComparer.Create(culture, ignoreCase: true);
         var ordered = sort == ServerSort.Name
             ? rows.OrderBy(s => s.Name, names)
-            : rows.OrderBy(s => s.IsLatencyStale || s.LatencyMs is null).ThenBy(s => s.IsLatencyStale ? null : s.LatencyMs).ThenBy(s => s.Name, names);
+            : rows.OrderBy(s => s.LatencyMs is null).ThenBy(s => s.LatencyMs).ThenBy(s => s.Name, names);
         return ordered.ToList();
     }
 }

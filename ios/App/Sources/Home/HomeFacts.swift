@@ -227,12 +227,14 @@ struct WebIpLook: Equatable {
 /// Задержка сервера: быстрый — зеленым, медленный — серым, нет ответа — «нет» оранжевым, не мерили — «—». Сервер, за который
 /// ядро телефона не берется (Hysteria2, TUIC), не мерили вовсе — тоже «—», а не «нет ответа»: он не молчал, его не спрашивали.
 enum LatencyLook {
-    /// В списке только актуальное число или тайм-аут; подробности остаются в карточке.
+    /// В списке последняя ручная проверка: число или «Нет связи»; до проверки поле пустое.
     static func list(_ latency: Latency?, _ texts: PgTexts, fresh: Bool) -> (text: String, color: PgRGBA, hint: String) {
-        if fresh, latency?.ms != nil || (latency?.failure == .noResponse && latency?.reason == .timeout) {
-            return of(latency, texts)
+        if latency?.ms != nil { return of(latency, texts) }
+        if latency?.failure != nil {
+            let label = texts.text(key: "servers.latency.unreachable") ?? ""
+            return (label, PgColor.Status.Warning.text, label)
         }
-        return ("—", PgColor.Text.muted, texts.androidServersLatencyNever)
+        return ("", PgColor.Text.muted, texts.androidServersLatencyNever)
     }
 
     static func of(_ latency: Latency?, _ texts: PgTexts) -> (text: String, color: PgRGBA, hint: String) {
@@ -285,7 +287,7 @@ enum QuickMenu {
         let inUse = home.inUse?.id
         let picked = Self.servers(home)
         let items = picked.map { server -> PgMenuItem in
-            let latency = LatencyLook.of(server.latency, texts)
+            let latency = LatencyLook.list(server.latency, texts, fresh: true)
             return PgMenuItem(
                 title: server.title, current: server.id == inUse, flag: server.countryCode, caption: server.summary, trailing: latency.text,
                 trailingColor: latency.color

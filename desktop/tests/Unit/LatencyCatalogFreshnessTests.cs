@@ -17,41 +17,26 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
     private readonly FakeSecrets _secrets = new();
 
     [Fact]
-    public async Task A_stable_authenticated_context_starts_one_debounced_measurement_and_counter_ticks_do_not_repeat_it()
+    public async Task Startup_switching_and_counter_ticks_do_not_start_measurements()
     {
         var user = Store();
         var gateway = new StreamingGateway(automatic: true);
         using var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway, _time);
-        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        catalog.Changed += (_, _) =>
-        {
-            if (catalog.Servers[0].LatencyMs == 42 && catalog.Servers.All(server => !server.IsMeasuringLatency))
-            {
-                finished.TrySetResult();
-            }
-        };
-        _time.Advance(TimeSpan.FromMilliseconds(999));
-        gateway.Starts.ShouldBe(0);
-        _time.Advance(TimeSpan.FromMilliseconds(1));
-        await gateway.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-        gateway.Results.Writer.TryWrite(new(user.Servers[0].Id, new LatencyResult(42, null)));
-        gateway.Results.Writer.Complete();
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-
+        gateway.Send(gateway.Status with { State = ConnectionState.Connected, ServerId = user.Servers[0].Id });
+        gateway.Send(gateway.Status with { ServerId = user.Servers[1].Id });
         gateway.Send(gateway.Status with { Traffic = new TrafficStats(42, 1, 2) });
-        _time.Advance(TimeSpan.FromMinutes(1));
-
-        gateway.Starts.ShouldBe(1, "завершение своей пробы и тики трафика не запускают следующий круг");
-        catalog.Servers[0].LatencyMs.ShouldBe(42);
+        _time.Advance(TimeSpan.FromMinutes(10));
+        await Task.WhenAny(gateway.Started.Task, Task.Delay(100, TestContext.Current.CancellationToken));
+        gateway.Starts.ShouldBe(0);
     }
 
     [Fact]
-    public async Task Revoking_account_access_cancels_an_automatic_measurement_and_does_not_restart_it()
+    public async Task Revoking_account_access_cancels_a_manual_measurement_and_does_not_restart_it()
     {
         var user = Store();
         var gateway = new StreamingGateway(automatic: true);
         using var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway, _time);
-        _time.Advance(TimeSpan.FromSeconds(1));
+        var refreshing = catalog.RefreshAsync(TestContext.Current.CancellationToken);
         await gateway.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         gateway.Authorized = false;
@@ -59,6 +44,7 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
         await gateway.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         _time.Advance(TimeSpan.FromMinutes(1));
 
+        await refreshing;
         gateway.Starts.ShouldBe(1);
         catalog.Servers.ShouldAllBe(server => server.LatencyMs == null);
     }
@@ -81,6 +67,8 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
         };
 
         var refreshing = catalog.RefreshAsync(TestContext.Current.CancellationToken);
+        (await catalog.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeFalse("повторное нажатие не запускает второй проход");
+        gateway.Starts.ShouldBe(1);
         gateway.Results.Writer.TryWrite(new(first, new LatencyResult(42, null, CheckedAt: _time.GetUtcNow(), Route: "vpn")));
         await visible.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
@@ -113,10 +101,10 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
     }
 
     [Theory]
-    [InlineData(ErrorCodes.ServerNotResponding, LatencyFailure.NoResponse, "Connection")]
-    [InlineData(ErrorCodes.ServerNotFound, LatencyFailure.NoResponse, "NameResolution")]
-    [InlineData(ErrorCodes.UnsupportedServer, LatencyFailure.Unsupported, null)]
-    public void A_failed_actual_connection_replaces_the_previous_successful_latency(string code, LatencyFailure failure, string? diagnostic)
+    [InlineData(ErrorCodes.ServerNotResponding)]
+    [InlineData(ErrorCodes.ServerNotFound)]
+    [InlineData(ErrorCodes.UnsupportedServer)]
+    public void Connection_failures_do_not_overwrite_manual_measurements(string code)
     {
         var user = Store();
         var gateway = new StreamingGateway();
@@ -134,14 +122,14 @@ public sealed class LatencyCatalogFreshnessTests : IDisposable
         });
 
         var profile = catalog.Servers[0];
-        profile.LatencyMs.ShouldBeNull("старый положительный пинг не должен пережить отказ фактического подключения");
-        profile.LatencyFailure.ShouldBe(failure);
-        profile.LatencyDiagnostic.ShouldBe(diagnostic);
-        profile.IsLatencyStale.ShouldBeFalse("последний известный результат — именно отказ подключения");
+        profile.LatencyMs.ShouldBe(12, "результат ручной проверки отделен от состояния VPN");
+        profile.LatencyFailure.ShouldBeNull();
+        profile.LatencyDiagnostic.ShouldBeNull();
+        profile.IsLatencyStale.ShouldBeTrue("путь изменился, но история ручного замера сохранена");
         profile.LastSuccessfulLatencyMs.ShouldBe(12);
         profile.LastSuccessfulLatencyAt.ShouldBe(succeededAt);
         var reopened = new SqliteServerCatalog(new SqliteDatabase(_paths), _secrets, _time).Servers[0];
-        reopened.LatencyMs.ShouldBeNull();
+        reopened.LatencyMs.ShouldBe(12);
         reopened.LastSuccessfulLatencyMs.ShouldBe(12);
         reopened.LastSuccessfulLatencyAt.ShouldBe(succeededAt);
     }

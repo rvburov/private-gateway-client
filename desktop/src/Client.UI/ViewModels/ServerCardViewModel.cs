@@ -110,7 +110,7 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     /// <summary>«Активен» — защита через него; «Выбран» — к нему подключит кнопка-щит.</summary>
     public string? StatusText => IsInUse
         ? Loc.Instance["card.status.active"]
-        : IsSelected ? Loc.Instance[_target?.IsExternalProxy == true ? "externalProxy.vpn.selected" : "card.status.selected"] : null;
+        : IsSelected ? Loc.Instance["card.status.selected"] : null;
 
     public bool HasStatus => StatusText is not null;
 
@@ -136,22 +136,6 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
                     ?? Loc.Instance[ServerFacts.IsEncrypted(_server) ? "card.security.builtin" : "card.security.none"]),
                 new(Loc.Instance["card.core"], ServerFacts.CoreName(_server.Protocol)),
             };
-            if (ServerLatencyText.Reason(_server) is { } reason)
-            {
-                details.Add(new(Loc.Instance["card.latency.reason"], reason));
-            }
-
-            if (_server.LatencyCheckedAt is { } at)
-            {
-                details.Add(new(Loc.Instance["card.latency.checked"], at.ToLocalTime().ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)));
-            }
-            if (_server.LastSuccessfulLatencyMs is { } success && _server.LastSuccessfulLatencyAt is { } succeededAt
-                && (_server.LatencyFailure is not null || _server.IsLatencyStale))
-            {
-                details.Add(new(Loc.Instance["card.latency.lastSuccess"], success.ToString(CultureInfo.InvariantCulture)
-                    + " " + Loc.Instance["unit.ms"] + " · " + succeededAt.ToLocalTime().ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)));
-            }
-
             return details;
         }
     }

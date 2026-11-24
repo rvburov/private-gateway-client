@@ -17,13 +17,13 @@ private struct EmptySource: SubscriptionSource {
 /// откуда сервер, чип состояния, «нет ответа», сведения, «Сохранить», удаление только после «да», «Ссылка скопирована» и
 /// «Сервер удален»; список с открытой панелью фильтра и каждая страница карточки рисуются на обоих языках.
 final class ServersTests: XCTestCase {
-    func testCompactLatencyDoesNotAdvertiseStaleOrFailedMeasurements() {
+    func testCompactLatencyPreservesManualResultsAndHasNoDash() {
         let texts = PgTexts(.russian)
         XCTAssertEqual(LatencyLook.list(.of(42), texts, fresh: true).text, "42 мс")
-        XCTAssertEqual(LatencyLook.list(.of(42), texts, fresh: false).text, "—")
-        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .tls), texts, fresh: true).text, "—")
-        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: true).text, texts.latencyShortTimeout)
-        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: false).text, "—")
+        XCTAssertEqual(LatencyLook.list(.of(42), texts, fresh: false).text, "42 мс")
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .tls), texts, fresh: true).text, texts.text(key: "servers.latency.unreachable"))
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: true).text, texts.text(key: "servers.latency.unreachable"))
+        XCTAssertEqual(LatencyLook.list(.failed(.noResponse, reason: .timeout), texts, fresh: false).text, texts.text(key: "servers.latency.unreachable"))
     }
 
     private let texts = PgTexts(.russian)
@@ -126,8 +126,8 @@ final class ServersTests: XCTestCase {
 
         let hysteria = CardLook.details(servers[2], host: "203.0.113.57:8443", texts)
         XCTAssertEqual(hysteria.first { $0.identifier == "card.core" }?.value, texts.androidCardCoreNone, "ядра для Hysteria2 нет")
-        XCTAssertEqual(hysteria.last.map { [$0.label, $0.value] }, [texts.cardLatencyReason, texts.latencyUnsupported], "почему задержки нет")
-        XCTAssertEqual(CardLook.details(servers[3], host: "203.0.113.9:443", texts).last?.value, texts.latencyNoResponse)
+        XCTAssertFalse(hysteria.contains { $0.identifier == "card.latencyReason" })
+        XCTAssertEqual(CardLook.details(servers[3], host: "203.0.113.9:443", texts).count, 6)
     }
 
     @MainActor

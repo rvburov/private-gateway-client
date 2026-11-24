@@ -4,7 +4,7 @@ using PrivateGateway.Client.UI.Localization;
 
 namespace PrivateGateway.Client.UI.ViewModels;
 
-/// <summary>Отсутствие замера не означает отказ сервера. Одна подпись для списка и карточки.</summary>
+/// <summary>Компактный результат ручной проверки; отсутствие замера не означает отказ сервера.</summary>
 public static class ServerLatencyText
 {
     public static bool IsUnconfirmed(ServerProfile server) => server.LatencyFailure == LatencyFailure.CoreFailed
@@ -13,15 +13,14 @@ public static class ServerLatencyText
     public static string Of(ServerProfile server, bool card = false)
     {
         if (server.IsMeasuringLatency)
-            return card ? "…" : "—";
-        if (server.IsLatencyStale)
-            return card ? Loc.Instance["latency.short.stale"] : "—";
+            return "…";
+        if (card && server.IsLatencyStale)
+            return Loc.Instance["latency.short.stale"];
         if (server.LatencyMs is { } ms)
             return ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"];
         if (card)
             return Loc.Instance[server.LatencyFailure is null ? "latency.unchecked" : "card.latency.none"];
-        return server.LatencyFailure == LatencyFailure.NoResponse && server.LatencyDiagnostic == "Timeout"
-            ? Loc.Instance["latency.short.timeout"] : "—";
+        return server.LatencyFailure is not null ? Loc.Instance["servers.latency.unreachable"] : string.Empty;
     }
 
     public static string? Reason(ServerProfile server) => server.IsLatencyStale ? Loc.Instance["latency.stale"]

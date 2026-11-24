@@ -395,7 +395,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         shell.Navigate(Pages.Servers);
         var servers = shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>();
         var row = servers.Groups.SelectMany(g => g.Rows).Single(r => r.Id == vpn.Id);
-        row.Tag.ShouldBe("Выбран для VPN");
+        row.Tag.ShouldBe("выбран");
         row.OpenCommand.Execute(row.Id);
         Dispatcher.UIThread.RunJobs();
         var card = shell.Overlay.Sheet.ShouldBeOfType<ServerCardViewModel>();

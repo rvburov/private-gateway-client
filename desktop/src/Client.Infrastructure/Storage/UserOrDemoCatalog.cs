@@ -22,12 +22,9 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
     private CancellationTokenSource? _refreshStop;
     private long _latencyGeneration;
     private string _catalogStamp;
-    private readonly TimeProvider _time;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
-    private long _automaticGeneration;
-    private long _lastMeasuredGeneration = -1;
-    private bool _automaticAllowed;
+    private bool _measurementAccess;
     private bool _disposed;
 
     public UserOrDemoCatalog(SqliteServerCatalog user, DemoServerCatalog demo, IGatewayClient gateway, TimeProvider? time = null)
@@ -38,16 +35,15 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
         _user = user;
         _demo = demo;
         _gateway = gateway;
-        _time = time ?? TimeProvider.System;
+        _ = time;
         _lifetimeToken = _lifetime.Token;
         _lastStatus = gateway.Status;
-        _automaticAllowed = gateway.CanAutomaticallyMeasureLatency;
+        _measurementAccess = gateway.CanAutomaticallyMeasureLatency;
         _catalogStamp = CatalogStamp();
         _user.InvalidateLatency();
         gateway.StatusChanged += OnStatusChanged;
         user.Changed += OnUserChanged;
         demo.Changed += OnDemoChanged;
-        QueueAutomaticRefresh();
     }
 
     public event EventHandler? Changed;
@@ -73,9 +69,9 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
 
     private int _measuring;
 
-    public Task<bool> RefreshAsync(CancellationToken cancellationToken = default) => RefreshCoreAsync(null, cancellationToken);
+    public Task<bool> RefreshAsync(CancellationToken cancellationToken = default) => RefreshCoreAsync(cancellationToken);
 
-    private async Task<bool> RefreshCoreAsync(long? automaticGeneration, CancellationToken cancellationToken)
+    private async Task<bool> RefreshCoreAsync(CancellationToken cancellationToken)
     {
         if (IsDemo)
         {
@@ -91,11 +87,6 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
         long generation;
         lock (_latencyGate)
         {
-            if (automaticGeneration is { } expected && expected != Volatile.Read(ref _automaticGeneration))
-            {
-                Volatile.Write(ref _measuring, 0);
-                return false;
-            }
             _refreshStop = stop;
             generation = _latencyGeneration;
         }
@@ -114,10 +105,6 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
                     _user.SetLatency(new Dictionary<string, LatencyResult> { [item.Key] = item.Value });
                     any = true;
                 }
-            }
-            if (any && generation == Volatile.Read(ref _latencyGeneration))
-            {
-                Volatile.Write(ref _lastMeasuredGeneration, generation);
             }
             return any;
         }
@@ -142,29 +129,18 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
 
     private void OnStatusChanged(object? sender, ConnectionStatus status)
     {
-        var schedule = false;
         lock (_latencyGate)
         {
-            var automaticAllowed = _gateway.CanAutomaticallyMeasureLatency;
-            var accessChanged = automaticAllowed != _automaticAllowed;
-            _automaticAllowed = automaticAllowed;
+            var canMeasure = _gateway.CanAutomaticallyMeasureLatency;
+            var accessChanged = canMeasure != _measurementAccess;
+            _measurementAccess = canMeasure;
             var changed = _lastStatus.State != status.State || _lastStatus.Mode != status.Mode || _lastStatus.ServerId != status.ServerId
                 || _lastStatus.Since != status.Since
                 || _lastStatus.NetworkChangedAt != status.NetworkChangedAt || _lastStatus.NetworkUnavailable != status.NetworkUnavailable
                 || _lastStatus.LocalSiteFilter != status.LocalSiteFilter
                 || _lastStatus.CaptivePauseUntil != status.CaptivePauseUntil;
-            var connectionFailure = status.ErrorCode switch
-            {
-                ErrorCodes.ServerNotResponding => new LatencyResult(null, LatencyFailure.NoResponse, "Connection"),
-                ErrorCodes.ServerNotFound => new LatencyResult(null, LatencyFailure.NoResponse, "NameResolution"),
-                ErrorCodes.UnsupportedServer => LatencyResult.Failed(LatencyFailure.Unsupported),
-                ErrorCodes.CoreFailed => LatencyResult.Failed(LatencyFailure.CoreFailed),
-                _ => null,
-            };
-            var failed = connectionFailure is not null && status.ServerId is not null
-                && (_lastStatus.ErrorCode != status.ErrorCode || _lastStatus.ServerId != status.ServerId || _lastStatus.Since != status.Since);
             _lastStatus = status;
-            if (changed || accessChanged && !automaticAllowed)
+            if (changed || accessChanged && !canMeasure)
             {
                 _latencyGeneration++;
                 _refreshStop?.Cancel();
@@ -174,24 +150,11 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
             {
                 _user.InvalidateLatency(expiredOnly: true);
             }
-            if (failed)
-            {
-                _user.SetLatency(new Dictionary<string, LatencyResult>
-                {
-                    [status.ServerId!] = connectionFailure!,
-                });
-            }
-            schedule = changed || accessChanged;
-        }
-        if (schedule)
-        {
-            QueueAutomaticRefresh();
         }
     }
 
     private void OnUserChanged(object? sender, EventArgs e)
     {
-        var schedule = false;
         lock (_latencyGate)
         {
             var stamp = CatalogStamp();
@@ -201,14 +164,9 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
                 _latencyGeneration++;
                 _refreshStop?.Cancel();
                 _user.InvalidateLatency();
-                schedule = true;
             }
         }
         Changed?.Invoke(this, e);
-        if (schedule)
-        {
-            QueueAutomaticRefresh();
-        }
     }
 
     private void OnDemoChanged(object? sender, EventArgs e)
@@ -219,49 +177,6 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
         }
     }
 
-    private void QueueAutomaticRefresh()
-    {
-        var generation = Interlocked.Increment(ref _automaticGeneration);
-        if (!_disposed && _gateway.Service is not (ServiceKind.Simulated or ServiceKind.None) && _gateway.HasReceivedStatus)
-        {
-            _ = AutomaticallyRefreshAsync(generation);
-        }
-    }
-
-    private async Task AutomaticallyRefreshAsync(long generation)
-    {
-        try
-        {
-            // Один замер после успокоения изменений; тики счетчиков и результат самого замера его не запускают.
-            await Task.Delay(TimeSpan.FromSeconds(1), _time, _lifetimeToken).ConfigureAwait(false);
-            for (var waiting = 0; waiting < 150 && generation == Volatile.Read(ref _automaticGeneration); waiting++)
-            {
-                if (_disposed || !_gateway.CanAutomaticallyMeasureLatency || _gateway.Service == ServiceKind.Simulated
-                    || _user.Servers.Count == 0 || _gateway.Status.NetworkUnavailable || _gateway.Status.IsPaused
-                    || _gateway.Status.State is not (ConnectionState.Connected or ConnectionState.Off or ConnectionState.Blocked))
-                {
-                    return;
-                }
-                if (Volatile.Read(ref _measuring) == 0)
-                {
-                    if (Volatile.Read(ref _lastMeasuredGeneration) != Volatile.Read(ref _latencyGeneration))
-                    {
-                        await RefreshCoreAsync(generation, _lifetimeToken).ConfigureAwait(false);
-                    }
-                    return;
-                }
-                await Task.Delay(TimeSpan.FromMilliseconds(100), _time, _lifetimeToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (_lifetimeToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
-        {
-            // Фоновая попытка не открывает диалог и не повторяется по собственному отказу. Кнопка остается доступна.
-        }
-    }
-
     public void Dispose()
     {
         if (_disposed)
@@ -269,7 +184,6 @@ public sealed class UserOrDemoCatalog : IServerCatalog, IDisposable
             return;
         }
         _disposed = true;
-        Interlocked.Increment(ref _automaticGeneration);
         _gateway.StatusChanged -= OnStatusChanged;
         _user.Changed -= OnUserChanged;
         _demo.Changed -= OnDemoChanged;

@@ -179,13 +179,6 @@ struct RootView: View {
 
             await speed.run()
         }
-        .task(id: latencyWanted) {
-            guard latencyWanted else { return }
-            while !Task.isCancelled {
-                model.refreshLatencyFreshness()
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-            }
-        }
         .onChange(of: model.home.servers) { _ in
             // Список серверов изменился, пока открыт предпросмотр «Добавить» (обновление подписки, удаление): дубли и «уже
             // добавлена» — заново, иначе кнопка обещала бы не то, что сделает добавление.
@@ -413,9 +406,6 @@ struct RootView: View {
         tab == .check && !adding && phase == .active
     }
 
-    private var latencyWanted: Bool {
-        tab == .servers && !adding && phase == .active
-    }
 
     /// «Проверить», открытие «Проверки» и смена состояния защиты на ней: прокси и VPN других приложений, внешний IP, журнал,
     /// затем задержка (`CheckModel`).
