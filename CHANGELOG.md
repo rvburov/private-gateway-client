@@ -21,7 +21,7 @@
 
 ## [Не выпущено]
 
-## [0.4.2]
+## [0.4.2] — 2026-11-24
 
 ### Исправлено
 
@@ -216,7 +216,8 @@
 - Программа пока не подписана сертификатом разработчика: при первом запуске Windows и macOS попросят подтверждение —
   что нажать, написано на странице выпуска.
 
-[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.4.1...HEAD
+[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/rvburov/private-gateway-client/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/rvburov/private-gateway-client/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/rvburov/private-gateway-client/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/rvburov/private-gateway-client/compare/v0.3.0...v0.3.1
