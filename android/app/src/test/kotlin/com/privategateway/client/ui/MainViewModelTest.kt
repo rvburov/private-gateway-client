@@ -312,6 +312,22 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a subscription resetting the country of an existing id triggers a new lookup`() {
+        val lookedUp = java.util.concurrent.atomic.AtomicInteger()
+        countryAnswer = { host ->
+            if (host == "vpn.example.com") { lookedUp.incrementAndGet(); "US" } else ""
+        }
+        wait { servers.add(listOf(Fixtures.servers().first().copy(host = "vpn.example.com", name = "Country retry", countryCode = ""))) }
+        val before = wait { model.ui.first { it.servers.any { server -> server.displayName == "Country retry" && server.countryCode == "US" } } }
+        val id = before.servers.single { it.displayName == "Country retry" }.id
+        val count = lookedUp.get()
+        // Такое же поле сбрасывает refresh подписки, когда в новой ссылке остается имя хоста.
+        wait { database.servers().setAddressCountry(id, "") }
+        val after = wait { model.ui.first { lookedUp.get() > count && it.servers.any { server -> server.id == id && server.countryCode == "US" } } }
+        assertEquals(id, after.servers.single { it.displayName == "Country retry" }.id)
+    }
+
+    @Test
     fun `first import selects the first new server and a later one keeps the choice`() {
         val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
         val text = links.joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }

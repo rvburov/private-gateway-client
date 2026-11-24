@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -308,10 +309,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             // Новые профили и восстановившийся путь повторяют неизвестные страны. Тики скорости и пинга DNS не запускают.
             combine(
-                servers.servers.map { list -> list.map { it.id }.sorted() }.distinctUntilChanged(),
+                servers.servers.map { list -> list.map { it.id to it.countryCode }.sortedBy { it.first } }.distinctUntilChanged(),
                 networks.networks.map { HomeNetwork.identity(it) }.distinctUntilChanged(),
                 monitor.status.map { Triple(it.state, it.since, it.offline) }.distinctUntilChanged(),
-            ) { ids, network, path -> Triple(ids, network, path) }.collect { servers.locate() }
+            ) { ids, network, path -> Triple(ids, network, path) }.conflate().collect { servers.locate() }
         }
         viewModelScope.launch {
             networks.networks.map { list -> list.filter { it.kind != com.privategateway.client.core.inspect.PhoneNetworkKind.Vpn }
