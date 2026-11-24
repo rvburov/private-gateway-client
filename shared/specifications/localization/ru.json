@@ -2043,6 +2043,8 @@
   "error.PGC-ACC-001": "Нет доступа: войдите в аккаунт",
   "about.updates.signIn": "Войдите в аккаунт, чтобы проверять обновления.",
   "android.update.install": "Скачать и установить",
+  "android.update.continue": "Продолжить установку",
+  "android.update.confirmation": "APK загружен. Подтвердите установку в окне Android.",
   "android.update.downloading": "Загружаем обновление {0}…",
   "android.update.badFile": "Файл обновления не прошел проверку и не будет установлен. Попробуйте еще раз.",
   "android.update.allow": "Разрешите Private Gateway устанавливать обновления: Android откроет нужную настройку, затем нажмите «Скачать и установить» еще раз.",

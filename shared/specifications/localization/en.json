@@ -2043,6 +2043,8 @@
   "error.PGC-ACC-001": "No access: sign in to the account",
   "about.updates.signIn": "Sign in to your account to check for updates.",
   "android.update.install": "Download and install",
+  "android.update.continue": "Continue installation",
+  "android.update.confirmation": "APK downloaded. Confirm installation in the Android dialog.",
   "android.update.downloading": "Downloading update {0}…",
   "android.update.badFile": "The update file failed verification and will not be installed. Try again.",
   "android.update.allow": "Allow Private Gateway to install updates: Android opens the setting, then press “Download and install” again.",

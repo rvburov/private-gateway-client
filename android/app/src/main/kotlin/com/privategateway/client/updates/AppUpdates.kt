@@ -36,6 +36,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -129,6 +130,7 @@ class AppUpdates @Inject constructor(
 
     /** Повтор того же callback не открывает второе окно в этом процессе. После холодного запуска нужен новый Intent Android. */
     private var confirmationSession: Int? = null
+    private val continuing = AtomicBoolean(false)
 
     /** Когда в этом процессе проверка при показе окна или по кнопке последний раз спрашивала сайт. */
     @Volatile
@@ -251,6 +253,17 @@ class AppUpdates @Inject constructor(
             return null
         }
 
+        if (current.step == InstallStep.Installing || session != null) {
+            if (!continuing.compareAndSet(false, true)) return null
+            return scope.launch {
+                try {
+                    lock.withLock { continueInstallation() }
+                } finally {
+                    continuing.set(false)
+                }
+            }
+        }
+
         if (!canInstall()) {
             // Разрешение «Установка неизвестных приложений» дает только пользователь: открыть ему эту настройку.
             journal.info("update install  permission needed")
@@ -261,6 +274,37 @@ class AppUpdates @Inject constructor(
 
         view.update { it.copy(step = InstallStep.Downloading, received = 0, total = 0) }
         return scope.launch { lock.withLock { fetchAndInstall() } }
+    }
+
+    /** APK уже у Android: явное продолжение запрашивает новое подтверждение, не бросает сессию и не качает файл снова. */
+    private suspend fun continueInstallation() {
+        try {
+            val waiting = session ?: settings.updateInstallation.first() ?: run {
+                journal.warning("update install  no session to continue")
+                view.update { it.copy(step = InstallStep.Failed) }
+                return
+            }
+            if (alreadyInstalled(waiting)) {
+                finishInstallation()
+                view.update { it.copy(status = UpdateStatus.UpToDate, version = null, step = InstallStep.None) }
+            } else if (waiting.committed && installer.owns(waiting.id)) {
+                session = waiting
+                confirmationSession = null
+                prompt.value = null
+                view.update { it.copy(step = InstallStep.Installing) }
+                withContext(Dispatchers.IO) { installer.resume(waiting.id) }
+                journal.info("update install  confirmation requested")
+            } else {
+                finishInstallation()
+                journal.warning("update install  session no longer available")
+                view.update { it.copy(step = InstallStep.Failed) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            journal.warning("update install  cannot continue " + e.javaClass.simpleName)
+            view.update { it.copy(step = InstallStep.Failed) }
+        }
     }
 
     /** Итог сессии установки от Android ([UpdateInstallReceiver]); итог другой, брошенной сессии — ничего. */

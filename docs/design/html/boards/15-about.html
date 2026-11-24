@@ -115,7 +115,9 @@
   macOS служба обновление не ставит: «Скачать на сайте» открывает страницу «Скачать клиент». Установщики разделены на Apple Silicon серии M (ARM64) и Intel (x64), с проверкой бинарных требований macOS 13 и новее; приемка старых ОС выполняется отдельно. Android проверяет сам при показе
   окна и в фоне (не чаще раза в 12 часов; новая версия без окна — уведомление, у «О программе» в «Настройках» — метка
   «Новое»): «Скачать и установить» — загрузка с полосой, сверка с подписанным манифестом и окно
-  установки Android. После перезапуска клиент восстанавливает свою уже переданную Android сессию и запрашивает у системы
+  установки Android. После 100 % загрузки — «APK загружен. Подтвердите установку в окне Android.» и
+  «Продолжить установку»: повторно запрашивает подтверждение той же сессии без скачивания APK.
+  Системный экран открывается только у активного окна (RESUMED). После перезапуска клиент восстанавливает свою уже переданную Android сессию и запрашивает у системы
   новое подтверждение без повторной загрузки APK. Оно открывается, когда окно приложения на экране. Незавершенная подготовка
   или пропавшая сессия требуют повтора, если новая версия еще не установлена. Старый Intent не сохраняется. Отмена
   подтверждения сохраняет прежнюю рабочую версию. На Android под полосой только объем файла.</p>
@@ -167,10 +169,10 @@
             </div>
             <div class="up-phase done">
               <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-              <span class="t-caption t-wrap">Обновление готово</span>
+              <span class="t-caption t-wrap" data-ui-text="android.update.confirmation">APK загружен. Подтвердите установку в окне Android.</span>
               <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
               <div class="up-track"><div class="up-fill done"></div></div>
-              <div class="up-actions"><button class="btn-primary" data-toast="Android спрашивает: установить обновление Private Gateway?">Скачать и установить</button><button class="btn-secondary" data-goto="a-latest">Проверить</button></div>
+              <div class="up-actions"><button class="btn-primary" data-ui-text="android.update.continue" data-toast="Android заново запросит подтверждение той же сессии — APK повторно не скачивается">Продолжить установку</button></div>
             </div>
           </div>
         </div>

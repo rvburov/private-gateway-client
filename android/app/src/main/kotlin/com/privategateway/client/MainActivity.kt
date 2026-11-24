@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
         // Обновление: экран Android (разрешение на установку или подтверждение) открывается, только пока окно на экране —
         // из фона Android его не покажет, а запрос дождется следующего показа окна.
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 updates.prompts.filterNotNull().collect { openSystemScreen(it) }
             }
         }
@@ -256,10 +256,14 @@ class MainActivity : ComponentActivity() {
 
     /** Экран Android для обновления; его нет (редкая прошивка) — поставить отсюда нельзя, запасной путь — сайт. */
     private fun openSystemScreen(screen: Intent) {
-        updates.prompted(screen)
         try {
             startActivity(screen)
+            updates.prompted(screen)
         } catch (_: ActivityNotFoundException) {
+            updates.prompted(screen)
+            updates.promptFailed()
+        } catch (_: SecurityException) {
+            updates.prompted(screen)
             updates.promptFailed()
         }
     }

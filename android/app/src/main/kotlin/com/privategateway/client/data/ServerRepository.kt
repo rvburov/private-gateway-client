@@ -20,6 +20,11 @@ import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.SubscriptionMerge
 import com.privategateway.client.core.subscriptions.UnreadableServer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -277,17 +282,24 @@ class ServerRepository @Inject constructor(
             if (countries.renewed()) dao.forgetAddressCountries()
             dao.withoutAddressCountry()
         }
-        for (entity in pending) {
-            val host = open(entity)?.host ?: continue
-            // DNS не держит блокировку импорта и переключения серверов.
-            val code = countries.resolvedCountry(host)
-            writes.withLock {
-                val current = dao.byId(entity.id)
-                if (current != null && current.sealed.contentEquals(entity.sealed)) {
-                    dao.setAddressCountry(entity.id, code)
+        val hosts = pending.mapNotNull { entity -> open(entity)?.host?.let { it to entity } }
+            .groupBy({ it.first }, { it.second })
+        val slots = Semaphore(4)
+        coroutineScope {
+            hosts.map { (host, entries) -> async {
+                // Один DNS-запрос на общий вход; до четырех разных адресов одновременно, без блокировки импорта.
+                val code = slots.withPermit { countries.resolvedCountry(host) }
+                writes.withLock {
+                    for (entity in entries) {
+                        val current = dao.byId(entity.id)
+                        if (current != null && current.sealed.contentEquals(entity.sealed)) {
+                            dao.setAddressCountry(entity.id, code)
+                        }
+                    }
                 }
-            }
+            } }.awaitAll()
         }
+        Unit
     }
 
     /**

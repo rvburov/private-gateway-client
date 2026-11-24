@@ -142,7 +142,7 @@ class ServerRepositoryTest {
 
     /** Геобаза теста: адрес → код; [renewed] — как после обновления приложения. */
     private class FakeCountries(val codes: MutableMap<String, String>) : CountryLookup {
-        val asked = mutableListOf<String>()
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
         var renewed = false
 
         override suspend fun country(host: String): String {

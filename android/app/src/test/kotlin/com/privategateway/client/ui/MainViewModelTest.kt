@@ -99,7 +99,14 @@ class MainViewModelTest {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var settings: SettingsRepository
     private lateinit var model: MainViewModel
-    private val servers by lazy { ServerRepository(database, FakeBox()) }
+    private val countryCodes = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var countryAnswer: suspend (String) -> String = { countryCodes[it].orEmpty() }
+    private val countries = object : com.privategateway.client.data.CountryLookup {
+        override suspend fun country(host: String) = if (com.privategateway.client.core.countries.IpLiteral.parse(host) != null) countryAnswer(host) else ""
+        override suspend fun resolvedCountry(host: String) = countryAnswer(host)
+        override suspend fun renewed() = false
+    }
+    private val servers by lazy { ServerRepository(database, FakeBox(), countries) }
     private val source = FakeSource()
     private val monitor = TunnelMonitor()
     private val images = FakeImages()
@@ -248,6 +255,7 @@ class MainViewModelTest {
             files,
             { PhoneHints(otherVpn = otherVpn) },
             account,
+            countries = countries,
         )
     }
 
@@ -272,6 +280,35 @@ class MainViewModelTest {
         while (!condition()) {
             delay(10)
         }
+    }
+
+    @Test
+    fun `a late country lookup cannot attach the previous exit flag to the new path`() {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        countryAnswer = { address ->
+            if (address == "203.0.113.24") { entered.complete(Unit); release.await(); "US" } else "DE"
+        }
+        answer = { "ip=203.0.113.24\n" }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
+        wait { entered.await() }
+        val measured = wait { model.ui.first { it.webAddress == "203.0.113.24" } }
+        assertEquals("", measured.webCountryCode, "IP уже показан, хотя геобаза еще не ответила")
+        answer = { "ip=203.0.113.25\n" }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 2L))
+        val direct = wait { model.ui.first { it.webAddress == "203.0.113.25" && it.webCountryCode == "DE" } }
+        release.complete(Unit)
+        assertEquals("DE", direct.webCountryCode)
+        wait { model.ui.first { !it.ip.measuring } }
+        assertEquals("DE", model.ui.value.webCountryCode)
+    }
+
+    @Test
+    fun `a profile added after startup gets a country without restarting the window`() {
+        countryCodes["vpn.example.com"] = "US"
+        wait { servers.add(listOf(Fixtures.servers().first().copy(host = "vpn.example.com", name = "Country test", countryCode = ""))) }
+        val found = wait { model.ui.first { it.servers.any { server -> server.displayName == "Country test" && server.countryCode == "US" } } }
+        assertEquals("US", found.servers.single { it.displayName == "Country test" }.countryCode)
     }
 
     @Test

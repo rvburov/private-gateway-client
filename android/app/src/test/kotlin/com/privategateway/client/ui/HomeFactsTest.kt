@@ -19,6 +19,16 @@ class HomeFactsTest {
     private val vpn = network(PhoneNetworkKind.Vpn, "tun0", isDefault = true, address = "172.19.0.1/30")
 
     @Test
+    fun `home country follows measured address and session rather than selected server`() {
+        val ip = WebIp(exit = "203.0.113.24", direct = "198.51.100.7", session = 1L, exitCountry = "US", directCountry = "DE")
+        val on = MainUi(status = com.privategateway.client.core.vpn.TunnelStatus(com.privategateway.client.core.vpn.TunnelState.Connected, since = 1L), ip = ip)
+        assertEquals("US", on.webCountryCode)
+        assertEquals("DE", on.copy(status = com.privategateway.client.core.vpn.TunnelStatus()).webCountryCode)
+        assertEquals("", on.copy(status = on.status.copy(since = 2L)).webCountryCode)
+        assertEquals("", on.copy(status = on.status.copy(state = com.privategateway.client.core.vpn.TunnelState.Connecting)).webCountryCode)
+    }
+
+    @Test
     fun `the network under the tunnel is the one android would pick`() {
         // Без VPN — сеть приложения по умолчанию.
         assertEquals(PhoneNetworkKind.Cellular, HomeNetwork.pick(listOf(wifi, cellular.copy(isDefault = true)))?.kind)

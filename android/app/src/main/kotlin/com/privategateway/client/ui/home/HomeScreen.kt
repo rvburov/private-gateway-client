@@ -494,6 +494,10 @@ private fun IpCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelec
         Column(Modifier.padding(start = PgSpace.Card, top = 14.dp, end = PgSpace.S, bottom = PgSpace.L), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Overline(stringResource(R.string.ip_title))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (address != null && !masked && ui.webCountryCode.isNotEmpty()) {
+                    CountryFlag(ui.webCountryCode)
+                    Spacer(Modifier.width(PgSpace.S))
+                }
                 Text(
                     address?.let { if (masked) maskIp(it) else it } ?: NONE,
                     Modifier.weight(1f).testTag("ip.address"),

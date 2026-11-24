@@ -331,10 +331,11 @@ class ScreensTest {
     @Test
     fun `eye hides the ips with stars and copy gives a toast`() {
         val status = TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L, lockdown = true)
-        val ip = WebIp(exit = "203.0.113.24", direct = "198.51.100.7", session = 1L, checkedAt = System.currentTimeMillis())
+        val ip = WebIp(exit = "203.0.113.24", direct = "198.51.100.7", session = 1L, checkedAt = System.currentTimeMillis(), exitCountry = "US", directCountry = "DE")
         val copied = mutableListOf<String>()
         compose.setContent { Home(MainUi(status, listOf(nl), "nl", ip = ip), actions = HomeActions(copy = { copied += it })) }
         compose.onNodeWithTag("ip.address").assertTextEquals("203.0.113.24")
+        compose.onNodeWithTag("flag.US").assertExists()
         compose.onNodeWithTag("ip.real").assertTextContains("198.51.100.7", substring = true).assertTextContains(text(R.string.ip_real_hidden), substring = true)
 
         compose.onNodeWithTag("toast").assertDoesNotExist()
@@ -344,6 +345,7 @@ class ScreensTest {
 
         // Глаз: цифры — звездочками, точки остаются; скрытый адрес не копируется.
         compose.onNodeWithTag("ip.mask").performClick()
+        compose.onNodeWithTag("flag.US").assertDoesNotExist()
         compose.onNodeWithTag("ip.address").assertTextEquals("***.*.***.**")
         compose.onNodeWithTag("ip.real").assertTextContains("***.**.***.*", substring = true)
         compose.onNodeWithText("198.51.100.7", substring = true).assertDoesNotExist()
@@ -352,6 +354,7 @@ class ScreensTest {
 
         compose.onNodeWithTag("ip.mask").performClick()
         compose.onNodeWithTag("ip.address").assertTextEquals("203.0.113.24")
+        compose.onNodeWithTag("flag.US").assertExists()
     }
 
     @Test

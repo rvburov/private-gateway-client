@@ -407,18 +407,25 @@ class AppUpdatesTest {
     }
 
     @Test
-    fun `pressing again abandons the waiting session and its late answer is ignored`() {
+    fun `continuing a completed download resumes android without a second download or abandoning its session`() {
         site.answer = { feed() }
         val updates = updates()
-        wait { updates.check()!!.join() }
         wait { updates.install()!!.join() }
-        val first = installer.sessions.single()
-        wait { updates.install()!!.join() }
-        assertEquals(listOf(first), installer.abandoned.toList())
+        val id = installer.sessions.single()
+        val firstConfirmation = Intent("first confirmation")
+        wait { updates.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, firstConfirmation, null).join() }
+        updates.prompted(firstConfirmation)
 
-        wait { updates.installStatus(first, PackageInstaller.STATUS_FAILURE, null, "брошена").join() }
-        assertEquals(InstallStep.Installing, updates.state.value.step, "итог брошенной сессии не считается")
-        wait { updates.installStatus(installer.sessions.last(), PackageInstaller.STATUS_FAILURE_CONFLICT, null, "INSTALL_FAILED_UPDATE_INCOMPATIBLE").join() }
+        wait { updates.install()!!.join() }
+        assertEquals(1, downloads.get(), "APK уже у Android — повторного запроса файла нет")
+        assertEquals(listOf(id), installer.sessions.toList())
+        assertEquals(listOf(id), installer.resumed.toList())
+        assertTrue(installer.abandoned.isEmpty())
+        assertNull(updates.prompts.value, "повторно нужен свежий Intent от Android")
+        val fresh = Intent("fresh confirmation")
+        wait { updates.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, fresh, null).join() }
+        assertEquals(fresh, updates.prompts.value)
+        wait { updates.installStatus(id, PackageInstaller.STATUS_FAILURE_CONFLICT, null, "INSTALL_FAILED_UPDATE_INCOMPATIBLE").join() }
         assertEquals(InstallStep.Failed, updates.state.value.step)
         assertTrue(journal.entries.value.any { "INSTALL_FAILED_UPDATE_INCOMPATIBLE" in it.message })
     }
@@ -429,6 +436,7 @@ class AppUpdatesTest {
         val updates = updates()
         wait { updates.install()!!.join() }
         val old = installer.sessions.single()
+        wait { updates.installStatus(old, PackageInstaller.STATUS_FAILURE_ABORTED, null, null).join() }
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         site.answer = {
@@ -497,9 +505,11 @@ class AppUpdatesTest {
         wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, fresh, null).join() }
         assertEquals(fresh, again.prompts.value)
         wait { again.install()!!.join() }
-        assertEquals(listOf(id), installer.abandoned.toList(), "повторная попытка бросает прежнюю собственную сессию")
-        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null).join() }
-        assertNull(again.prompts.value, "позднее подтверждение брошенной сессии не открывается")
+        assertTrue(installer.abandoned.isEmpty(), "продолжение сохраняет APK в той же сессии Android")
+        assertEquals(listOf(id, id), installer.resumed.toList())
+        val another = Intent("another fresh confirmation")
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, another, null).join() }
+        assertEquals(another, again.prompts.value)
     }
 
     @Test

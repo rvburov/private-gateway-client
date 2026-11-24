@@ -13,7 +13,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.util.zip.GZIPInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,7 +38,7 @@ interface CountryLookup {
 }
 
 /**
- * Геобаза из assets/countries/country.bin.gz (DB-IP Country Lite, shared/countries, общая с десктопом). Распаковывается один
+ * Геобаза из assets/countries/country.bin (DB-IP Country Lite, shared/countries, общая с десктопом). Копируется один
  * раз в noBackupFilesDir под номером сборки приложения и читается отображением в память: 25 МБ записей не занимают кучу.
  * Поврежденная или отсутствующая база не мешает работе — флага нет, как у десктопа.
  */
@@ -50,6 +49,8 @@ class AssetCountries @Inject constructor(@ApplicationContext private val context
     private var failed = false
     private var extracted = false
 
+    internal var resolve: (String) -> List<String> = { host -> InetAddress.getAllByName(host).mapNotNull { it.hostAddress } }
+
     // Номер и время установки сборки: новая сборка — геобаза распаковывается заново.
     private val revision: String = context.packageManager.getPackageInfo(context.packageName, 0).let { "${it.longVersionCode}-${it.lastUpdateTime}" }
 
@@ -59,18 +60,18 @@ class AssetCountries @Inject constructor(@ApplicationContext private val context
         if (IpLiteral.parse(host) != null) return country(host)
         val addresses = withTimeoutOrNull(3_000) {
             runInterruptible(Dispatchers.IO) {
-                try { InetAddress.getAllByName(host).mapNotNull { it.hostAddress } }
+                try { resolve(host) }
                 catch (_: IOException) { emptyList() }
                 catch (_: SecurityException) { emptyList() }
             }
         }.orEmpty()
-        val codes = addresses.map { country(it) }.distinct()
+        val codes = addresses.map { country(it) }.filter { it.isNotEmpty() }.distinct()
         return codes.singleOrNull().orEmpty()
     }
 
     override suspend fun renewed(): Boolean = withContext(Dispatchers.IO) {
         database()
-        extracted
+        lock.withLock { extracted.also { extracted = false } }
     }
 
     private suspend fun database(): CountryDatabase? = lock.withLock {
@@ -89,20 +90,28 @@ class AssetCountries @Inject constructor(@ApplicationContext private val context
     private fun open(): CountryDatabase {
         val folder = File(context.noBackupFilesDir, "countries").apply { mkdirs() }
         val file = File(folder, "country-$revision.bin")
-        if (!file.exists()) {
-            folder.listFiles()?.forEach { it.delete() }
-            val partial = File(folder, file.name + ".part")
-            GZIPInputStream(context.assets.open("countries/country.bin.gz")).use { input ->
+        if (file.exists()) {
+            try {
+                return CountryDatabase.open(file)
+            } catch (_: IOException) {
+                // Поврежденный кеш не должен оставлять все страны неизвестными до следующей версии APK.
+                if (!file.delete()) throw IOException("Поврежденный кеш геобазы не удалился")
+            }
+        }
+        val partial = File(folder, file.name + ".part")
+        try {
+            context.assets.open("countries/country.bin").use { input ->
                 partial.outputStream().use { input.copyTo(it) }
             }
-
+            val opened = CountryDatabase.open(partial)
             if (!partial.renameTo(file)) {
                 throw IOException("Геобаза не сохранилась")
             }
-
             extracted = true
+            folder.listFiles()?.filter { it != file }?.forEach { it.delete() }
+            return opened
+        } finally {
+            partial.delete()
         }
-
-        return CountryDatabase.open(file)
     }
 }

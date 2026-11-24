@@ -30,7 +30,7 @@ import java.io.File
  * generatePgUpdateKeys — открытые ключи подписи обновлений (файлы .pem из shared/update/keys) в assets/update-keys: ими
  * приложение сверяет подпись update.json из ленты сайта, как служба десктопа, — подделать обновление сайт не может.
  * generatePgCountries — геобаза стран и квадратные флаги (shared/countries: country.bin.gz и PNG из flags) в
- * assets/countries: страну сервера по его IP и флаг приложение показывает, как десктоп, без сети.
+ * assets/countries (база country.bin, gzip распаковывается при сборке): страну сервера по его IP и флаг приложение показывает, как десктоп, без сети.
  * Папки результата подключает к вариантам сборки приложение (android/app/build.gradle.kts).
  */
 class SharedResourcesPlugin : Plugin<Project> {
@@ -90,7 +90,7 @@ abstract class GeneratePgUpdateKeys : DefaultTask() {
     }
 }
 
-/** Геобаза и флаги стран — в assets/countries как есть: country.bin.gz и flags/<код>.png (UNKNOWN.png — Земля). */
+/** Геобаза в assets/countries/country.bin: gzip распаковывается явно при сборке, PNG флагов копируются как есть. */
 abstract class GeneratePgCountries : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
@@ -108,7 +108,9 @@ abstract class GeneratePgCountries : DefaultTask() {
         val folder = outputDir.get().asFile.resolve("countries")
         outputDir.get().asFile.deleteRecursively()
         folder.resolve("flags").mkdirs()
-        database.get().asFile.copyTo(folder.resolve("country.bin.gz"), overwrite = true)
+        java.util.zip.GZIPInputStream(database.get().asFile.inputStream()).use { input ->
+            folder.resolve("country.bin").outputStream().use { input.copyTo(it) }
+        }
         flags.files.sortedBy { it.name }.forEach { it.copyTo(folder.resolve("flags").resolve(it.name), overwrite = true) }
     }
 }

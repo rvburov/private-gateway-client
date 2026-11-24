@@ -26,6 +26,7 @@ import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.ServerRepository
+import com.privategateway.client.data.CountryLookup
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.inspect.PhoneHintSource
 import com.privategateway.client.inspect.PhoneNetworkSource
@@ -121,6 +122,13 @@ data class MainUi(
             ProtectionView.Connected, ProtectionView.Leak -> exit
             ProtectionView.Off, ProtectionView.Error, ProtectionView.Paused -> ip.direct
             else -> null
+        }
+
+    /** Страна именно показанного IP, а не входного адреса выбранного сервера. */
+    val webCountryCode: String
+        get() = if (webAddress == null) "" else if (status.localOnly) ip.exitCountry else when (view) {
+            ProtectionView.Connected, ProtectionView.Leak -> ip.exitCountry
+            else -> ip.directCountry
         }
 
     /**
@@ -248,6 +256,7 @@ class MainViewModel @Inject constructor(
     private val files: ImportFiles,
     private val hints: PhoneHintSource,
     private val account: AccountRepository,
+    private val countries: CountryLookup = CountryLookup.NONE,
 ) : ViewModel() {
     private val webIp = MutableStateFlow(WebIp())
     val latencyChecks = servers.latencyChecks
@@ -294,10 +303,16 @@ class MainViewModel @Inject constructor(
         // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
         viewModelScope.launch {
             servers.mergeSameSubscriptions(settings.selectedServerId.first())
-            // Флаги по адресам серверов, сохраненных до геобазы или с прежней ее версией.
-            servers.locate()
         }
         networks.start()
+        viewModelScope.launch {
+            // Новые профили и восстановившийся путь повторяют неизвестные страны. Тики скорости и пинга DNS не запускают.
+            combine(
+                servers.servers.map { list -> list.map { it.id }.sorted() }.distinctUntilChanged(),
+                networks.networks.map { HomeNetwork.identity(it) }.distinctUntilChanged(),
+                monitor.status.map { Triple(it.state, it.since, it.offline) }.distinctUntilChanged(),
+            ) { ids, network, path -> Triple(ids, network, path) }.collect { servers.locate() }
+        }
         viewModelScope.launch {
             networks.networks.map { list -> list.filter { it.kind != com.privategateway.client.core.inspect.PhoneNetworkKind.Vpn }
                 .map { "${it.name}:${it.addresses.sorted()}:${it.dns.sorted()}" }.sorted() }.distinctUntilChanged().collect {
@@ -486,7 +501,7 @@ class MainViewModel @Inject constructor(
         val moved = network != lastNetwork
         if (moved) {
             lastNetwork = network
-            webIp.update { it.copy(direct = null) }
+            webIp.update { it.copy(direct = null, directCountry = "") }
         }
 
         if (path != null && (path != lastPath || moved && !path.viaTunnel) && (!path.viaTunnel || settings.tunnel.first().checkLeaks)) {
@@ -532,7 +547,7 @@ class MainViewModel @Inject constructor(
         val attempt = ++ipAttempt
         webIp.update {
             if (path.viaTunnel && it.session != path.session) {
-                it.copy(exit = null, session = path.session, checkedAt = null, measuring = true)
+                it.copy(exit = null, exitCountry = "", session = path.session, checkedAt = null, measuring = true)
             } else {
                 it.copy(measuring = true)
             }
@@ -555,8 +570,15 @@ class MainViewModel @Inject constructor(
             webIp.update {
                 when {
                     !same -> it.copy(measuring = false)
-                    path.viaTunnel -> it.copy(exit = address ?: it.exit, checkedAt = System.currentTimeMillis(), measuring = false)
-                    else -> it.copy(direct = address ?: it.direct, measuring = false)
+                    path.viaTunnel -> it.copy(exit = address ?: it.exit, exitCountry = if (address == null || address == it.exit) it.exitCountry else "", checkedAt = System.currentTimeMillis(), measuring = false)
+                    else -> it.copy(direct = address ?: it.direct, directCountry = if (address == null || address == it.direct) it.directCountry else "", measuring = false)
+                }
+            }
+            // IP показывается сразу. Геобаза читается фоном, поздний ответ другого пути не меняет флаг.
+            if (same && address != null) {
+                val country = countries.country(address)
+                if (attempt == ipAttempt && currentPath() == path) {
+                    webIp.update { if (path.viaTunnel) it.copy(exitCountry = country) else it.copy(directCountry = country) }
                 }
             }
         }

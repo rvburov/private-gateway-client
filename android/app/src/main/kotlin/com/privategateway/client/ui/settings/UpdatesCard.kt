@@ -71,7 +71,11 @@ internal fun UpdatesCard(view: UpdatesView, onCheck: () -> Unit, onInstall: () -
 
             Row(horizontalArrangement = Arrangement.spacedBy(PgSpace.S)) {
                 if (offer != null) {
-                    val label = if (view.step == InstallStep.Downloading) R.string.about_update_loading_button else R.string.android_update_install
+                    val label = when (view.step) {
+                        InstallStep.Downloading -> R.string.about_update_loading_button
+                        InstallStep.Installing -> R.string.android_update_continue
+                        else -> R.string.android_update_install
+                    }
                     PgPrimaryButton(stringResource(label), "about.updates.install", onInstall, enabled = !busy)
                 }
 
@@ -79,8 +83,8 @@ internal fun UpdatesCard(view: UpdatesView, onCheck: () -> Unit, onInstall: () -
                     // Запасной путь: APK с сайта ставится вручную, как в первый раз.
                     val site = view.notes ?: DOWNLOADS_URL
                     PgSecondaryButton(stringResource(R.string.about_update_open), "about.updates.site", { runCatching { links.openUri(site) } })
-                } else {
-                    PgSecondaryButton(stringResource(R.string.about_updates_check), "about.updates.check", onCheck, enabled = !busy && view.step != InstallStep.Installing)
+                } else if (view.step != InstallStep.Installing) {
+                    PgSecondaryButton(stringResource(R.string.about_updates_check), "about.updates.check", onCheck, enabled = !busy)
                 }
             }
         }
@@ -107,7 +111,7 @@ private fun caption(view: UpdatesView): String {
         UpdateStatus.Available -> when (view.step) {
             InstallStep.None -> stringResource(R.string.about_update_available, version)
             InstallStep.Downloading -> stringResource(R.string.android_update_downloading, version)
-            InstallStep.Installing -> stringResource(R.string.about_update_ready)
+            InstallStep.Installing -> stringResource(R.string.android_update_confirmation)
             InstallStep.Allow -> stringResource(R.string.android_update_allow)
             InstallStep.BadFile -> stringResource(R.string.android_update_badFile)
             InstallStep.Failed -> stringResource(R.string.android_update_failed)

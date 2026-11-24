@@ -138,11 +138,12 @@ class UpdatesCardTest {
         }
 
         val state = compose.onNodeWithTag("about.updates.state")
-        state.assertTextEquals(context.getString(R.string.about_update_ready))
+        state.assertTextEquals(context.getString(R.string.android_update_confirmation))
         compose.onNodeWithTag("about.updates.progress").assertExists()
+        compose.onNodeWithTag("about.updates.install").assertTextEquals(context.getString(R.string.android_update_continue))
         compose.onNodeWithTag("about.updates.bytes").assertDoesNotExist()
         compose.onNodeWithTag("about.updates.install").assertIsEnabled()
-        compose.onNodeWithTag("about.updates.check").assertIsNotEnabled()
+        compose.onNodeWithTag("about.updates.check").assertDoesNotExist()
 
         view = offer.copy(step = InstallStep.Allow)
         state.assertTextEquals(context.getString(R.string.android_update_allow))

@@ -15,6 +15,8 @@ data class WebIp(
     val session: Long? = null,
     val checkedAt: Long? = null,
     val measuring: Boolean = false,
+    val exitCountry: String = "",
+    val directCountry: String = "",
 )
 
 /** Сеть телефона для строки под состоянием (network.*) и для того, когда реальный IP пора мерить заново. */
