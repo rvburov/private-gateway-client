@@ -96,10 +96,14 @@ class ServerRepository @Inject constructor(
     private val dao = database.servers()
     private val subscriptions = database.subscriptions()
     private val checks = MutableStateFlow<Map<String, LatencyCheck>>(emptyMap())
+    private val countryChanges = MutableStateFlow(0L)
     private val latencyLock = Any()
     private var currentNetwork: String? = null
     private var currentConnection: String? = null
     val latencyChecks: StateFlow<Map<String, LatencyCheck>> = checks.asStateFlow()
+
+    /** Новое содержимое профилей, даже если ID и видимый флаг прежние. Записи пинга ревизию не меняют. */
+    val countryRevision: StateFlow<Long> = countryChanges.asStateFlow()
 
     fun markLatencyStale(networkId: String? = null, connectionId: String? = null) = synchronized(latencyLock) {
         if (networkId != null) currentNetwork = networkId
@@ -231,6 +235,7 @@ class ServerRepository @Inject constructor(
             dao.insertAll(fresh)
         }
         updateChecks { current -> current.mapValues { if (it.key in renewed) it.value.copy(stale = true) else it.value } }
+        if (fresh.isNotEmpty() || renewed.isNotEmpty()) countryChanges.update { it + 1 }
 
         return AddResult(fresh.size, duplicates, renewed.size)
     }
@@ -410,6 +415,8 @@ class ServerRepository @Inject constructor(
             val previous = own.associate { it.id to it.server }
             val changed = kept.filter { previous[it.id] != it.server }.map { it.id }.toSet()
             updateChecks { current -> current.filterKeys { it !in merge.removed }.mapValues { if (it.key in changed) it.value.copy(stale = true) else it.value } }
+            // Room может объединить промежуточные US → пусто; завершение refresh остается отдельным событием.
+            countryChanges.update { it + 1 }
 
             val missing = merge.missing?.let { byId[it] }
             UpdateResult(added.size, merge.removed.size, merge.selected, missing?.let { it.customName ?: it.name })

@@ -312,7 +312,8 @@ class MainViewModel @Inject constructor(
                 servers.servers.map { list -> list.map { it.id to it.countryCode }.sortedBy { it.first } }.distinctUntilChanged(),
                 networks.networks.map { HomeNetwork.identity(it) }.distinctUntilChanged(),
                 monitor.status.map { Triple(it.state, it.since, it.offline) }.distinctUntilChanged(),
-            ) { ids, network, path -> Triple(ids, network, path) }.conflate().collect { servers.locate() }
+                servers.countryRevision,
+            ) { ids, network, path, revision -> Triple(ids, network, path) to revision }.conflate().collect { servers.locate() }
         }
         viewModelScope.launch {
             networks.networks.map { list -> list.filter { it.kind != com.privategateway.client.core.inspect.PhoneNetworkKind.Vpn }

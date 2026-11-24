@@ -313,18 +313,36 @@ class MainViewModelTest {
 
     @Test
     fun `a subscription resetting the country of an existing id triggers a new lookup`() {
-        val lookedUp = java.util.concurrent.atomic.AtomicInteger()
-        countryAnswer = { host ->
-            if (host == "vpn.example.com") { lookedUp.incrementAndGet(); "US" } else ""
-        }
-        wait { servers.add(listOf(Fixtures.servers().first().copy(host = "vpn.example.com", name = "Country retry", countryCode = ""))) }
+        val server = Fixtures.servers().first().copy(host = "vpn.example.com", name = "Country retry", countryCode = "")
+        countryCodes[server.host] = "US"
+        wait { servers.add(listOf(server), "Country retry", URI("https://example.com/sub/country")) }
         val before = wait { model.ui.first { it.servers.any { server -> server.displayName == "Country retry" && server.countryCode == "US" } } }
         val id = before.servers.single { it.displayName == "Country retry" }.id
-        val count = lookedUp.get()
-        // Такое же поле сбрасывает refresh подписки, когда в новой ссылке остается имя хоста.
-        wait { database.servers().setAddressCountry(id, "") }
-        val after = wait { model.ui.first { lookedUp.get() > count && it.servers.any { server -> server.id == id && server.countryCode == "US" } } }
+        val group = requireNotNull(before.servers.single { it.id == id }.subscriptionId)
+        countryCodes[server.host] = "DE"
+        wait { servers.applyUpdate(group, listOf(server), selectedId = id) }
+        val after = wait { model.ui.first { it.servers.any { server -> server.id == id && server.countryCode == "DE" } } }
         assertEquals(id, after.servers.single { it.displayName == "Country retry" }.id)
+    }
+
+    @Test
+    fun `a subscription refresh retries an unknown country with the same visible fallback`() {
+        val attempted = CompletableDeferred<Unit>()
+        val server = Fixtures.servers().first().copy(host = "vpn.example.com", name = "Country fallback", countryCode = "US")
+        countryAnswer = { host ->
+            val code = countryCodes[host].orEmpty()
+            if (host == server.host) attempted.complete(Unit)
+            code
+        }
+        wait { servers.add(listOf(server), "Country fallback", URI("https://example.com/sub/country")) }
+        wait { attempted.await() }
+        val before = wait { model.ui.first { it.servers.any { server -> server.displayName == "Country fallback" && server.countryCode == "US" } } }
+        val item = before.servers.single { it.displayName == "Country fallback" }
+        // Пустая страна адреса до и после refresh дает тот же флаг из ссылки: различия списка недостаточно.
+        countryCodes[server.host] = "DE"
+        wait { servers.applyUpdate(requireNotNull(item.subscriptionId), listOf(server), selectedId = item.id) }
+        val after = wait { model.ui.first { it.servers.any { server -> server.id == item.id && server.countryCode == "DE" } } }
+        assertEquals(item.id, after.servers.single { it.displayName == "Country fallback" }.id)
     }
 
     @Test
