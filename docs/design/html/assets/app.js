@@ -24,17 +24,23 @@
     { file: "17-main-variants.html", n: 17, title: "Главная: прокси и вход в Wi-Fi", group: "Дополнительные экраны и сценарии" },
     { file: "18-dialogs.html", n: 18, title: "Диалоги подтверждения", group: "Дополнительные экраны и сценарии" },
     { file: "19-notifications.html", n: 19, title: "Уведомления: какие бывают", group: "Дополнительные экраны и сценарии" },
-    { file: "20-platforms.html", n: 20, title: "Окно на Windows, macOS, Linux", group: "Три ОС: Windows · macOS · Linux" },
-    { file: "21-platform-specifics.html", n: 21, title: "Трей, строка меню и установка службы по ОС", group: "Три ОС: Windows · macOS · Linux" },
-    { file: "22-notify-os.html", n: 22, title: "Уведомления на Windows, macOS, Linux", group: "Три ОС: Windows · macOS · Linux" },
+    { file: "20-platforms.html", n: 20, title: "Окно на Windows, macOS, Linux", group: "Особенности ОС" },
+    { file: "21-platform-specifics.html", n: 21, title: "Трей, строка меню и установка службы по ОС", group: "Особенности ОС" },
+    { file: "22-notify-os.html", n: 22, title: "Уведомления на Windows, macOS, Linux", group: "Особенности ОС" },
     { file: "23-ds-foundations.html", n: 23, title: "Дизайн-система: основы", group: "Дизайн-система" },
     { file: "24-ds-components.html", n: 24, title: "Дизайн-система: компоненты", group: "Дизайн-система" },
-    { file: "25-mobile-main.html", n: 25, title: "Мобильные: главный экран", group: "Мобильные: Android и iOS" },
-    { file: "26-mobile-system.html", n: 26, title: "Android и iOS: системные окна и технологии", group: "Мобильные: Android и iOS" },
+    { file: "25-mobile-main.html", n: 25, title: "Мобильные: главный экран", group: "Мобильные состояния и система" },
+    { file: "26-mobile-system.html", n: 26, title: "Android и iOS: системные окна и технологии", group: "Мобильные состояния и система" },
   ];
   var DEVICES = [
     { id: "windows", title: "Windows" }, { id: "macos", title: "macOS" }, { id: "linux", title: "Linux" },
     { id: "android", title: "Android" }, { id: "ios", title: "iOS" },
+  ];
+  var SECTIONS = [
+    { id: "design-system", title: "Дизайн-система", heading: "Дизайн-система Private Gateway", description: "Общие цвета, шрифты, размеры, значки, карточки, элементы управления и состояния для всех платформ." },
+    { id: "desktop", title: "Десктоп", heading: "Десктоп", description: "Общие экраны Windows, macOS и Linux. Переключатель ОС меняет рамку и платформенные особенности; отдельные доски показывают их рядом." },
+    { id: "android", title: "Android", heading: "Android", description: "Экраны приложения Android, мобильные состояния, системные разрешения и уведомления. Общие правила оформления — в дизайн-системе." },
+    { id: "ios", title: "iOS", heading: "iOS", description: "Экраны приложения iOS, мобильные состояния, системные разрешения и уведомления. Общие правила оформления — в дизайн-системе." },
   ];
   // Экраны островка: «Главная», «Серверы», «Проверка», «Настройки» (IslandNav программы)
   var NAV = [
@@ -125,6 +131,10 @@
 
   var params = new URLSearchParams(location.search);
   var device = DEVICES.some(function (d) { return d.id === params.get("device"); }) ? params.get("device") : "windows";
+  var board = BOARDS.filter(function (b) { return location.pathname.endsWith("/" + b.file); })[0];
+  var section = SECTIONS.some(function (s) { return s.id === params.get("section"); }) ? params.get("section") : deviceSection(device);
+  section = boardSection(board, section);
+  device = sectionDevice(section, device);
   var thumb = params.get("thumb") === "1";
   var SVGNS = "http://www.w3.org/2000/svg";
 
@@ -155,8 +165,69 @@
     });
   }
 
+  function deviceSection(dev) {
+    return dev === "android" || dev === "ios" ? dev : "desktop";
+  }
+
+  function boardSection(target, preferred) {
+    if (!target) { return preferred; }
+    if (target.n === 23 || target.n === 24) { return "design-system"; }
+    if (target.n === 8 || target.n >= 20 && target.n <= 22) { return "desktop"; }
+    if (target.n >= 25 && preferred !== "android" && preferred !== "ios") { return "android"; }
+    return preferred === "design-system" ? "desktop" : preferred;
+  }
+
+  function sectionDevice(id, dev) {
+    if (id === "android" || id === "ios") { return id; }
+    return id === "design-system" || dev === "android" || dev === "ios" ? "windows" : dev;
+  }
+
+  function sectionBoards(id) {
+    return BOARDS.filter(function (b) {
+      if (id === "design-system") { return b.n === 23 || b.n === 24; }
+      if (id === "desktop") { return b.n <= 22; }
+      return (b.n <= 19 && b.n !== 8) || b.n >= 25;
+    });
+  }
+
   function withDevice(file, dev) {
-    return file + "?device=" + (dev || device);
+    var target = BOARDS.filter(function (b) { return file.endsWith(b.file); })[0];
+    var targetSection = boardSection(target, dev ? deviceSection(dev) : section);
+    return file + "?section=" + targetSection + "&device=" + sectionDevice(targetSection, dev || device);
+  }
+
+  function appendSections(bar, prefix) {
+    var links = document.createElement("div");
+    links.className = "pg-section-tabs";
+    links.setAttribute("role", "group");
+    links.setAttribute("aria-label", "Разделы макета");
+    SECTIONS.forEach(function (s) {
+      var a = document.createElement("a");
+      a.href = prefix + "index.html?section=" + s.id + "&device=" + sectionDevice(s.id, device);
+      a.textContent = s.title;
+      if (s.id === section) { a.setAttribute("aria-current", "page"); }
+      links.appendChild(a);
+    });
+    bar.appendChild(links);
+  }
+
+  function appendDesktopPicker(host, file) {
+    if (section !== "desktop") { return; }
+    var label = document.createElement("label");
+    label.className = "pg-device-picker";
+    label.textContent = "Операционная система";
+    var select = document.createElement("select");
+    select.className = "btn-select";
+    DEVICES.slice(0, 3).forEach(function (d) {
+      var option = document.createElement("option");
+      option.value = d.id;
+      option.textContent = d.title;
+      option.selected = d.id === device;
+      select.appendChild(option);
+    });
+    select.addEventListener("change", function () { location.href = withDevice(file, select.value); });
+    label.appendChild(select);
+    host.appendChild(label);
   }
 
   // Форма островка — как IslandGeometry.Path программы: выступ под щит по центру
@@ -347,22 +418,21 @@
     title.className = "pg-toolbar-title";
     title.textContent = board ? board.n + " · " + board.title : document.title;
     bar.appendChild(title);
-    DEVICES.forEach(function (d) {
-      var a = document.createElement("a");
-      a.href = location.pathname.split("/").pop() + "?device=" + d.id;
-      a.textContent = d.title;
-      if (d.id === device) { a.setAttribute("aria-current", "true"); }
-      bar.appendChild(a);
-    });
+    appendSections(bar, "../");
+    var tools = document.createElement("div");
+    tools.className = "pg-board-tools";
+    appendDesktopPicker(tools, board ? board.file : location.pathname.split("/").pop());
     var all = document.createElement("a");
-    all.href = withDevice(board ? "../index.html" : "index.html");
-    all.textContent = "Все экраны";
-    bar.appendChild(all);
+    all.href = withDevice("../index.html");
+    all.textContent = "Все экраны раздела";
+    tools.appendChild(all);
     if (board) {
-      var i = BOARDS.indexOf(board);
-      if (i > 0) { bar.insertAdjacentHTML("beforeend", '<a href="' + withDevice(BOARDS[i - 1].file) + '">‹ ' + BOARDS[i - 1].n + "</a>"); }
-      if (i < BOARDS.length - 1) { bar.insertAdjacentHTML("beforeend", '<a href="' + withDevice(BOARDS[i + 1].file) + '">' + BOARDS[i + 1].n + " ›</a>"); }
+      var boards = sectionBoards(section);
+      var i = boards.indexOf(board);
+      if (i > 0) { tools.insertAdjacentHTML("beforeend", '<a href="' + withDevice(boards[i - 1].file) + '">‹ ' + boards[i - 1].n + "</a>"); }
+      if (i >= 0 && i < boards.length - 1) { tools.insertAdjacentHTML("beforeend", '<a href="' + withDevice(boards[i + 1].file) + '">' + boards[i + 1].n + " ›</a>"); }
     }
+    bar.appendChild(tools);
     return bar;
   }
 
@@ -699,9 +769,21 @@
     if (!thumb) { body.insertBefore(buildToolbar(), body.firstChild); }
     else { body.style.padding = "16px"; }
     renderIcons(document);
+    document.querySelectorAll("[data-platform-device]").forEach(function (el) {
+      el.hidden = el.dataset.platformDevice !== device;
+    });
+    if (board && board.n === 26) {
+      var column = device === "ios" ? 3 : 2;
+      document.querySelectorAll(".ms-tech tr").forEach(function (row) {
+        Array.prototype.forEach.call(row.children, function (cell, i) { cell.hidden = i !== 0 && i !== column; });
+      });
+    }
     document.querySelectorAll(".pg-screens").forEach(function (holder) {
       holder.classList.add("pg-frames");
       Array.prototype.slice.call(holder.querySelectorAll(":scope > .pg-screen")).forEach(function (screen) {
+        if (board && board.n >= 25 && screen.dataset.device && screen.dataset.device !== device) {
+          screen.remove(); return;
+        }
         if (screen.dataset.os) {
           var allowed = [];
           screen.dataset.os.split(/\s+/).forEach(function (id) { allowed = allowed.concat(OS_GROUPS[id] || [id]); });
@@ -742,17 +824,21 @@
     var bar = document.createElement("nav");
     bar.className = "pg-toolbar";
     bar.innerHTML = '<span class="pg-toolbar-title">Private Gateway — макет v1.1 (HTML)</span>';
-    DEVICES.forEach(function (d) {
-      var a = document.createElement("a");
-      a.href = "index.html?device=" + d.id;
-      a.textContent = d.title;
-      if (d.id === device) { a.setAttribute("aria-current", "true"); }
-      bar.appendChild(a);
-    });
+    appendSections(bar, "");
     body.insertBefore(bar, body.firstChild);
     var host = document.querySelector("[data-gallery-host]") || body;
+    var info = SECTIONS.filter(function (s) { return s.id === section; })[0];
+    var heading = document.createElement("h1");
+    heading.className = "pg-gallery-title t-h1";
+    heading.textContent = info.heading;
+    host.appendChild(heading);
+    var description = document.createElement("p");
+    description.className = "pg-board-note";
+    description.textContent = info.description;
+    host.appendChild(description);
+    appendDesktopPicker(host, "index.html");
     var group = null, grid = null;
-    BOARDS.forEach(function (b) {
+    sectionBoards(section).forEach(function (b) {
       if (b.group !== group) {
         group = b.group;
         var h = document.createElement("h2");
@@ -766,8 +852,11 @@
       var a = document.createElement("a");
       a.href = withDevice("boards/" + b.file);
       a.innerHTML = '<div class="pg-thumb"><iframe loading="lazy" tabindex="-1" title=""></iframe></div><span class="t-strong"></span>';
-      a.querySelector("iframe").src = "boards/" + b.file + "?device=" + device + "&thumb=1";
-      a.querySelector("span").textContent = b.n + " · " + b.title;
+      var title = b.n === 25 ? "Главная: мобильные состояния" : b.n === 26 ? "Системные окна и технологии" : b.title;
+      var preview = a.querySelector("iframe");
+      preview.src = withDevice("boards/" + b.file) + "&thumb=1";
+      preview.title = title + " — " + info.title;
+      a.querySelector("span").textContent = b.n + " · " + title;
       grid.appendChild(a);
     });
   }

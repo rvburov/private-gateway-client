@@ -61,7 +61,12 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--pg-color-text-secondary); text-decoration: none; padding: 6px 10px; border-radius: var(--pg-radius-input);
 }
 .pg-toolbar a:hover, .pg-toolbar button:hover { color: var(--pg-color-accent-base); }
-.pg-toolbar [aria-current="true"] { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); font-weight: 600; }
+.pg-toolbar [aria-current="true"], .pg-toolbar [aria-current="page"] { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); font-weight: 600; }
+.pg-section-tabs, .pg-board-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pg-space-s); }
+.pg-board-tools { flex-basis: 100%; }
+.pg-device-picker { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pg-space-s); font-size: var(--pg-type-small-size); }
+.pg-device-picker select { font-family: inherit; color: var(--pg-color-text-primary); }
+.pg-gallery-title { margin: 0 0 var(--pg-space-s); }
 .pg-board-note { max-width: 900px; margin: 0 0 20px; color: var(--pg-color-text-muted); font-size: var(--pg-type-small-size); }
 .pg-frames { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
 .pg-frame-wrap { display: flex; flex-direction: column; gap: 10px; }
@@ -556,3 +561,5 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
 .country-glyph img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .country-glyph::after { content: ''; position: absolute; inset: 0; pointer-events: none;
   border: var(--pg-space-hairline) solid var(--pg-color-line-strong); border-radius: inherit; }
+/* Флаг выходного адреса отделен от IP; скрытый флаг не оставляет пустой отступ. */
+.country-glyph[data-ip-country] { margin-inline-end: var(--pg-space-s); }

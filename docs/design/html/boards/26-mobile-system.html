@@ -145,10 +145,10 @@
   на доске они нарисованы нейтрально. Наше — только приложение: под системным запросом тот же главный экран, что на компьютере (доски 1
   и 25). Нажимается: «ОК» и «Разрешить» включают защиту (щит проходит «Подключение» → «Защищено»), «Отмена» — защита не включилась;
   плитки шторки, «Отключить» и «Сменить сервер» в уведомлении; переключатели настроек; «ⓘ» у профиля iOS открывает его настройки.
-  Внизу — таблица технологий трех версий.</p>
+  Показана выбранная мобильная ОС; внизу — ее технологии.</p>
 
-<h2 class="ms-row-title"><span class="t-h1">Android</span><span class="t-small">Kotlin · Jetpack Compose · VpnService · libXray</span></h2>
-<div class="pg-screens">
+<h2 class="ms-row-title" data-platform-device="android"><span class="t-h1">Android</span><span class="t-small">Kotlin · Jetpack Compose · VpnService · libXray</span></h2>
+<div class="pg-screens" data-platform-device="android">
   <section class="pg-screen" data-device="android" data-state="off" data-caption="Разрешение на VPN — один раз">
     <div class="pg-page">
       <!-- Шапка: знак, название, версия, «+» -->
@@ -440,7 +440,7 @@
     </div>
   </section>
 </div>
-<div class="ms-notes">
+<div class="ms-notes" data-platform-device="android">
   <p>Системное окно Android при первом включении (VpnService.prepare) — один раз: без согласия туннель не поднять. «Отмена» — приложение
     пишет «Android не дал разрешения на VPN — защита не включилась». Окно и его тексты рисует Android.</p>
   <p>Пока VPN работает, Android требует постоянное уведомление: «IP скрыт · сервер», шифруется ли трафик, «в сети» с таймером,
@@ -451,8 +451,8 @@
     <button class="btn-link" data-nav="04-settings.html">«Настройках»</button> и показывает, включено ли, в плитке «Блок при обрыве».</p>
 </div>
 
-<h2 class="ms-row-title"><span class="t-h1">iOS</span><span class="t-small">Swift · SwiftUI · Network Extension (Packet Tunnel) · libXray</span></h2>
-<div class="pg-screens">
+<h2 class="ms-row-title" data-platform-device="ios"><span class="t-h1">iOS</span><span class="t-small">Swift · SwiftUI · Network Extension (Packet Tunnel) · libXray</span></h2>
+<div class="pg-screens" data-platform-device="ios">
   <section class="pg-screen" data-device="ios" data-state="off" data-caption="Разрешение на VPN — один раз">
     <div class="pg-page">
       <!-- Шапка: знак, название, версия, «+» -->
@@ -752,7 +752,7 @@
     </div>
   </section>
 </div>
-<div class="ms-notes ios">
+<div class="ms-notes ios" data-platform-device="ios">
   <p>Системный запрос iOS при первом включении — один раз. «Запретить» — защита остается «Выключено», приложение пишет «iOS не дала разрешения на VPN — защита не включилась» (не «Работает другой VPN»), следующее нажатие щита спросит снова. После «Разрешить» iOS спросит код-пароль или Face ID. Профиль появится в «Настройках» → VPN.
     «Разрешить» — подключение.</p>
   <p>Профиль VPN в настройках iOS: статус и «Подключать по требованию» — его включает «Постоянная защита» в приложении. Блок при обрыве
